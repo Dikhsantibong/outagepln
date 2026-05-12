@@ -12,8 +12,12 @@ class OutagePlanController extends Controller
     public function index()
     {
         $outagePlans = OutagePlan::latest()->get();
+        // Fetch all units with their related machines
+        $units = \App\Models\Unit::with('mesins')->get();
+        
         return Inertia::render('outage-plans/index', [
             'outagePlans' => $outagePlans,
+            'units' => $units,
         ]);
     }
 

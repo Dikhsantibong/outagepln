@@ -29,7 +29,7 @@ const mainNavItems: NavItem[] = [
     },
     {
         title: 'Daily Meeting',
-        href: '/daily-meeting',
+        href: '/daily-meetings',
         icon: MessageSquare,
     },
 ];
@@ -58,6 +58,14 @@ export function AppSidebar() {
             </SidebarHeader>
 
             <SidebarContent>
+                <div className="px-4 py-6">
+                    <h2 className="text-xs font-bold uppercase tracking-[0.2em] text-muted-foreground/60">
+                        Application
+                    </h2>
+                    <p className="mt-1 text-lg font-extrabold tracking-tight text-sidebar-foreground">
+                        Outage Monitoring
+                    </p>
+                </div>
                 <NavMain items={mainNavItems} />
             </SidebarContent>
 

@@ -1,10 +1,12 @@
 import { Head, useForm, router } from '@inertiajs/react';
-import { FormEventHandler } from 'react';
+import { FormEventHandler, useState, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Combobox, ComboboxInput, ComboboxButton, ComboboxOptions, ComboboxOption } from '@headlessui/react';
+import { Check, ChevronsUpDown } from 'lucide-react';
 
-export default function OutagePlansIndex({ outagePlans }: { outagePlans: any[] }) {
+export default function OutagePlansIndex({ outagePlans, units = [] }: { outagePlans: any[], units?: any[] }) {
     const { data, setData, post, processing, errors, reset } = useForm({
         mesin_pembangkit: '',
         scope: 'final stage',
@@ -15,6 +17,31 @@ export default function OutagePlansIndex({ outagePlans }: { outagePlans: any[] }
         keterangan: 'open',
         sistem: 'RAHA',
     });
+
+    const [query, setQuery] = useState('');
+
+    const allMesins = useMemo(() => {
+        const list: any[] = [];
+        if (units && Array.isArray(units)) {
+            units.forEach((u: any) => {
+                if (u.mesins && Array.isArray(u.mesins)) {
+                    u.mesins.forEach((m: any) => {
+                        list.push({
+                            id: m.id_mesin,
+                            name: m.nama_mesin,
+                            unitName: u.nama_sentral,
+                            searchString: `${u.nama_sentral} ${m.nama_mesin}`.toLowerCase(),
+                        });
+                    });
+                }
+            });
+        }
+        return list;
+    }, [units]);
+
+    const filteredMesins = query === ''
+        ? allMesins
+        : allMesins.filter((m) => m.searchString.includes(query.toLowerCase()));
 
     const submit: FormEventHandler = (e) => {
         e.preventDefault();
@@ -41,12 +68,57 @@ export default function OutagePlansIndex({ outagePlans }: { outagePlans: any[] }
                         <form onSubmit={submit} className="space-y-4">
                             <div>
                                 <Label htmlFor="mesin_pembangkit">Mesin Pembangkit</Label>
-                                <Input
-                                    id="mesin_pembangkit"
-                                    value={data.mesin_pembangkit}
-                                    onChange={(e) => setData('mesin_pembangkit', e.target.value)}
-                                    className="mt-1"
-                                />
+                                <Combobox value={data.mesin_pembangkit} onChange={(val) => setData('mesin_pembangkit', val || '')}>
+                                    <div className="relative mt-1">
+                                        <div className="relative w-full cursor-default overflow-hidden rounded-md border border-input bg-transparent text-left shadow-sm focus-within:ring-1 focus-within:ring-ring sm:text-sm">
+                                            <ComboboxInput
+                                                className="w-full border-none bg-transparent py-2 pl-3 pr-10 text-sm leading-5 focus:outline-none focus:ring-0"
+                                                displayValue={(mesinName: string) => mesinName}
+                                                onChange={(event) => setQuery(event.target.value)}
+                                                placeholder="Ketik unit (cth: pltd poasia)..."
+                                            />
+                                            <ComboboxButton className="absolute inset-y-0 right-0 flex items-center pr-2">
+                                                <ChevronsUpDown className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                                            </ComboboxButton>
+                                        </div>
+                                        <ComboboxOptions className="absolute mt-1 max-h-60 w-full overflow-auto rounded-md bg-popover py-1 text-base shadow-md ring-1 ring-black/5 focus:outline-none sm:text-sm z-50">
+                                            {filteredMesins.length === 0 && query !== '' ? (
+                                                <div className="relative cursor-default select-none px-4 py-2 text-muted-foreground">
+                                                    Mesin tidak ditemukan.
+                                                </div>
+                                            ) : (
+                                                filteredMesins.map((mesin) => (
+                                                    <ComboboxOption
+                                                        key={mesin.id}
+                                                        className={({ active }) =>
+                                                            `relative cursor-default select-none py-2 pl-10 pr-4 ${
+                                                                active ? 'bg-accent text-accent-foreground' : 'text-foreground'
+                                                            }`
+                                                        }
+                                                        value={mesin.name}
+                                                    >
+                                                        {({ selected, active }) => (
+                                                            <>
+                                                                <span className={`block truncate ${selected ? 'font-medium' : 'font-normal'}`}>
+                                                                    {mesin.name}
+                                                                </span>
+                                                                {selected ? (
+                                                                    <span
+                                                                        className={`absolute inset-y-0 left-0 flex items-center pl-3 ${
+                                                                            active ? 'text-accent-foreground' : 'text-primary'
+                                                                        }`}
+                                                                    >
+                                                                        <Check className="h-4 w-4" aria-hidden="true" />
+                                                                    </span>
+                                                                ) : null}
+                                                            </>
+                                                        )}
+                                                    </ComboboxOption>
+                                                ))
+                                            )}
+                                        </ComboboxOptions>
+                                    </div>
+                                </Combobox>
                                 {errors.mesin_pembangkit && <div className="text-red-500 text-sm mt-1">{errors.mesin_pembangkit}</div>}
                             </div>
 
