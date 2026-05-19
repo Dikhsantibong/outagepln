@@ -1,5 +1,5 @@
 import { Link } from '@inertiajs/react';
-import { LayoutGrid, Calendar, Users, MessageSquare } from 'lucide-react';
+import { LayoutGrid, Calendar, Users, MessageSquare, ReceiptText } from 'lucide-react';
 import AppLogo from '@/components/app-logo';
 import { NavFooter } from '@/components/nav-footer';
 import { NavMain } from '@/components/nav-main';
@@ -28,6 +28,11 @@ const mainNavItems: NavItem[] = [
         icon: Calendar,
     },
     {
+        title: 'Tagihan OH',
+        href: '/tagihan-oh',
+        icon: ReceiptText,
+    },
+    {
         title: 'Daily Meeting',
         href: '/daily-meetings',
         icon: MessageSquare,
@@ -37,7 +42,7 @@ const mainNavItems: NavItem[] = [
 const footerNavItems: NavItem[] = [
     {
         title: 'Team Outage',
-        href: '#',
+        href: '/team-outage',
         icon: Users,
     },
 ];
@@ -59,7 +64,7 @@ export function AppSidebar() {
 
             <SidebarContent>
                 <div className="px-4 py-6">
-                    <h2 className="text-xs font-bold uppercase tracking-[0.2em] text-muted-foreground/60">
+                    <h2 className="text-xs font-bold uppercase tracking-[0.2em] text-primary/70">
                         Application
                     </h2>
                     <p className="mt-1 text-lg font-extrabold tracking-tight text-sidebar-foreground">

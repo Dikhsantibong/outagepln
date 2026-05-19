@@ -72,6 +72,10 @@ class DailyMeetingController extends Controller
     {
         $meeting = DailyMeeting::where('token', $token)->firstOrFail();
 
+        if ($meeting->status === 'completed') {
+            return redirect()->back()->with('error', 'Rapat sudah selesai. Tidak dapat mendaftar kehadiran.');
+        }
+
         $validated = $request->validate([
             'nama' => 'required|string|max:255',
             'divisi' => 'nullable|string|max:255',
@@ -93,6 +97,10 @@ class DailyMeetingController extends Controller
 
     public function storeMinutes(Request $request, DailyMeeting $dailyMeeting)
     {
+        if ($dailyMeeting->status === 'completed') {
+            return redirect()->back()->with('error', 'Rapat sudah selesai. Notulen tidak dapat diedit.');
+        }
+
         $validated = $request->validate([
             'agenda' => 'nullable|string',
             'latar_belakang' => 'nullable|string',

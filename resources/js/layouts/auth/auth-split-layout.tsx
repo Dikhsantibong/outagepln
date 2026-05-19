@@ -16,7 +16,7 @@ export default function AuthSplitLayout({
                 {/* Background Image with Overlay */}
                 <div 
                     className="absolute inset-0 bg-cover bg-center bg-no-repeat" 
-                    style={{ backgroundImage: 'url("/images/auth-bg.png")' }}
+                    style={{ backgroundImage: 'url("/images/auth-bg.jpg")' }}
                 >
                     <div className="absolute inset-0 bg-zinc-900/60 backdrop-blur-[2px]" />
                 </div>
