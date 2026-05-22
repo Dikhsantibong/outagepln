@@ -13,14 +13,19 @@ return new class extends Migration
     {
         Schema::create('outage_plans', function (Blueprint $table) {
             $table->id();
-            $table->string('mesin_pembangkit');
-            $table->enum('scope', ['final stage', 'second tage', 'TO', 'MO', 'PMS 24 K', 'SO', 'PM 20 K', '2 ND STAGE']);
-            $table->enum('jenis_pembangkit', ['pltd', 'pltm', 'pltmg']);
-            $table->integer('durasi_hari');
-            $table->integer('progres_persen');
-            $table->date('rapat')->nullable();
-            $table->enum('keterangan', ['open', 'close'])->nullable();
-            $table->enum('sistem', ['RAHA', 'BAU BAU', 'WAKATOBI', 'WAWONII', 'EREKE', 'DAN SUB.S.KENDARI']);
+            $table->string('mesin_pembangkit')->nullable();
+            $table->string('scope')->nullable();
+            $table->string('jenis_pembangkit')->nullable();
+            $table->integer('durasi')->nullable();
+            $table->date('start_date')->nullable();
+            $table->date('selesai')->nullable();
+            $table->double('progress')->nullable();
+            $table->string('rapat_r2')->nullable();
+            $table->string('rapat_r3')->nullable();
+            $table->string('rapat_p1')->nullable();
+            $table->string('rapat_p2')->nullable();
+            $table->string('rapat_p3')->nullable();
+            $table->string('ket')->nullable();
             $table->timestamps();
         });
     }

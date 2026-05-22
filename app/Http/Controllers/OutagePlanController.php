@@ -24,14 +24,19 @@ class OutagePlanController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'mesin_pembangkit' => 'required|string|max:255',
-            'scope' => 'required|in:final stage,second tage,TO,MO,PMS 24 K,SO,PM 20 K,2 ND STAGE',
-            'jenis_pembangkit' => 'required|in:pltd,pltm,pltmg',
-            'durasi_hari' => 'required|integer|min:0',
-            'progres_persen' => 'required|integer|min:0|max:100',
-            'rapat' => 'nullable|date',
-            'keterangan' => 'nullable|in:open,close',
-            'sistem' => 'required|in:RAHA,BAU BAU,WAKATOBI,WAWONII,EREKE,DAN SUB.S.KENDARI',
+            'mesin_pembangkit' => 'nullable|string|max:255',
+            'scope' => 'nullable|string|max:100',
+            'jenis_pembangkit' => 'nullable|string|max:50',
+            'durasi' => 'nullable|integer',
+            'start_date' => 'nullable|date',
+            'selesai' => 'nullable|date',
+            'progress' => 'nullable|numeric',
+            'rapat_r2' => 'nullable|string',
+            'rapat_r3' => 'nullable|string',
+            'rapat_p1' => 'nullable|string',
+            'rapat_p2' => 'nullable|string',
+            'rapat_p3' => 'nullable|string',
+            'ket' => 'nullable|string|max:50',
         ]);
 
         OutagePlan::create($validated);

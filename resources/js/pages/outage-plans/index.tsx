@@ -27,18 +27,22 @@ export default function OutagePlansIndex({ outagePlans, units = [] }: { outagePl
     const [searchTerm, setSearchTerm] = useState('');
     const [filterScope, setFilterScope] = useState('all');
     const [filterJenis, setFilterJenis] = useState('all');
-    const [filterKeterangan, setFilterKeterangan] = useState('all');
-    const [filterSistem, setFilterSistem] = useState('all');
+    const [filterKet, setFilterKet] = useState('all');
     const [editingItem, setEditingItem] = useState<any>(null);
     const { data, setData, post, put, processing, errors, reset } = useForm({
         mesin_pembangkit: '',
-        scope: 'final stage',
-        jenis_pembangkit: 'pltd',
-        durasi_hari: '',
-        progres_persen: '',
-        rapat: '',
-        keterangan: 'open',
-        sistem: 'RAHA',
+        scope: '',
+        jenis_pembangkit: '',
+        durasi: '',
+        start_date: '',
+        selesai: '',
+        progress: '',
+        rapat_r2: '',
+        rapat_r3: '',
+        rapat_p1: '',
+        rapat_p2: '',
+        rapat_p3: '',
+        ket: '',
     });
 
     const [query, setQuery] = useState('');
@@ -69,17 +73,15 @@ export default function OutagePlansIndex({ outagePlans, units = [] }: { outagePl
     const filteredOutagePlans = useMemo(() => {
         return outagePlans.filter((plan) => {
             const matchesSearch = plan.mesin_pembangkit?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                plan.scope?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                plan.sistem?.toLowerCase().includes(searchTerm.toLowerCase());
+                plan.scope?.toLowerCase().includes(searchTerm.toLowerCase());
             
             const matchesScope = filterScope === 'all' || plan.scope === filterScope;
             const matchesJenis = filterJenis === 'all' || plan.jenis_pembangkit?.toLowerCase() === filterJenis.toLowerCase();
-            const matchesKeterangan = filterKeterangan === 'all' || plan.keterangan === filterKeterangan;
-            const matchesSistem = filterSistem === 'all' || plan.sistem === filterSistem;
+            const matchesKet = filterKet === 'all' || plan.ket === filterKet;
 
-            return matchesSearch && matchesScope && matchesJenis && matchesKeterangan && matchesSistem;
+            return matchesSearch && matchesScope && matchesJenis && matchesKet;
         });
-    }, [outagePlans, searchTerm, filterScope, filterJenis, filterKeterangan, filterSistem]);
+    }, [outagePlans, searchTerm, filterScope, filterJenis, filterKet]);
 
     const submit: FormEventHandler = (e) => {
         e.preventDefault();
@@ -101,13 +103,18 @@ export default function OutagePlansIndex({ outagePlans, units = [] }: { outagePl
         setEditingItem(plan);
         setData({
             mesin_pembangkit: plan.mesin_pembangkit || '',
-            scope: plan.scope || 'final stage',
-            jenis_pembangkit: plan.jenis_pembangkit || 'pltd',
-            durasi_hari: plan.durasi_hari?.toString() || '',
-            progres_persen: plan.progres_persen?.toString() || '',
-            rapat: plan.rapat || '',
-            keterangan: plan.keterangan || 'open',
-            sistem: plan.sistem || 'RAHA',
+            scope: plan.scope || '',
+            jenis_pembangkit: plan.jenis_pembangkit || '',
+            durasi: plan.durasi?.toString() || '',
+            start_date: plan.start_date || '',
+            selesai: plan.selesai || '',
+            progress: plan.progress?.toString() || '',
+            rapat_r2: plan.rapat_r2 || '',
+            rapat_r3: plan.rapat_r3 || '',
+            rapat_p1: plan.rapat_p1 || '',
+            rapat_p2: plan.rapat_p2 || '',
+            rapat_p3: plan.rapat_p3 || '',
+            ket: plan.ket || '',
         });
         setShowForm(true);
         window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -221,94 +228,125 @@ export default function OutagePlansIndex({ outagePlans, units = [] }: { outagePl
 
                                         <div className="space-y-2">
                                             <Label htmlFor="scope">Scope</Label>
-                                            <Select value={data.scope} onValueChange={(val) => setData('scope', val)}>
-                                                <SelectTrigger>
-                                                    <SelectValue placeholder="Pilih Scope" />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="final stage">Final Stage</SelectItem>
-                                                    <SelectItem value="second tage">Second Tage</SelectItem>
-                                                    <SelectItem value="TO">TO</SelectItem>
-                                                    <SelectItem value="MO">MO</SelectItem>
-                                                    <SelectItem value="PMS 24 K">PMS 24 K</SelectItem>
-                                                    <SelectItem value="SO">SO</SelectItem>
-                                                    <SelectItem value="PM 20 K">PM 20 K</SelectItem>
-                                                    <SelectItem value="2 ND STAGE">2 ND STAGE</SelectItem>
-                                                </SelectContent>
-                                            </Select>
+                                            <Input
+                                                id="scope"
+                                                type="text"
+                                                value={data.scope}
+                                                onChange={(e) => setData('scope', e.target.value)}
+                                            />
                                             {errors.scope && <p className="text-xs text-destructive">{errors.scope}</p>}
                                         </div>
 
                                         <div className="space-y-2">
                                             <Label htmlFor="jenis_pembangkit">Jenis</Label>
-                                            <Select value={data.jenis_pembangkit} onValueChange={(val) => setData('jenis_pembangkit', val)}>
-                                                <SelectTrigger>
-                                                    <SelectValue placeholder="Pilih Jenis" />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="pltd">PLTD</SelectItem>
-                                                    <SelectItem value="pltm">PLTM</SelectItem>
-                                                    <SelectItem value="pltmg">PLTMG</SelectItem>
-                                                </SelectContent>
-                                            </Select>
+                                            <Input
+                                                id="jenis_pembangkit"
+                                                type="text"
+                                                value={data.jenis_pembangkit}
+                                                onChange={(e) => setData('jenis_pembangkit', e.target.value)}
+                                            />
                                         </div>
 
                                         <div className="space-y-2">
-                                            <Label htmlFor="durasi_hari">Durasi (Hari)</Label>
+                                            <Label htmlFor="durasi">Durasi (Hari)</Label>
                                             <Input
-                                                id="durasi_hari"
+                                                id="durasi"
                                                 type="number"
-                                                value={data.durasi_hari}
-                                                onChange={(e) => setData('durasi_hari', e.target.value)}
+                                                value={data.durasi}
+                                                onChange={(e) => setData('durasi', e.target.value)}
                                             />
                                         </div>
                                         <div className="space-y-2">
-                                            <Label htmlFor="progres_persen">Progres (%)</Label>
+                                            <Label htmlFor="progress">Progres</Label>
                                             <Input
-                                                id="progres_persen"
+                                                id="progress"
                                                 type="number"
-                                                value={data.progres_persen}
-                                                onChange={(e) => setData('progres_persen', e.target.value)}
+                                                step="0.01"
+                                                value={data.progress}
+                                                onChange={(e) => setData('progress', e.target.value)}
                                             />
                                         </div>
 
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div className="space-y-2">
+                                                <Label htmlFor="start_date">Mulai</Label>
+                                                <Input
+                                                    id="start_date"
+                                                    type="date"
+                                                    value={data.start_date}
+                                                    onChange={(e) => setData('start_date', e.target.value)}
+                                                />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <Label htmlFor="selesai">Selesai</Label>
+                                                <Input
+                                                    id="selesai"
+                                                    type="date"
+                                                    value={data.selesai}
+                                                    onChange={(e) => setData('selesai', e.target.value)}
+                                                />
+                                            </div>
+                                        </div>
+
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div className="space-y-2">
+                                                <Label htmlFor="rapat_r2">Rapat R2</Label>
+                                                <Input
+                                                    id="rapat_r2"
+                                                    type="text"
+                                                    value={data.rapat_r2}
+                                                    onChange={(e) => setData('rapat_r2', e.target.value)}
+                                                />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <Label htmlFor="rapat_r3">Rapat R3</Label>
+                                                <Input
+                                                    id="rapat_r3"
+                                                    type="text"
+                                                    value={data.rapat_r3}
+                                                    onChange={(e) => setData('rapat_r3', e.target.value)}
+                                                />
+                                            </div>
+                                        </div>
+
+                                        <div className="grid grid-cols-3 gap-2">
+                                            <div className="space-y-2">
+                                                <Label htmlFor="rapat_p1">Rapat P1</Label>
+                                                <Input
+                                                    id="rapat_p1"
+                                                    type="text"
+                                                    value={data.rapat_p1}
+                                                    onChange={(e) => setData('rapat_p1', e.target.value)}
+                                                />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <Label htmlFor="rapat_p2">Rapat P2</Label>
+                                                <Input
+                                                    id="rapat_p2"
+                                                    type="text"
+                                                    value={data.rapat_p2}
+                                                    onChange={(e) => setData('rapat_p2', e.target.value)}
+                                                />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <Label htmlFor="rapat_p3">Rapat P3</Label>
+                                                <Input
+                                                    id="rapat_p3"
+                                                    type="text"
+                                                    value={data.rapat_p3}
+                                                    onChange={(e) => setData('rapat_p3', e.target.value)}
+                                                />
+                                            </div>
+                                        </div>
+
                                         <div className="space-y-2">
-                                            <Label htmlFor="rapat">Tanggal Rapat</Label>
+                                            <Label htmlFor="ket">Keterangan</Label>
                                             <Input
-                                                id="rapat"
-                                                type="date"
-                                                value={data.rapat}
-                                                onChange={(e) => setData('rapat', e.target.value)}
+                                                id="ket"
+                                                type="text"
+                                                value={data.ket}
+                                                onChange={(e) => setData('ket', e.target.value)}
                                             />
-                                        </div>
-
-                                        <div className="space-y-2">
-                                            <Label htmlFor="keterangan">Keterangan</Label>
-                                            <Select value={data.keterangan} onValueChange={(val) => setData('keterangan', val)}>
-                                                <SelectTrigger>
-                                                    <SelectValue />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="open">Open</SelectItem>
-                                                    <SelectItem value="close">Close</SelectItem>
-                                                </SelectContent>
-                                            </Select>
-                                        </div>
-                                        <div className="space-y-2">
-                                            <Label htmlFor="sistem">Sistem</Label>
-                                            <Select value={data.sistem} onValueChange={(val) => setData('sistem', val)}>
-                                                <SelectTrigger>
-                                                    <SelectValue />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="RAHA">RAHA</SelectItem>
-                                                    <SelectItem value="BAU BAU">BAU BAU</SelectItem>
-                                                    <SelectItem value="WAKATOBI">WAKATOBI</SelectItem>
-                                                    <SelectItem value="WAWONII">WAWONII</SelectItem>
-                                                    <SelectItem value="EREKE">EREKE</SelectItem>
-                                                    <SelectItem value="SUB. SISTEM KENDARI">SUB. SISTEM KENDARI</SelectItem>
-                                                </SelectContent>
-                                            </Select>
                                         </div>
 
                                         <div className="flex gap-2">
@@ -333,61 +371,6 @@ export default function OutagePlansIndex({ outagePlans, units = [] }: { outagePl
                             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
                                 <CardTitle className="text-lg">Data Jadwal Outage</CardTitle>
                                 <div className="flex flex-wrap items-center gap-2">
-                                    <Select value={filterScope} onValueChange={setFilterScope}>
-                                        <SelectTrigger className="h-9 w-[130px] text-xs">
-                                            <SelectValue placeholder="Scope" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="all">Semua Scope</SelectItem>
-                                            <SelectItem value="final stage">Final Stage</SelectItem>
-                                            <SelectItem value="second tage">Second Tage</SelectItem>
-                                            <SelectItem value="TO">TO</SelectItem>
-                                            <SelectItem value="MO">MO</SelectItem>
-                                            <SelectItem value="PMS 24 K">PMS 24 K</SelectItem>
-                                            <SelectItem value="SO">SO</SelectItem>
-                                            <SelectItem value="PM 20 K">PM 20 K</SelectItem>
-                                            <SelectItem value="2 ND STAGE">2 ND STAGE</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-
-                                    <Select value={filterJenis} onValueChange={setFilterJenis}>
-                                        <SelectTrigger className="h-9 w-[120px] text-xs">
-                                            <SelectValue placeholder="Jenis" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="all">Semua Jenis</SelectItem>
-                                            <SelectItem value="pltd">PLTD</SelectItem>
-                                            <SelectItem value="pltm">PLTM</SelectItem>
-                                            <SelectItem value="pltmg">PLTMG</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-
-                                    <Select value={filterKeterangan} onValueChange={setFilterKeterangan}>
-                                        <SelectTrigger className="h-9 w-[120px] text-xs">
-                                            <SelectValue placeholder="Ket" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="all">Semua Ket</SelectItem>
-                                            <SelectItem value="open">Open</SelectItem>
-                                            <SelectItem value="close">Close</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-
-                                    <Select value={filterSistem} onValueChange={setFilterSistem}>
-                                        <SelectTrigger className="h-9 w-[140px] text-xs">
-                                            <SelectValue placeholder="Sistem" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="all">Semua Sistem</SelectItem>
-                                            <SelectItem value="RAHA">RAHA</SelectItem>
-                                            <SelectItem value="BAU BAU">BAU BAU</SelectItem>
-                                            <SelectItem value="WAKATOBI">WAKATOBI</SelectItem>
-                                            <SelectItem value="WAWONII">WAWONII</SelectItem>
-                                            <SelectItem value="EREKE">EREKE</SelectItem>
-                                            <SelectItem value="SUB. SISTEM KENDARI">SUB. SISTEM KENDARI</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-
                                     <div className="relative w-40">
                                         <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                                         <Input
@@ -402,83 +385,69 @@ export default function OutagePlansIndex({ outagePlans, units = [] }: { outagePl
                                     </div>
                                 </div>
                             </CardHeader>
-                            <CardContent className="p-0">
-                                <Table>
+                            <CardContent className="p-0 overflow-x-auto">
+                                <Table className="whitespace-nowrap">
                                         <TableHeader>
                                             <TableRow className="bg-muted/50">
-                                                <TableHead className="w-12 text-center font-bold border-r last:border-r-0">No</TableHead>
-                                                <TableHead className="font-bold text-center border-r last:border-r-0">Mesin Pembangkit</TableHead>
-                                                <TableHead className="font-bold text-center border-r last:border-r-0">Scope</TableHead>
-                                                <TableHead className="font-bold text-center border-r last:border-r-0">Jenis</TableHead>
-                                                <TableHead className="font-bold text-center border-r last:border-r-0">Durasi</TableHead>
-                                                <TableHead className="font-bold text-center border-r last:border-r-0">Progres</TableHead>
-                                                <TableHead className="font-bold text-center border-r last:border-r-0">Tgl Rapat</TableHead>
-                                                <TableHead className="font-bold text-center border-r last:border-r-0">Ket</TableHead>
-                                                <TableHead className="font-bold text-center border-r last:border-r-0">Sistem</TableHead>
-                                                <TableHead className="w-[80px] text-center font-bold border-r last:border-r-0">Aksi</TableHead>
+                                                <TableHead className="text-center font-bold border-r last:border-r-0 px-2">No</TableHead>
+                                                <TableHead className="font-bold text-center border-r last:border-r-0 px-2">Mesin</TableHead>
+                                                <TableHead className="font-bold text-center border-r last:border-r-0 px-2">Scope</TableHead>
+                                                <TableHead className="font-bold text-center border-r last:border-r-0 px-2">Jenis</TableHead>
+                                                <TableHead className="font-bold text-center border-r last:border-r-0 px-2">Durasi</TableHead>
+                                                <TableHead className="font-bold text-center border-r last:border-r-0 px-2">Mulai</TableHead>
+                                                <TableHead className="font-bold text-center border-r last:border-r-0 px-2">Selesai</TableHead>
+                                                <TableHead className="font-bold text-center border-r last:border-r-0 px-2">Progres</TableHead>
+                                                <TableHead className="font-bold text-center border-r last:border-r-0 px-2">R2</TableHead>
+                                                <TableHead className="font-bold text-center border-r last:border-r-0 px-2">R3</TableHead>
+                                                <TableHead className="font-bold text-center border-r last:border-r-0 px-2">P1</TableHead>
+                                                <TableHead className="font-bold text-center border-r last:border-r-0 px-2">P2</TableHead>
+                                                <TableHead className="font-bold text-center border-r last:border-r-0 px-2">P3</TableHead>
+                                                <TableHead className="font-bold text-center border-r last:border-r-0 px-2">Ket</TableHead>
+                                                <TableHead className="text-center font-bold border-r last:border-r-0 px-2">Aksi</TableHead>
                                             </TableRow>
                                         </TableHeader>
                                     <TableBody>
                                         {filteredOutagePlans.length > 0 ? (
                                             filteredOutagePlans.map((plan, idx) => (
                                                 <TableRow key={plan.id} className="hover:bg-muted/30">
-                                                    <TableCell className="text-center border-r last:border-r-0 font-mono text-xs text-muted-foreground">{idx + 1}</TableCell>
-                                                    <TableCell className="font-medium whitespace-nowrap border-r last:border-r-0">{plan.mesin_pembangkit}</TableCell>
-                                                    <TableCell className="border-r last:border-r-0 text-center">
-                                                        <div className="flex justify-center">
-                                                            <span className="inline-flex items-center rounded-md bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 ring-1 ring-inset ring-blue-700/10 dark:bg-blue-900/30 dark:text-blue-400">
-                                                                {plan.scope}
-                                                            </span>
-                                                        </div>
-                                                    </TableCell>
-                                                    <TableCell className="uppercase text-xs font-semibold border-r last:border-r-0 text-center">{plan.jenis_pembangkit}</TableCell>
-                                                    <TableCell className="whitespace-nowrap border-r last:border-r-0 text-center">
-                                                        <div className="flex items-center justify-center gap-1.5">
+                                                    <TableCell className="text-center border-r last:border-r-0 font-mono text-xs text-muted-foreground px-2">{idx + 1}</TableCell>
+                                                    <TableCell className="font-medium border-r last:border-r-0 px-2 text-xs">{plan.mesin_pembangkit}</TableCell>
+                                                    <TableCell className="border-r last:border-r-0 text-center text-xs px-2">{plan.scope}</TableCell>
+                                                    <TableCell className="uppercase text-xs font-semibold border-r last:border-r-0 text-center px-2">{plan.jenis_pembangkit}</TableCell>
+                                                    <TableCell className="border-r last:border-r-0 text-center px-2">
+                                                        <div className="flex items-center justify-center gap-1 text-xs">
                                                             <Clock className="h-3 w-3 text-muted-foreground" />
-                                                            {plan.durasi_hari} Hari
+                                                            {plan.durasi}
                                                         </div>
                                                     </TableCell>
-                                                    <TableCell className="border-r last:border-r-0">
-                                                        <div className="flex items-center justify-center gap-2">
-                                                            <div className="h-2 w-16 rounded-full bg-muted overflow-hidden">
-                                                                <div 
-                                                                    className={`h-full ${parseInt(plan.progres_persen) >= 100 ? 'bg-emerald-500' : 'bg-primary'}`} 
-                                                                    style={{ width: `${plan.progres_persen}%` }}
-                                                                />
-                                                            </div>
-                                                            <span className="text-xs font-medium">{plan.progres_persen}%</span>
-                                                        </div>
+                                                    <TableCell className="border-r last:border-r-0 text-center text-xs px-2">{plan.start_date}</TableCell>
+                                                    <TableCell className="border-r last:border-r-0 text-center text-xs px-2">{plan.selesai}</TableCell>
+                                                    <TableCell className="border-r last:border-r-0 text-center text-xs font-medium px-2">
+                                                        {plan.progress}
                                                     </TableCell>
-                                                    <TableCell className="whitespace-nowrap border-r last:border-r-0 text-center">{plan.rapat || '-'}</TableCell>
-                                                    <TableCell className="border-r last:border-r-0 text-center">
-                                                        <div className="flex justify-center">
-                                                            <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium border ${
-                                                                plan.keterangan === 'open' 
-                                                                    ? 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-800' 
-                                                                    : 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400 dark:border-amber-800'
-                                                            }`}>
-                                                                {plan.keterangan}
-                                                            </span>
-                                                        </div>
-                                                    </TableCell>
-                                                    <TableCell className="whitespace-nowrap text-xs text-muted-foreground border-r last:border-r-0 text-center">{plan.sistem}</TableCell>
-                                                    <TableCell className="text-center border-r last:border-r-0">
+                                                    <TableCell className="border-r last:border-r-0 text-center text-xs px-2">{plan.rapat_r2 || '-'}</TableCell>
+                                                    <TableCell className="border-r last:border-r-0 text-center text-xs px-2">{plan.rapat_r3 || '-'}</TableCell>
+                                                    <TableCell className="border-r last:border-r-0 text-center text-xs px-2">{plan.rapat_p1 || '-'}</TableCell>
+                                                    <TableCell className="border-r last:border-r-0 text-center text-xs px-2">{plan.rapat_p2 || '-'}</TableCell>
+                                                    <TableCell className="border-r last:border-r-0 text-center text-xs px-2">{plan.rapat_p3 || '-'}</TableCell>
+                                                    <TableCell className="border-r last:border-r-0 text-center text-xs px-2">{plan.ket}</TableCell>
+                                                    <TableCell className="text-center border-r last:border-r-0 px-2">
                                                         <div className="flex items-center justify-center gap-1">
                                                             <Button 
                                                                 variant="ghost" 
                                                                 size="icon"
-                                                                className="h-8 w-8 text-primary hover:text-primary hover:bg-primary/10"
+                                                                className="h-6 w-6 text-primary hover:text-primary hover:bg-primary/10"
                                                                 onClick={() => handleEdit(plan)}
                                                             >
-                                                                <Pencil className="h-4 w-4" />
+                                                                <Pencil className="h-3 w-3" />
                                                             </Button>
                                                             <Button 
                                                                 variant="ghost" 
                                                                 size="icon"
-                                                                className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                                                className="h-6 w-6 text-destructive hover:text-destructive hover:bg-destructive/10"
                                                                 onClick={() => handleDelete(plan.id)}
                                                             >
-                                                                <Trash2 className="h-4 w-4" />
+                                                                <Trash2 className="h-3 w-3" />
                                                             </Button>
                                                         </div>
                                                     </TableCell>
@@ -486,7 +455,7 @@ export default function OutagePlansIndex({ outagePlans, units = [] }: { outagePl
                                             ))
                                         ) : (
                                             <TableRow>
-                                                <TableCell colSpan={10} className="h-32 text-center text-muted-foreground">
+                                                <TableCell colSpan={15} className="h-32 text-center text-muted-foreground">
                                                     <Info className="h-10 w-10 mx-auto mb-2 opacity-20" />
                                                     <p>{searchTerm ? 'Tidak ada hasil pencarian.' : 'Belum ada data perencanaan.'}</p>
                                                 </TableCell>
