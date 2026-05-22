@@ -9,15 +9,25 @@ use App\Models\OutagePlan;
 
 class OutagePlanController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
-        $outagePlans = OutagePlan::latest()->get();
-        // Fetch all units with their related machines
+        $query = OutagePlan::query();
+
+        if ($request->filled('search')) {
+            $search = $request->input('search');
+            $query->where(function ($q) use ($search) {
+                $q->where('mesin_pembangkit', 'like', "%{$search}%")
+                  ->orWhere('scope', 'like', "%{$search}%");
+            });
+        }
+
+        $outagePlans = $query->latest()->paginate(10)->withQueryString();
         $units = \App\Models\Unit::with('mesins')->get();
         
         return Inertia::render('outage-plans/index', [
             'outagePlans' => $outagePlans,
             'units' => $units,
+            'filters' => $request->only(['search']),
         ]);
     }
 

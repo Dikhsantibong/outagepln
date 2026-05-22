@@ -1,4 +1,4 @@
-import { Head, useForm, router } from '@inertiajs/react';
+import { Head, useForm, router, Link } from '@inertiajs/react';
 import { FormEventHandler, useState, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -22,9 +22,9 @@ import {
 import { Combobox, ComboboxInput, ComboboxButton, ComboboxOptions, ComboboxOption } from '@headlessui/react';
 import { Check, ChevronsUpDown, Calendar as CalendarIcon, MapPin, Gauge, Info, Trash2, Clock, LayoutGrid, Search, Pencil, X } from 'lucide-react';
 
-export default function OutagePlansIndex({ outagePlans, units = [] }: { outagePlans: any[], units?: any[] }) {
+export default function OutagePlansIndex({ outagePlans, units = [], filters }: { outagePlans: any, units?: any[], filters?: any }) {
     const [showForm, setShowForm] = useState(true);
-    const [searchTerm, setSearchTerm] = useState('');
+    const [searchTerm, setSearchTerm] = useState(filters?.search || '');
     const [filterScope, setFilterScope] = useState('all');
     const [filterJenis, setFilterJenis] = useState('all');
     const [filterKet, setFilterKet] = useState('all');
@@ -70,18 +70,7 @@ export default function OutagePlansIndex({ outagePlans, units = [] }: { outagePl
         ? allMesins
         : allMesins.filter((m) => m.searchString.includes(query.toLowerCase()));
 
-    const filteredOutagePlans = useMemo(() => {
-        return outagePlans.filter((plan) => {
-            const matchesSearch = plan.mesin_pembangkit?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                plan.scope?.toLowerCase().includes(searchTerm.toLowerCase());
-            
-            const matchesScope = filterScope === 'all' || plan.scope === filterScope;
-            const matchesJenis = filterJenis === 'all' || plan.jenis_pembangkit?.toLowerCase() === filterJenis.toLowerCase();
-            const matchesKet = filterKet === 'all' || plan.ket === filterKet;
-
-            return matchesSearch && matchesScope && matchesJenis && matchesKet;
-        });
-    }, [outagePlans, searchTerm, filterScope, filterJenis, filterKet]);
+    const filteredOutagePlans = outagePlans.data || [];
 
     const submit: FormEventHandler = (e) => {
         e.preventDefault();
@@ -374,14 +363,19 @@ export default function OutagePlansIndex({ outagePlans, units = [] }: { outagePl
                                     <div className="relative w-40">
                                         <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                                         <Input
-                                            placeholder="Cari..."
+                                            placeholder="Cari... (tekan enter)"
                                             className="pl-9 h-9"
                                             value={searchTerm}
                                             onChange={(e) => setSearchTerm(e.target.value)}
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Enter') {
+                                                    router.get('/outage-plans', { search: searchTerm }, { preserveState: true, preserveScroll: true });
+                                                }
+                                            }}
                                         />
                                     </div>
                                     <div className="text-xs font-medium text-muted-foreground bg-muted px-2 py-1 rounded-md border">
-                                        Total: {filteredOutagePlans.length}
+                                        Total: {outagePlans.total || 0}
                                     </div>
                                 </div>
                             </CardHeader>
@@ -464,6 +458,22 @@ export default function OutagePlansIndex({ outagePlans, units = [] }: { outagePl
                                     </TableBody>
                                 </Table>
                             </CardContent>
+                            {outagePlans.links && outagePlans.links.length > 3 && (
+                                <div className="flex flex-wrap items-center justify-center gap-1 p-4 border-t">
+                                    {outagePlans.links.map((link: any, k: number) => (
+                                        <Link
+                                            key={k}
+                                            href={link.url || '#'}
+                                            preserveState
+                                            preserveScroll
+                                            className={`px-3 py-1.5 text-xs border rounded-md transition-colors ${
+                                                link.active ? 'bg-primary text-primary-foreground border-primary' : 'bg-background hover:bg-muted'
+                                            } ${!link.url ? 'opacity-50 cursor-not-allowed pointer-events-none' : ''}`}
+                                            dangerouslySetInnerHTML={{ __html: link.label }}
+                                        />
+                                    ))}
+                                </div>
+                            )}
                         </Card>
                     </div>
                 </div>
