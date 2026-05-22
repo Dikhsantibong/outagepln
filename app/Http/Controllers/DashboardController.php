@@ -77,6 +77,53 @@ class DashboardController extends Controller
             ->values()
             ->take(6);
 
+        // Calculate Meetings from Outage Plans
+        $todayDate = date('Y-m-d');
+        $allWithMeetings = OutagePlan::whereNotNull('rapat_r2')
+            ->orWhereNotNull('rapat_r3')
+            ->orWhereNotNull('rapat_p1')
+            ->orWhereNotNull('rapat_p2')
+            ->orWhereNotNull('rapat_p3')
+            ->get();
+
+        $meetingsList = [];
+        foreach ($allWithMeetings as $plan) {
+            $types = [
+                'R2' => $plan->rapat_r2,
+                'R3' => $plan->rapat_r3,
+                'P1' => $plan->rapat_p1,
+                'P2' => $plan->rapat_p2,
+                'P3' => $plan->rapat_p3,
+            ];
+            foreach ($types as $type => $date) {
+                if ($date) {
+                    $meetingsList[] = [
+                        'id' => $plan->id,
+                        'mesin' => $plan->mesin_pembangkit,
+                        'scope' => $plan->scope,
+                        'jenis' => $plan->jenis_pembangkit,
+                        'type' => $type,
+                        'date' => $date,
+                    ];
+                }
+            }
+        }
+
+        usort($meetingsList, function($a, $b) {
+            return strtotime($a['date']) - strtotime($b['date']);
+        });
+
+        $todayMeetings = array_values(array_filter($meetingsList, function($m) use ($todayDate) {
+            return $m['date'] === $todayDate;
+        }));
+
+        $upcomingMeetings = array_values(array_filter($meetingsList, function($m) use ($todayDate) {
+            return $m['date'] > $todayDate;
+        }));
+
+        // Limit upcoming to 5
+        $upcomingMeetings = array_slice($upcomingMeetings, 0, 5);
+
         return Inertia::render('dashboard', [
             'stats' => [
                 'outage' => [
@@ -97,6 +144,10 @@ class DashboardController extends Controller
                 ],
             ],
             'recentActivities' => $recentActivities,
+            'outageMeetings' => [
+                'today' => $todayMeetings,
+                'upcoming' => $upcomingMeetings,
+            ]
         ]);
     }
 }

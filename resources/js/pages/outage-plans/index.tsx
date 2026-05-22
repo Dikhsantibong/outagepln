@@ -373,7 +373,7 @@ export default function OutagePlansIndex({ outagePlans, units = [], filters }: {
 
                     {/* Table Section */}
                     <div className={showForm ? 'xl:col-span-3' : 'xl:col-span-1'}>
-                        <Card>
+                        <Card className="h-fit">
                             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
                                 <CardTitle className="text-lg">Data Jadwal Outage</CardTitle>
                                 <div className="flex flex-wrap items-center gap-2">

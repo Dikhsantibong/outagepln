@@ -42,6 +42,10 @@ interface DashboardProps {
         time: string;
         type: string;
     }[];
+    outageMeetings: {
+        today: { id: number; mesin: string; scope: string; jenis: string; type: string; date: string }[];
+        upcoming: { id: number; mesin: string; scope: string; jenis: string; type: string; date: string }[];
+    };
 }
 
 const PIE_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4'];
@@ -52,7 +56,7 @@ const PLANT_CONFIG: Record<string, { color: string; gradient: string; icon: stri
     PLTMG: { color: '#f59e0b', gradient: 'from-amber-500/10 to-amber-600/5',  icon: '🔥' },
 };
 
-export default function Dashboard({ stats, recentActivities }: DashboardProps) {
+export default function Dashboard({ stats, recentActivities, outageMeetings }: DashboardProps) {
     const fmt = (value: number) =>
         new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(value);
 
@@ -100,6 +104,54 @@ export default function Dashboard({ stats, recentActivities }: DashboardProps) {
                     <p className="text-sm text-muted-foreground mt-1">
                         Monitoring real-time progres outage dan status finansial tagihan
                     </p>
+                </div>
+
+                {/* ─── SECTION 0: Akumulasi Data ─── */}
+                <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
+                    <Card>
+                        <CardContent className="p-4 flex items-center justify-between">
+                            <div>
+                                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">Total Rencana</p>
+                                <p className="text-2xl font-bold">{stats.outage.total}</p>
+                            </div>
+                            <div className="h-10 w-10 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center dark:bg-slate-800 dark:text-slate-400">
+                                <Calendar className="h-5 w-5" />
+                            </div>
+                        </CardContent>
+                    </Card>
+                    <Card>
+                        <CardContent className="p-4 flex items-center justify-between">
+                            <div>
+                                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">Outage PLTD</p>
+                                <p className="text-2xl font-bold">{stats.outage.progress['PLTD']?.count || 0}</p>
+                            </div>
+                            <div className="h-10 w-10 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center dark:bg-blue-900/30 dark:text-blue-400">
+                                <span className="text-lg">⚡</span>
+                            </div>
+                        </CardContent>
+                    </Card>
+                    <Card>
+                        <CardContent className="p-4 flex items-center justify-between">
+                            <div>
+                                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">Outage PLTM</p>
+                                <p className="text-2xl font-bold">{stats.outage.progress['PLTM']?.count || 0}</p>
+                            </div>
+                            <div className="h-10 w-10 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center dark:bg-emerald-900/30 dark:text-emerald-400">
+                                <span className="text-lg">💧</span>
+                            </div>
+                        </CardContent>
+                    </Card>
+                    <Card>
+                        <CardContent className="p-4 flex items-center justify-between">
+                            <div>
+                                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">Outage PLTMG</p>
+                                <p className="text-2xl font-bold">{stats.outage.progress['PLTMG']?.count || 0}</p>
+                            </div>
+                            <div className="h-10 w-10 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center dark:bg-amber-900/30 dark:text-amber-400">
+                                <span className="text-lg">🔥</span>
+                            </div>
+                        </CardContent>
+                    </Card>
                 </div>
 
                 {/* ─── SECTION 1: Plant Progress ─── */}
@@ -457,6 +509,83 @@ export default function Dashboard({ stats, recentActivities }: DashboardProps) {
                                         Dashboard menampilkan data real-time dari database. Seluruh metrik diperbarui secara otomatis setiap kali halaman dimuat.
                                     </p>
                                 </div>
+                            </div>
+                        </CardContent>
+                    </Card>
+                </div>
+
+                {/* ─── SECTION 6: Jadwal Rapat Outage ─── */}
+                <div className="grid gap-6 lg:grid-cols-2">
+                    {/* Hari Ini */}
+                    <Card className="border-blue-200 dark:border-blue-800 bg-gradient-to-br from-blue-50/50 to-blue-100/30 dark:from-blue-950/20 dark:to-blue-900/10">
+                        <CardHeader className="pb-3 border-b border-blue-100 dark:border-blue-800/50">
+                            <CardTitle className="text-base flex items-center gap-2 text-blue-700 dark:text-blue-400">
+                                <Calendar className="h-4 w-4" />
+                                Jadwal Rapat Hari Ini
+                            </CardTitle>
+                            <CardDescription>Rapat persiapan outage yang dijadwalkan hari ini</CardDescription>
+                        </CardHeader>
+                        <CardContent className="pt-4">
+                            <div className="space-y-3">
+                                {outageMeetings.today.length > 0 ? (
+                                    outageMeetings.today.map((mtg, i) => (
+                                        <div key={i} className="flex items-center gap-3 p-3 rounded-lg bg-white dark:bg-slate-900 border shadow-sm">
+                                            <div className="h-10 w-10 rounded-md flex flex-col items-center justify-center shrink-0 bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400">
+                                                <span className="text-[10px] font-bold uppercase">{mtg.type}</span>
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                                <p className="text-sm font-bold truncate">{mtg.mesin}</p>
+                                                <div className="flex items-center gap-2 mt-1">
+                                                    <Badge variant="outline" className="text-[10px] py-0 h-4 px-1.5">{mtg.jenis}</Badge>
+                                                    <span className="text-[11px] text-muted-foreground font-medium">{mtg.scope}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))
+                                ) : (
+                                    <div className="flex flex-col items-center justify-center py-6 text-muted-foreground">
+                                        <CheckCircle className="h-6 w-6 mb-2 opacity-20 text-emerald-500" />
+                                        <p className="text-sm italic">Tidak ada jadwal rapat hari ini</p>
+                                    </div>
+                                )}
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    {/* Yang Akan Datang */}
+                    <Card>
+                        <CardHeader className="pb-3 border-b">
+                            <CardTitle className="text-base flex items-center gap-2">
+                                <Calendar className="h-4 w-4 text-amber-500" />
+                                Jadwal Rapat Mendatang
+                            </CardTitle>
+                            <CardDescription>5 jadwal rapat persiapan outage terdekat</CardDescription>
+                        </CardHeader>
+                        <CardContent className="pt-4">
+                            <div className="space-y-3">
+                                {outageMeetings.upcoming.length > 0 ? (
+                                    outageMeetings.upcoming.map((mtg, i) => (
+                                        <div key={i} className="flex items-center gap-3 p-2.5 rounded-lg border hover:bg-muted/30 transition-colors">
+                                            <div className="text-center w-12 shrink-0">
+                                                <span className="block text-xs font-bold text-amber-600 dark:text-amber-500">{new Date(mtg.date).getDate()}</span>
+                                                <span className="block text-[10px] uppercase text-muted-foreground">{new Date(mtg.date).toLocaleString('id-ID', { month: 'short' })}</span>
+                                            </div>
+                                            <div className="h-8 w-px bg-border shrink-0" />
+                                            <div className="flex-1 min-w-0">
+                                                <p className="text-xs font-bold truncate">{mtg.mesin}</p>
+                                                <div className="flex items-center gap-1.5 mt-0.5">
+                                                    <Badge variant="secondary" className="text-[9px] py-0 h-3.5 px-1 rounded-sm bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">{mtg.type}</Badge>
+                                                    <span className="text-[10px] text-muted-foreground">{mtg.scope}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))
+                                ) : (
+                                    <div className="flex flex-col items-center justify-center py-6 text-muted-foreground">
+                                        <Info className="h-6 w-6 mb-2 opacity-20" />
+                                        <p className="text-sm italic">Belum ada jadwal rapat mendatang</p>
+                                    </div>
+                                )}
                             </div>
                         </CardContent>
                     </Card>
