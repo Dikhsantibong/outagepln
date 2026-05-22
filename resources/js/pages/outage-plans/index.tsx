@@ -92,8 +92,8 @@ export default function OutagePlansIndex({ outagePlans, units = [], filters }: {
         setEditingItem(plan);
         setData({
             mesin_pembangkit: plan.mesin_pembangkit || '',
-            scope: plan.scope || '',
-            jenis_pembangkit: plan.jenis_pembangkit || '',
+            scope: plan.scope ? plan.scope.toUpperCase() : '',
+            jenis_pembangkit: plan.jenis_pembangkit ? plan.jenis_pembangkit.toUpperCase() : '',
             durasi: plan.durasi?.toString() || '',
             start_date: plan.start_date || '',
             selesai: plan.selesai || '',
@@ -217,23 +217,40 @@ export default function OutagePlansIndex({ outagePlans, units = [], filters }: {
 
                                         <div className="space-y-2">
                                             <Label htmlFor="scope">Scope</Label>
-                                            <Input
-                                                id="scope"
-                                                type="text"
-                                                value={data.scope}
-                                                onChange={(e) => setData('scope', e.target.value)}
-                                            />
+                                            <Select value={data.scope} onValueChange={(val) => setData('scope', val)}>
+                                                <SelectTrigger id="scope">
+                                                    <SelectValue placeholder="Pilih Scope" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="FINAL STAGE">FINAL STAGE</SelectItem>
+                                                    <SelectItem value="SECOND STAGE">SECOND STAGE</SelectItem>
+                                                    <SelectItem value="2ND STAGE">2ND STAGE</SelectItem>
+                                                    <SelectItem value="TO">TO</SelectItem>
+                                                    <SelectItem value="MO">MO</SelectItem>
+                                                    <SelectItem value="SO">SO</SelectItem>
+                                                    <SelectItem value="AI">AI</SelectItem>
+                                                    <SelectItem value="GI">GI</SelectItem>
+                                                    <SelectItem value="PMS 20 K">PMS 20 K</SelectItem>
+                                                    <SelectItem value="PMS 24 K">PMS 24 K</SelectItem>
+                                                    <SelectItem value="PMS 32K">PMS 32K</SelectItem>
+                                                    <SelectItem value="PMS 40K">PMS 40K</SelectItem>
+                                                </SelectContent>
+                                            </Select>
                                             {errors.scope && <p className="text-xs text-destructive">{errors.scope}</p>}
                                         </div>
 
                                         <div className="space-y-2">
                                             <Label htmlFor="jenis_pembangkit">Jenis</Label>
-                                            <Input
-                                                id="jenis_pembangkit"
-                                                type="text"
-                                                value={data.jenis_pembangkit}
-                                                onChange={(e) => setData('jenis_pembangkit', e.target.value)}
-                                            />
+                                            <Select value={data.jenis_pembangkit} onValueChange={(val) => setData('jenis_pembangkit', val)}>
+                                                <SelectTrigger id="jenis_pembangkit">
+                                                    <SelectValue placeholder="Pilih Jenis" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="PLTD">PLTD</SelectItem>
+                                                    <SelectItem value="PLTMG">PLTMG</SelectItem>
+                                                    <SelectItem value="PLTM">PLTM</SelectItem>
+                                                </SelectContent>
+                                            </Select>
                                         </div>
 
                                         <div className="space-y-2">
@@ -282,7 +299,7 @@ export default function OutagePlansIndex({ outagePlans, units = [], filters }: {
                                                 <Label htmlFor="rapat_r2">Rapat R2</Label>
                                                 <Input
                                                     id="rapat_r2"
-                                                    type="text"
+                                                    type="date"
                                                     value={data.rapat_r2}
                                                     onChange={(e) => setData('rapat_r2', e.target.value)}
                                                 />
@@ -291,7 +308,7 @@ export default function OutagePlansIndex({ outagePlans, units = [], filters }: {
                                                 <Label htmlFor="rapat_r3">Rapat R3</Label>
                                                 <Input
                                                     id="rapat_r3"
-                                                    type="text"
+                                                    type="date"
                                                     value={data.rapat_r3}
                                                     onChange={(e) => setData('rapat_r3', e.target.value)}
                                                 />
@@ -303,7 +320,7 @@ export default function OutagePlansIndex({ outagePlans, units = [], filters }: {
                                                 <Label htmlFor="rapat_p1">Rapat P1</Label>
                                                 <Input
                                                     id="rapat_p1"
-                                                    type="text"
+                                                    type="date"
                                                     value={data.rapat_p1}
                                                     onChange={(e) => setData('rapat_p1', e.target.value)}
                                                 />
@@ -312,7 +329,7 @@ export default function OutagePlansIndex({ outagePlans, units = [], filters }: {
                                                 <Label htmlFor="rapat_p2">Rapat P2</Label>
                                                 <Input
                                                     id="rapat_p2"
-                                                    type="text"
+                                                    type="date"
                                                     value={data.rapat_p2}
                                                     onChange={(e) => setData('rapat_p2', e.target.value)}
                                                 />
@@ -321,7 +338,7 @@ export default function OutagePlansIndex({ outagePlans, units = [], filters }: {
                                                 <Label htmlFor="rapat_p3">Rapat P3</Label>
                                                 <Input
                                                     id="rapat_p3"
-                                                    type="text"
+                                                    type="date"
                                                     value={data.rapat_p3}
                                                     onChange={(e) => setData('rapat_p3', e.target.value)}
                                                 />
@@ -406,7 +423,7 @@ export default function OutagePlansIndex({ outagePlans, units = [], filters }: {
                                                 <TableRow key={plan.id} className="hover:bg-muted/30">
                                                     <TableCell className="text-center border-r last:border-r-0 font-mono text-xs text-muted-foreground px-2">{idx + 1}</TableCell>
                                                     <TableCell className="font-medium border-r last:border-r-0 px-2 text-xs">{plan.mesin_pembangkit}</TableCell>
-                                                    <TableCell className="border-r last:border-r-0 text-center text-xs px-2">{plan.scope}</TableCell>
+                                                    <TableCell className="border-r last:border-r-0 text-center text-xs px-2 uppercase">{plan.scope}</TableCell>
                                                     <TableCell className="uppercase text-xs font-semibold border-r last:border-r-0 text-center px-2">{plan.jenis_pembangkit}</TableCell>
                                                     <TableCell className="border-r last:border-r-0 text-center px-2">
                                                         <div className="flex items-center justify-center gap-1 text-xs">
