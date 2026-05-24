@@ -1,1 +1,0 @@
-import{F as e}from"./app-BXY1_t3N.js";var t=e(`Check`,[[`path`,{d:`M20 6 9 17l-5-5`,key:`1gmf2c`}]]);export{t};
