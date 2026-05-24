@@ -36,7 +36,7 @@ export default function Login({
                         <div className="space-y-4">
                             <div className="grid gap-2">
                                 <Label htmlFor="email" className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-                                    Corporate Email
+                                    Email
                                 </Label>
                                 <Input
                                     id="email"
@@ -55,7 +55,7 @@ export default function Login({
                             <div className="grid gap-2">
                                 <div className="flex items-center justify-between">
                                     <Label htmlFor="password" className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-                                        Secure Password
+                                        Password
                                     </Label>
                                     {canResetPassword && (
                                         <TextLink
@@ -98,7 +98,7 @@ export default function Login({
                                 data-test="login-button"
                             >
                                 {processing && <Spinner className="mr-2 h-4 w-4" />}
-                                Sign In to Dashboard
+                                Login
                             </Button>
                         </div>
                     </>
