@@ -31,4 +31,17 @@ class DailyMeeting extends Model
     {
         return $this->hasOne(MeetingMinute::class, 'meeting_id');
     }
+
+    public function outagePlan()
+    {
+        return $this->belongsTo(OutagePlan::class);
+    }
+
+    public function getStatusAttribute($value)
+    {
+        if ($value !== 'completed' && $this->tanggal && $this->tanggal->isToday()) {
+            return 'berlangsung';
+        }
+        return $value;
+    }
 }

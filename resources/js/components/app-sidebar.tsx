@@ -28,11 +28,6 @@ const mainNavItems: NavItem[] = [
         icon: Calendar,
     },
     {
-        title: 'Tagihan OH',
-        href: '/tagihan-oh',
-        icon: ReceiptText,
-    },
-    {
         title: 'Daily Meeting',
         href: '/daily-meetings',
         icon: MessageSquare,

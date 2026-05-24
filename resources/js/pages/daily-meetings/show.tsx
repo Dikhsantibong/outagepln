@@ -14,7 +14,7 @@ import {
 } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Users, FileText, QrCode, CheckCircle2, Clock, MapPin, Calendar, Printer, Info } from 'lucide-react';
+import { Users, FileText, QrCode, CheckCircle2, Clock, MapPin, Calendar, Printer, Info, Video } from 'lucide-react';
 
 type Attendee = {
     id: number;
@@ -43,6 +43,7 @@ type Meeting = {
     lokasi: string | null;
     token: string;
     status: string;
+    link_meeting?: string | null;
 };
 
 export default function DailyMeetingShow({
@@ -391,12 +392,14 @@ export default function DailyMeetingShow({
                             <div className="space-y-4">
                                 <div className="flex flex-wrap items-center gap-3">
                                     <h1 className="text-2xl font-bold tracking-tight text-foreground">{meeting.judul}</h1>
-                                    <Badge variant={meeting.status === 'active' ? 'default' : 'secondary'} className={meeting.status === 'active' ? 'bg-emerald-500 hover:bg-emerald-600 gap-1.5' : 'gap-1.5'}>
-                                        {meeting.status === 'active' ? (
+                                    <Badge variant={['active', 'berlangsung'].includes(meeting.status) ? 'default' : 'secondary'} className={meeting.status === 'berlangsung' ? 'bg-emerald-500 hover:bg-emerald-600 gap-1.5' : meeting.status === 'active' ? 'bg-blue-500 hover:bg-blue-600 gap-1.5' : 'gap-1.5'}>
+                                        {meeting.status === 'berlangsung' ? (
                                             <>
                                                 <div className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" />
                                                 Berlangsung
                                             </>
+                                        ) : meeting.status === 'active' ? (
+                                            <>Akan Datang</>
                                         ) : (
                                             <>
                                                 <CheckCircle2 className="h-3 w-3" />
@@ -433,11 +436,17 @@ export default function DailyMeetingShow({
                             </div>
 
                             <div className="flex flex-wrap gap-2 shrink-0">
+                                {meeting.link_meeting && (
+                                    <Button variant="default" size="sm" className="gap-2 h-9 bg-blue-600 hover:bg-blue-700 text-white" onClick={() => window.open(meeting.link_meeting!, '_blank')}>
+                                        <Video className="h-4 w-4" />
+                                        Join Zoom Meeting
+                                    </Button>
+                                )}
                                 <Button variant="outline" size="sm" className="gap-2 h-9" onClick={printNotulen}>
                                     <Printer className="h-4 w-4" />
                                     Print Notulen
                                 </Button>
-                                {meeting.status === 'active' && (
+                                {['active', 'berlangsung'].includes(meeting.status) && (
                                     <>
                                         <Button
                                             variant="outline"
@@ -491,7 +500,7 @@ export default function DailyMeetingShow({
                                     <CardTitle>Daftar Hadir Peserta</CardTitle>
                                     <CardDescription>Daftar seluruh personil yang telah melakukan absensi</CardDescription>
                                 </div>
-                                {meeting.status === 'active' && (
+                                {['active', 'berlangsung'].includes(meeting.status) && (
                                     <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 text-xs font-medium dark:bg-emerald-950/30 dark:text-emerald-400">
                                         <div className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
                                         Auto-refresh 5s
@@ -639,7 +648,7 @@ export default function DailyMeetingShow({
                                         </div>
                                     </div>
 
-                                    {meeting.status === 'active' && (
+                                    {['active', 'berlangsung'].includes(meeting.status) && (
                                         <div className="flex justify-end pt-4 border-t">
                                             <Button type="submit" disabled={minutesForm.processing} className="gap-2 px-8">
                                                 <FileText className="h-4 w-4" />

@@ -3,7 +3,6 @@
 namespace App\Http\Controllers;
 
 use App\Models\OutagePlan;
-use App\Models\TagihanOh;
 use App\Models\DailyMeeting;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
@@ -12,79 +11,89 @@ class DashboardController extends Controller
 {
     public function index()
     {
-        // Progress by plant type (PLTD, PLTM, PLTMG)
-        $progressByType = OutagePlan::select('jenis_pembangkit', DB::raw('AVG(progres_persen) as avg_progress'), DB::raw('COUNT(*) as total'))
+        // Total outage plans
+        $totalOutage = OutagePlan::count();
+
+        // Count by jenis pembangkit
+        $countByJenis = OutagePlan::select('jenis_pembangkit', DB::raw('COUNT(*) as total'))
             ->groupBy('jenis_pembangkit')
             ->get()
             ->keyBy('jenis_pembangkit');
 
-        $plantProgress = [
-            'PLTD'  => ['progress' => round($progressByType->get('pltd')?->avg_progress ?? 0, 1), 'count' => $progressByType->get('pltd')?->total ?? 0],
-            'PLTM'  => ['progress' => round($progressByType->get('pltm')?->avg_progress ?? 0, 1), 'count' => $progressByType->get('pltm')?->total ?? 0],
-            'PLTMG' => ['progress' => round($progressByType->get('pltmg')?->avg_progress ?? 0, 1), 'count' => $progressByType->get('pltmg')?->total ?? 0],
+        // Average progress by jenis pembangkit
+        $progressByType = OutagePlan::select('jenis_pembangkit', DB::raw('AVG(progress) as avg_progress'))
+            ->groupBy('jenis_pembangkit')
+            ->get()
+            ->keyBy('jenis_pembangkit');
+
+        $plantStats = [];
+        foreach (['PLTD', 'PLTM', 'PLTMG'] as $jenis) {
+            $plantStats[$jenis] = [
+                'count' => $countByJenis->get($jenis)?->total ?? 0,
+                'progress' => round($progressByType->get($jenis)?->avg_progress ?? 0, 1),
+            ];
+        }
+
+        // Scope distribution for bar chart
+        $scopeDistribution = OutagePlan::select('scope', DB::raw('COUNT(*) as total'))
+            ->whereNotNull('scope')
+            ->where('scope', '!=', '')
+            ->groupBy('scope')
+            ->orderByDesc('total')
+            ->get();
+
+        // Monthly outage timeline (how many outages start per month)
+        $monthlyTimeline = OutagePlan::select(
+                DB::raw("DATE_FORMAT(start_date, '%Y-%m') as bulan"),
+                DB::raw('COUNT(*) as total')
+            )
+            ->whereNotNull('start_date')
+            ->groupBy('bulan')
+            ->orderBy('bulan')
+            ->get();
+
+        // Progress distribution (group into ranges: 0%, 1-25%, 26-50%, 51-75%, 76-99%, 100%)
+        $progressDistribution = [
+            ['range' => '0%', 'count' => OutagePlan::where('progress', 0)->count()],
+            ['range' => '1-25%', 'count' => OutagePlan::whereBetween('progress', [1, 25])->count()],
+            ['range' => '26-50%', 'count' => OutagePlan::whereBetween('progress', [26, 50])->count()],
+            ['range' => '51-75%', 'count' => OutagePlan::whereBetween('progress', [51, 75])->count()],
+            ['range' => '76-99%', 'count' => OutagePlan::whereBetween('progress', [76, 99])->count()],
+            ['range' => '100%', 'count' => OutagePlan::where('progress', 100)->count()],
         ];
 
-        // Financial stats — use actual DB columns
-        $totalNilaiKontrak  = TagihanOh::sum('nilai_kontrak');
-        $totalTerbayar      = TagihanOh::sum('terbayar');
-        $totalBelumTerbayar = TagihanOh::sum('belum_terbayar');
-
-        // Financial by pembangkit for grouped bar chart
-        $financialByUnit = TagihanOh::select(
-                'pembangkit',
-                DB::raw('SUM(nilai_kontrak) as nilai_kontrak'),
-                DB::raw('SUM(terbayar) as terbayar'),
-                DB::raw('SUM(belum_terbayar) as belum_terbayar')
-            )
-            ->groupBy('pembangkit')
-            ->get();
-
-        // Financial by tahun for trend line chart
-        $financialByYear = TagihanOh::select(
-                'tahun',
-                DB::raw('SUM(nilai_kontrak) as nilai_kontrak'),
-                DB::raw('SUM(terbayar) as terbayar'),
-                DB::raw('SUM(belum_terbayar) as belum_terbayar')
-            )
-            ->groupBy('tahun')
-            ->orderBy('tahun')
-            ->get();
-
-        // Scope distribution for pie chart
-        $scopeDistribution = OutagePlan::select('scope', DB::raw('COUNT(*) as total'))
+        // Durasi average by scope
+        $durasiByScope = OutagePlan::select('scope', DB::raw('AVG(durasi) as avg_durasi'), DB::raw('COUNT(*) as total'))
+            ->whereNotNull('scope')
+            ->where('scope', '!=', '')
+            ->whereNotNull('durasi')
             ->groupBy('scope')
+            ->orderByDesc('avg_durasi')
             ->get();
 
         // Meeting stats
         $activeMeetings = DailyMeeting::where('status', 'active')->count();
         $totalMeetings  = DailyMeeting::count();
 
-        // Recent Activity
-        $recentOutages = OutagePlan::latest()->take(3)->get()->map(fn($item) => [
-            'title' => "{$item->mesin_pembangkit} — Progres {$item->progres_persen}%",
-            'time'  => $item->created_at->diffForHumans(),
-            'type'  => 'Outage',
+        // Recent outage activity
+        $recentOutages = OutagePlan::latest()->take(5)->get()->map(fn($item) => [
+            'mesin' => $item->mesin_pembangkit,
+            'scope' => $item->scope,
+            'jenis' => $item->jenis_pembangkit,
+            'progress' => $item->progress ?? 0,
+            'start_date' => $item->start_date,
+            'time' => $item->created_at ? $item->created_at->diffForHumans() : '-',
         ]);
-
-        $recentTagihan = TagihanOh::latest()->take(3)->get()->map(fn($item) => [
-            'title' => "{$item->pekerjaan} ({$item->pembangkit})",
-            'time'  => $item->created_at->diffForHumans(),
-            'type'  => 'Tagihan',
-        ]);
-
-        $recentActivities = $recentOutages->concat($recentTagihan)
-            ->sortByDesc('time')
-            ->values()
-            ->take(6);
 
         // Calculate Meetings from Outage Plans
         $todayDate = date('Y-m-d');
-        $allWithMeetings = OutagePlan::whereNotNull('rapat_r2')
-            ->orWhereNotNull('rapat_r3')
-            ->orWhereNotNull('rapat_p1')
-            ->orWhereNotNull('rapat_p2')
-            ->orWhereNotNull('rapat_p3')
-            ->get();
+        $allWithMeetings = OutagePlan::where(function($q) {
+                $q->whereNotNull('rapat_r2')
+                  ->orWhereNotNull('rapat_r3')
+                  ->orWhereNotNull('rapat_p1')
+                  ->orWhereNotNull('rapat_p2')
+                  ->orWhereNotNull('rapat_p3');
+            })->get();
 
         $meetingsList = [];
         foreach ($allWithMeetings as $plan) {
@@ -121,33 +130,26 @@ class DashboardController extends Controller
             return $m['date'] > $todayDate;
         }));
 
-        // Limit upcoming to 5
-        $upcomingMeetings = array_slice($upcomingMeetings, 0, 5);
+        $upcomingMeetings = array_slice($upcomingMeetings, 0, 8);
 
         return Inertia::render('dashboard', [
             'stats' => [
-                'outage' => [
-                    'total'    => OutagePlan::count(),
-                    'progress' => $plantProgress,
-                    'byScope'  => $scopeDistribution,
-                ],
-                'tagihan' => [
-                    'nilai_kontrak'   => $totalNilaiKontrak,
-                    'terbayar'        => $totalTerbayar,
-                    'belum_terbayar'  => $totalBelumTerbayar,
-                    'byUnit'          => $financialByUnit,
-                    'byYear'          => $financialByYear,
-                ],
+                'total' => $totalOutage,
+                'plantStats' => $plantStats,
+                'scopeDistribution' => $scopeDistribution,
+                'monthlyTimeline' => $monthlyTimeline,
+                'progressDistribution' => $progressDistribution,
+                'durasiByScope' => $durasiByScope,
                 'meetings' => [
                     'active' => $activeMeetings,
-                    'total'  => $totalMeetings,
+                    'total' => $totalMeetings,
                 ],
             ],
-            'recentActivities' => $recentActivities,
+            'recentOutages' => $recentOutages,
             'outageMeetings' => [
                 'today' => $todayMeetings,
                 'upcoming' => $upcomingMeetings,
-            ]
+            ],
         ]);
     }
 }

@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Plus, Calendar, MapPin, Users, Eye, QrCode, Trash2, CheckCircle2, Info } from 'lucide-react';
+import { Plus, Calendar, MapPin, Users, Eye, QrCode, Trash2, CheckCircle2, Info, Video } from 'lucide-react';
 
 type Meeting = {
     id: number;
@@ -15,7 +15,8 @@ type Meeting = {
     waktu_selesai: string | null;
     lokasi: string | null;
     token: string;
-    status: 'draft' | 'active' | 'completed';
+    status: 'draft' | 'active' | 'completed' | 'berlangsung';
+    link_meeting: string | null;
     attendees_count: number;
     created_at: string;
 };
@@ -68,11 +69,17 @@ export default function DailyMeetingsIndex({ meetings }: { meetings: Meeting[] }
 
     const renderStatusBadge = (status: string) => {
         switch (status) {
-            case 'active':
+            case 'berlangsung':
                 return (
                     <Badge variant="default" className="bg-emerald-500 hover:bg-emerald-600 gap-1.5 border-none">
                         <div className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" />
                         Berlangsung
+                    </Badge>
+                );
+            case 'active':
+                return (
+                    <Badge variant="default" className="bg-blue-500 hover:bg-blue-600 gap-1.5 border-none">
+                        Akan Datang
                     </Badge>
                 );
             case 'completed':
@@ -229,7 +236,17 @@ export default function DailyMeetingsIndex({ meetings }: { meetings: Meeting[] }
                                             <Eye className="h-3.5 w-3.5 mr-1.5" />
                                             Detail
                                         </Button>
-                                        {meeting.status === 'active' && (
+                                        {meeting.link_meeting && (
+                                            <Button
+                                                size="sm"
+                                                variant="outline"
+                                                className="h-8 w-8 p-0"
+                                                onClick={() => window.open(meeting.link_meeting!, '_blank')}
+                                            >
+                                                <Video className="h-4 w-4 text-blue-500" />
+                                            </Button>
+                                        )}
+                                        {['active', 'berlangsung'].includes(meeting.status) && (
                                             <Button
                                                 size="sm"
                                                 variant="outline"
