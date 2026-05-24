@@ -4,12 +4,12 @@
 use Illuminate\Support\Facades\Route;
 use Laravel\Fortify\Features;
 
-Route::redirect('/', '/login')->name('home');
-
+use App\Http\Controllers\WelcomeController;
 use App\Http\Controllers\OutagePlanController;
 use App\Http\Controllers\DailyMeetingController;
-
 use App\Http\Controllers\DashboardController;
+
+Route::get('/', [WelcomeController::class, 'index'])->name('home');
 
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('dashboard', [DashboardController::class, 'index'])->name('dashboard');
