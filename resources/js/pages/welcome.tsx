@@ -1,6 +1,7 @@
 import { Head, Link } from '@inertiajs/react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { login } from '@/routes';
 import { ArrowRight, Activity, Calendar, Zap, BarChart3, Users, Building, ChevronRight, LayoutDashboard } from 'lucide-react';
 import {
     BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
@@ -14,7 +15,15 @@ interface WelcomeProps {
         plantStats: Record<string, { count: number; progress: number }>;
         scopeDistribution: { scope: string; total: number }[];
         progressDistribution: { range: string; count: number }[];
-        meetings: { active: number; total: number; upcoming: number };
+        meetings: {
+            active: number;
+            total: number;
+            upcoming: number;
+            nextMeeting: {
+                date: string;
+                label: string;
+            } | null;
+        };
     };
 }
 
@@ -49,19 +58,23 @@ export default function Welcome({ canLogin, stats }: WelcomeProps) {
                 {/* Navbar */}
                 <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60">
                     <div className="container mx-auto flex h-16 items-center justify-between px-4 md:px-8">
-                        <div className="flex items-center gap-2">
-                            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 text-white">
-                                <Zap className="h-5 w-5 fill-current" />
+                        <div className="flex items-center gap-3">
+                            <img src="/sidebar-logo.png" alt="Logo PLN" className="h-12 w-auto object-contain" />
+                            <div>
+                                <p className="text-sm uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
+                                    Outage Monitoring
+                                </p>
+                                <p className="text-lg font-semibold tracking-tight text-slate-900 dark:text-white">
+                                    PLN Outage Hub
+                                </p>
                             </div>
-                            <span className="text-xl font-bold tracking-tight text-foreground">
-                                Outage<span className="text-blue-600">PLN</span>
-                            </span>
                         </div>
                         <nav className="flex items-center gap-4">
                             {canLogin && (
-                                <Link href={route('login')}>
-                                    <Button variant="default" className="bg-blue-600 hover:bg-blue-700 text-white rounded-full px-6 shadow-md shadow-blue-500/20 transition-all hover:shadow-lg hover:shadow-blue-500/30">
-                                        Login Access
+                                <Link href={login().url}>
+                                    <Button variant="default" className="bg-blue-600 hover:bg-blue-700 text-white rounded-full px-6 py-3 shadow-md shadow-blue-500/20 transition-all hover:shadow-lg hover:shadow-blue-500/30 flex items-center gap-2">
+                                        Login
+                                        <ArrowRight className="h-4 w-4" />
                                     </Button>
                                 </Link>
                             )}
@@ -79,22 +92,37 @@ export default function Welcome({ canLogin, stats }: WelcomeProps) {
                                 Real-time Outage Monitoring
                             </div>
                             <h1 className="max-w-4xl text-4xl font-extrabold tracking-tight sm:text-5xl md:text-6xl lg:text-7xl">
-                                Corporate Outage <br className="hidden sm:block" />
+                                PLN Outage <br className="hidden sm:block" />
                                 <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-emerald-400">
-                                    Management System
+                                    Operations System
                                 </span>
                             </h1>
                             <p className="mt-6 max-w-2xl text-lg text-blue-100/80 sm:text-xl">
                                 Platform terpadu untuk memonitor, mengelola, dan menganalisa seluruh rencana pemeliharaan pembangkit (Outage Plan) secara real-time.
                             </p>
-                            <div className="mt-10 flex flex-wrap justify-center gap-4">
-                                {canLogin && (
-                                    <Link href={route('login')}>
-                                        <Button size="lg" className="rounded-full bg-white text-blue-900 hover:bg-blue-50 hover:text-blue-900 h-12 px-8 font-semibold shadow-xl">
-                                            Masuk ke Dashboard <ArrowRight className="ml-2 h-4 w-4" />
-                                        </Button>
-                                    </Link>
-                                )}
+
+                            <div className="mt-12 grid gap-4 sm:grid-cols-3">
+                                <div className="rounded-3xl border border-white/10 bg-slate-950/90 p-6 shadow-xl shadow-slate-950/40">
+                                    <p className="text-sm uppercase tracking-[0.24em] text-slate-400">Rapat Berlangsung</p>
+                                    <p className="mt-3 text-3xl font-semibold text-white">{stats.meetings.active}</p>
+                                    <p className="mt-2 text-sm text-slate-500">Agenda aktif saat ini</p>
+                                </div>
+                                <div className="rounded-3xl border border-white/10 bg-white/95 p-6 shadow-xl shadow-slate-900/10">
+                                    <p className="text-sm uppercase tracking-[0.24em] text-slate-700">Rapat Mendatang</p>
+                                    <p className="mt-3 text-3xl font-semibold text-slate-900">{stats.meetings.upcoming}</p>
+                                    <p className="mt-2 text-sm text-slate-500">Total jadwal rapat yang belum berlangsung</p>
+                                </div>
+                                <div className="rounded-3xl border border-white/10 bg-slate-900/95 p-6 shadow-xl shadow-slate-950/30">
+                                    <p className="text-sm uppercase tracking-[0.24em] text-slate-400">Jadwal Terdekat</p>
+                                    {stats.meetings.nextMeeting ? (
+                                        <>
+                                            <p className="mt-3 text-2xl font-semibold text-white">{stats.meetings.nextMeeting.date}</p>
+                                            <p className="mt-2 text-sm text-slate-400">{stats.meetings.nextMeeting.label}</p>
+                                        </>
+                                    ) : (
+                                        <p className="mt-3 text-xl font-semibold text-white">Belum ada</p>
+                                    )}
+                                </div>
                             </div>
                         </div>
 
@@ -161,9 +189,9 @@ export default function Welcome({ canLogin, stats }: WelcomeProps) {
                                         <CardDescription>Berdasarkan jenis ruang lingkup pemeliharaan</CardDescription>
                                     </CardHeader>
                                     <CardContent>
-                                        <div className="h-[300px]">
+                                        <div className="w-full h-[300px] min-h-[300px]">
                                             {scopeBarData.length > 0 ? (
-                                                <ResponsiveContainer width="100%" height="100%">
+                                                <ResponsiveContainer width="100%" height={300}>
                                                     <BarChart data={scopeBarData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
                                                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" opacity={0.5} />
                                                         <XAxis dataKey="name" fontSize={12} tickLine={false} axisLine={false} tick={{ fill: '#64748b' }} />
@@ -189,9 +217,9 @@ export default function Welcome({ canLogin, stats }: WelcomeProps) {
                                         <CardDescription>Berdasarkan tipe mesin (PLTD, PLTM, dll)</CardDescription>
                                     </CardHeader>
                                     <CardContent className="flex-1 flex flex-col justify-center">
-                                        <div className="h-[250px]">
+                                        <div className="w-full h-[250px] min-h-[250px]">
                                             {pieData.length > 0 ? (
-                                                <ResponsiveContainer width="100%" height="100%">
+                                                <ResponsiveContainer width="100%" height={250}>
                                                     <PieChart>
                                                         <Pie
                                                             data={pieData}
@@ -233,15 +261,27 @@ export default function Welcome({ canLogin, stats }: WelcomeProps) {
                 </main>
 
                 {/* Footer */}
-                <footer className="border-t border-border/40 bg-slate-900 py-12 text-slate-400">
-                    <div className="container mx-auto px-4 md:px-8 flex flex-col md:flex-row justify-between items-center gap-6">
-                        <div className="flex items-center gap-2 text-white">
-                            <Zap className="h-5 w-5 fill-current text-blue-500" />
-                            <span className="text-lg font-bold tracking-tight">Outage<span className="text-blue-500">PLN</span></span>
+                <footer className="border-t border-slate-800 bg-slate-950 py-10 text-slate-400">
+                    <div className="container mx-auto px-4 md:px-8">
+                        <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
+                            <div className="flex items-start gap-4">
+                                <img src="/sidebar-logo.png" alt="PLN Logo" className="h-10 w-auto object-contain" />
+                                <div>
+                                    <p className="text-base font-semibold text-white">PLN Outage Hub</p>
+                                    <p className="mt-1 text-sm text-slate-500">
+                                        Monitor jadwal outage dan rapat dengan jelas. Data operasional tersedia 24/7.
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-4 text-sm text-slate-500">
+                                <span>Support: support@pln.co.id</span>
+                                <span className="hidden sm:inline">|</span>
+                                <span>Status update real-time</span>
+                            </div>
                         </div>
-                        <p className="text-sm">
-                            &copy; {new Date().getFullYear()} PT PLN Nusantara Power UP Kendari. All rights reserved.
-                        </p>
+                        <div className="mt-8 border-t border-slate-800 pt-4 text-xs text-slate-600">
+                            &copy; {new Date().getFullYear()} PT PLN Nusantara Power. All rights reserved.
+                        </div>
                     </div>
                 </footer>
             </div>

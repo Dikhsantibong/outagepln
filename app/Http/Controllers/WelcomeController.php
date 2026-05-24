@@ -7,6 +7,7 @@ use App\Models\DailyMeeting;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\Route;
+use Carbon\Carbon;
 
 class WelcomeController extends Controller
 {
@@ -30,8 +31,8 @@ class WelcomeController extends Controller
         $plantStats = [];
         foreach (['PLTD', 'PLTM', 'PLTMG'] as $jenis) {
             $plantStats[$jenis] = [
-                'count' => $countByJenis->get($jenis)?->total ?? 0,
-                'progress' => round($progressByType->get($jenis)?->avg_progress ?? 0, 1),
+                'count' => (int) ($countByJenis->get($jenis)?->total ?? 0),
+                'progress' => round((float) ($progressByType->get($jenis)?->avg_progress ?? 0), 1),
             ];
         }
 
@@ -41,17 +42,27 @@ class WelcomeController extends Controller
             ->where('scope', '!=', '')
             ->groupBy('scope')
             ->orderByDesc('total')
-            ->get();
+            ->get()
+            ->map(function ($item) {
+                return [
+                    'scope' => $item->scope ?? '-',
+                    'total' => (int) $item->total,
+                ];
+            })
+            ->toArray();
 
         // Progress distribution (group into ranges: 0%, 1-25%, 26-50%, 51-75%, 76-99%, 100%)
-        $progressDistribution = [
+        $progressDistribution = collect([
             ['range' => '0%', 'count' => OutagePlan::where('progress', 0)->count()],
             ['range' => '1-25%', 'count' => OutagePlan::whereBetween('progress', [1, 25])->count()],
             ['range' => '26-50%', 'count' => OutagePlan::whereBetween('progress', [26, 50])->count()],
             ['range' => '51-75%', 'count' => OutagePlan::whereBetween('progress', [51, 75])->count()],
             ['range' => '76-99%', 'count' => OutagePlan::whereBetween('progress', [76, 99])->count()],
             ['range' => '100%', 'count' => OutagePlan::where('progress', 100)->count()],
-        ];
+        ])->map(fn ($item) => [
+            'range' => $item['range'],
+            'count' => (int) $item['count'],
+        ])->all();
 
         // Meeting stats
         $activeMeetings = DailyMeeting::where('status', 'active')->count();
@@ -90,9 +101,17 @@ class WelcomeController extends Controller
             }
         }
 
-        $upcomingMeetingsCount = count(array_filter($meetingsList, function($m) use ($todayDate) {
-            return $m['date'] > $todayDate;
+        $upcomingMeetings = array_values(array_filter($meetingsList, function($m) use ($todayDate) {
+            return $m['date'] >= $todayDate;
         }));
+
+        usort($upcomingMeetings, function ($a, $b) {
+            return strcmp($a['date'], $b['date']);
+        });
+
+        $nextMeeting = $upcomingMeetings[0] ?? null;
+
+        $upcomingMeetingsCount = count($upcomingMeetings);
 
         return Inertia::render('welcome', [
             'canLogin' => Route::has('login'),
@@ -105,6 +124,10 @@ class WelcomeController extends Controller
                     'active' => $activeMeetings,
                     'total' => $totalMeetings,
                     'upcoming' => $upcomingMeetingsCount,
+                    'nextMeeting' => $nextMeeting ? [
+                        'date' => Carbon::parse($nextMeeting['date'])->translatedFormat('d M Y'),
+                        'label' => sprintf('%s %s (%s)', $nextMeeting['type'], $nextMeeting['mesin'], $nextMeeting['scope'] ?: 'Umum'),
+                    ] : null,
                 ],
             ],
         ]);
