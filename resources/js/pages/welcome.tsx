@@ -84,8 +84,12 @@ export default function Welcome({ canLogin, stats }: WelcomeProps) {
 
                 <main className="flex-1">
                     {/* Hero Section */}
-                    <section className="relative overflow-hidden bg-gradient-to-br from-slate-900 via-blue-900 to-indigo-900 pb-20 pt-24 text-white">
-                        <div className="absolute inset-0 bg-[url('/grid.svg')] bg-center [mask-image:linear-gradient(180deg,white,rgba(255,255,255,0))]"></div>
+                    <section className="relative overflow-hidden pb-20 pt-24 text-white">
+                        <div className="absolute inset-0">
+                            <img src="/hero.png" alt="Hero Background" className="h-full w-full object-cover" />
+                        </div>
+                        <div className="absolute inset-0 bg-gradient-to-br from-slate-900/90 via-blue-900/80 to-indigo-900/90 mix-blend-multiply"></div>
+                        <div className="absolute inset-0 bg-[url('/grid.svg')] bg-center [mask-image:linear-gradient(180deg,white,rgba(255,255,255,0))] opacity-40"></div>
                         <div className="container relative z-10 mx-auto px-4 md:px-8 flex flex-col items-center text-center">
                             <div className="inline-flex items-center rounded-full border border-blue-400/30 bg-blue-400/10 px-3 py-1 text-sm font-medium text-blue-200 backdrop-blur-md mb-6">
                                 <Activity className="mr-2 h-4 w-4" />
