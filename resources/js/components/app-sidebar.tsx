@@ -1,5 +1,5 @@
 import { Link } from '@inertiajs/react';
-import { LayoutGrid, Calendar, Users, MessageSquare, ReceiptText } from 'lucide-react';
+import { LayoutGrid, Calendar, Users, MessageSquare, ReceiptText, Activity } from 'lucide-react';
 import AppLogo from '@/components/app-logo';
 import { NavFooter } from '@/components/nav-footer';
 import { NavMain } from '@/components/nav-main';
@@ -31,6 +31,18 @@ const mainNavItems: NavItem[] = [
         title: 'Daily Meeting',
         href: '/daily-meetings',
         icon: MessageSquare,
+    },
+    {
+        title: 'Kinerja Outage',
+        href: '#',
+        icon: Activity,
+        items: [
+            { title: 'On Quality', href: '/kinerja/on-quality' },
+            { title: 'On Time', href: '/kinerja/on-time' },
+            { title: 'On Cost', href: '/kinerja/on-cost' },
+            { title: 'On Scope', href: '/kinerja/on-scope' },
+            { title: 'On Safety', href: '/kinerja/on-safety' },
+        ],
     },
 ];
 
