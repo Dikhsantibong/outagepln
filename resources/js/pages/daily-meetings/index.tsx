@@ -1,4 +1,4 @@
-import { Head, useForm, router } from '@inertiajs/react';
+import { Head, useForm, router, usePage } from '@inertiajs/react';
 import { FormEventHandler, useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -22,6 +22,8 @@ type Meeting = {
 };
 
 export default function DailyMeetingsIndex({ meetings }: { meetings: Meeting[] }) {
+    const { auth } = usePage<any>().props;
+    const isTamu = auth?.user?.role === 'tamu';
     const [showForm, setShowForm] = useState(false);
     const [filterDate, setFilterDate] = useState<string>('');
     const [currentPage, setCurrentPage] = useState(1);
@@ -126,10 +128,12 @@ export default function DailyMeetingsIndex({ meetings }: { meetings: Meeting[] }
                                 </Button>
                             )}
                         </div>
-                        <Button onClick={() => setShowForm(!showForm)} className="gap-2">
-                            <Plus className="h-4 w-4" />
-                            Mulai Meeting Baru
-                        </Button>
+                        {!isTamu && (
+                            <Button onClick={() => setShowForm(!showForm)} className="gap-2">
+                                <Plus className="h-4 w-4" />
+                                Mulai Meeting Baru
+                            </Button>
+                        )}
                     </div>
                 </div>
 
@@ -246,7 +250,7 @@ export default function DailyMeetingsIndex({ meetings }: { meetings: Meeting[] }
                                                 <Video className="h-4 w-4 text-blue-500" />
                                             </Button>
                                         )}
-                                        {['active', 'berlangsung'].includes(meeting.status) && (
+                                        {['active', 'berlangsung'].includes(meeting.status) && !isTamu && (
                                             <Button
                                                 size="sm"
                                                 variant="outline"
@@ -256,14 +260,16 @@ export default function DailyMeetingsIndex({ meetings }: { meetings: Meeting[] }
                                                 <QrCode className="h-4 w-4" />
                                             </Button>
                                         )}
-                                        <Button
-                                            size="sm"
-                                            variant="ghost"
-                                            className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
-                                            onClick={() => handleDelete(meeting.id)}
-                                        >
-                                            <Trash2 className="h-4 w-4" />
-                                        </Button>
+                                        {!isTamu && (
+                                            <Button
+                                                size="sm"
+                                                variant="ghost"
+                                                className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                                onClick={() => handleDelete(meeting.id)}
+                                            >
+                                                <Trash2 className="h-4 w-4" />
+                                            </Button>
+                                        )}
                                     </div>
                                 </div>
                             </Card>

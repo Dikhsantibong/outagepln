@@ -1,4 +1,4 @@
-import { Head, useForm, router } from '@inertiajs/react';
+import { Head, useForm, router, usePage } from '@inertiajs/react';
 import { FormEventHandler, useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -55,6 +55,8 @@ export default function DailyMeetingShow({
     attendees: Attendee[];
     minutes: Minutes;
 }) {
+    const { auth } = usePage<any>().props;
+    const isTamu = auth?.user?.role === 'tamu';
     const [activeTab, setActiveTab] = useState<'hadir' | 'notulen'>('hadir');
     const [attendees, setAttendees] = useState<Attendee[]>(initialAttendees);
 
@@ -446,7 +448,7 @@ export default function DailyMeetingShow({
                                     <Printer className="h-4 w-4" />
                                     Print Notulen
                                 </Button>
-                                {['active', 'berlangsung'].includes(meeting.status) && (
+                                {['active', 'berlangsung'].includes(meeting.status) && !isTamu && (
                                     <>
                                         <Button
                                             variant="outline"
@@ -601,7 +603,7 @@ export default function DailyMeetingShow({
                                                 onChange={(e) => minutesForm.setData('agenda', e.target.value)}
                                                 placeholder="Sebutkan poin-poin agenda rapat..."
                                                 className="min-h-[100px] resize-none focus-visible:ring-primary/20"
-                                                disabled={meeting.status === 'completed'}
+                                                disabled={meeting.status === 'completed' || isTamu}
                                             />
                                         </div>
 
@@ -629,7 +631,7 @@ export default function DailyMeetingShow({
                                                 onChange={(e) => minutesForm.setData('pembahasan', e.target.value)}
                                                 placeholder="Rincian pembahasan rapat..."
                                                 className="min-h-[200px] resize-none focus-visible:ring-primary/20"
-                                                disabled={meeting.status === 'completed'}
+                                                disabled={meeting.status === 'completed' || isTamu}
                                             />
                                         </div>
 
@@ -648,7 +650,7 @@ export default function DailyMeetingShow({
                                         </div>
                                     </div>
 
-                                    {['active', 'berlangsung'].includes(meeting.status) && (
+                                    {['active', 'berlangsung'].includes(meeting.status) && !isTamu && (
                                         <div className="flex justify-end pt-4 border-t">
                                             <Button type="submit" disabled={minutesForm.processing} className="gap-2 px-8">
                                                 <FileText className="h-4 w-4" />

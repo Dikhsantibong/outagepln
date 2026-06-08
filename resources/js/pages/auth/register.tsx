@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { login } from '@/routes';
 import { store } from '@/routes/register';
 
@@ -52,6 +53,22 @@ export default function Register() {
                                     placeholder="email@example.com"
                                 />
                                 <InputError message={errors.email} />
+                            </div>
+
+                            <div className="grid gap-2">
+                                <Label htmlFor="role">Pilih Role</Label>
+                                <Select
+                                    name="role"
+                                    defaultValue="admin"
+                                >
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Pilih Role" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="admin">Administrator</SelectItem>
+                                        <SelectItem value="tamu">Tamu (Read-Only)</SelectItem>
+                                    </SelectContent>
+                                </Select>
                             </div>
 
                             <div className="grid gap-2">

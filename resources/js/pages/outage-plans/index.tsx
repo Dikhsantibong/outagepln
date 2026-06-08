@@ -1,4 +1,4 @@
-import { Head, useForm, router, Link } from '@inertiajs/react';
+import { Head, useForm, router, Link, usePage } from '@inertiajs/react';
 import { FormEventHandler, useState, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -31,6 +31,8 @@ import { Combobox, ComboboxInput, ComboboxButton, ComboboxOptions, ComboboxOptio
 import { Check, ChevronsUpDown, Info, Trash2, Clock, Search, Pencil, Plus } from 'lucide-react';
 
 export default function OutagePlansIndex({ outagePlans, units = [], filters }: { outagePlans: any, units?: any[], filters?: any }) {
+    const { auth } = usePage<any>().props;
+    const isTamu = auth?.user?.role === 'tamu';
     const [dialogOpen, setDialogOpen] = useState(false);
     const [searchTerm, setSearchTerm] = useState(filters?.search || '');
     const [editingItem, setEditingItem] = useState<any>(null);
@@ -141,10 +143,12 @@ export default function OutagePlansIndex({ outagePlans, units = [], filters }: {
                         <h1 className="text-2xl font-bold tracking-tight">Perencanaan dan Jadwal Outage</h1>
                         <p className="text-sm text-muted-foreground mt-1">Monitoring dan penjadwalan pemeliharaan unit pembangkit</p>
                     </div>
-                    <Button onClick={openAddDialog} className="gap-2">
-                        <Plus className="h-4 w-4" />
-                        Tambah Jadwal
-                    </Button>
+                    {!isTamu && (
+                        <Button onClick={openAddDialog} className="gap-2">
+                            <Plus className="h-4 w-4" />
+                            Tambah Jadwal
+                        </Button>
+                    )}
                 </div>
 
                 {/* Table Section - Full Width */}
@@ -189,7 +193,7 @@ export default function OutagePlansIndex({ outagePlans, units = [], filters }: {
                                         <TableHead className="font-bold text-center border-r last:border-r-0 px-2">P2</TableHead>
                                         <TableHead className="font-bold text-center border-r last:border-r-0 px-2">P3</TableHead>
                                         <TableHead className="font-bold text-center border-r last:border-r-0 px-2">Ket</TableHead>
-                                        <TableHead className="text-center font-bold border-r last:border-r-0 px-2">Aksi</TableHead>
+                                        {!isTamu && <TableHead className="text-center font-bold border-r last:border-r-0 px-2">Aksi</TableHead>}
                                     </TableRow>
                                 </TableHeader>
                             <TableBody>
@@ -217,26 +221,28 @@ export default function OutagePlansIndex({ outagePlans, units = [], filters }: {
                                             <TableCell className="border-r last:border-r-0 text-center text-xs px-2">{plan.rapat_p2 || '-'}</TableCell>
                                             <TableCell className="border-r last:border-r-0 text-center text-xs px-2">{plan.rapat_p3 || '-'}</TableCell>
                                             <TableCell className="border-r last:border-r-0 text-center text-xs px-2">{plan.ket}</TableCell>
-                                            <TableCell className="text-center border-r last:border-r-0 px-2">
-                                                <div className="flex items-center justify-center gap-1">
-                                                    <Button 
-                                                        variant="ghost" 
-                                                        size="icon"
-                                                        className="h-6 w-6 text-primary hover:text-primary hover:bg-primary/10"
-                                                        onClick={() => openEditDialog(plan)}
-                                                    >
-                                                        <Pencil className="h-3 w-3" />
-                                                    </Button>
-                                                    <Button 
-                                                        variant="ghost" 
-                                                        size="icon"
-                                                        className="h-6 w-6 text-destructive hover:text-destructive hover:bg-destructive/10"
-                                                        onClick={() => handleDelete(plan.id)}
-                                                    >
-                                                        <Trash2 className="h-3 w-3" />
-                                                    </Button>
-                                                </div>
-                                            </TableCell>
+                                            {!isTamu && (
+                                                <TableCell className="text-center border-r last:border-r-0 px-2">
+                                                    <div className="flex items-center justify-center gap-1">
+                                                        <Button 
+                                                            variant="ghost" 
+                                                            size="icon"
+                                                            className="h-6 w-6 text-primary hover:text-primary hover:bg-primary/10"
+                                                            onClick={() => openEditDialog(plan)}
+                                                        >
+                                                            <Pencil className="h-3 w-3" />
+                                                        </Button>
+                                                        <Button 
+                                                            variant="ghost" 
+                                                            size="icon"
+                                                            className="h-6 w-6 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                                            onClick={() => handleDelete(plan.id)}
+                                                        >
+                                                            <Trash2 className="h-3 w-3" />
+                                                        </Button>
+                                                    </div>
+                                                </TableCell>
+                                            )}
                                         </TableRow>
                                     ))
                                 ) : (

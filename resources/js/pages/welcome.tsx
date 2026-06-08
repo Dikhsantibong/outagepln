@@ -71,7 +71,7 @@ export default function Welcome({ canLogin, stats }: WelcomeProps) {
                         </div>
                         <nav className="flex items-center gap-4">
                             {canLogin && (
-                                <Link href={login().url}>
+                                <Link href="/login">
                                     <Button variant="default" className="bg-blue-600 hover:bg-blue-700 text-white rounded-full px-6 py-3 shadow-md shadow-blue-500/20 transition-all hover:shadow-lg hover:shadow-blue-500/30 flex items-center gap-2">
                                         Login
                                         <ArrowRight className="h-4 w-4" />
