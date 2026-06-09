@@ -24,6 +24,13 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('daily-meetings/{dailyMeeting}/minutes', [DailyMeetingController::class, 'storeMinutes'])->name('daily-meetings.minutes');
     Route::post('daily-meetings/{dailyMeeting}/complete', [DailyMeetingController::class, 'complete'])->name('daily-meetings.complete');
     Route::get('daily-meetings/{dailyMeeting}/attendees-json', [DailyMeetingController::class, 'attendeesJson'])->name('daily-meetings.attendees-json');
+
+    // Kinerja Outage routes
+    Route::get('kinerja/on-quality', fn() => inertia('kinerja/on-quality'))->name('kinerja.on-quality');
+    Route::get('kinerja/on-time', fn() => inertia('kinerja/on-time'))->name('kinerja.on-time');
+    Route::get('kinerja/on-cost', fn() => inertia('kinerja/on-cost'))->name('kinerja.on-cost');
+    Route::get('kinerja/on-scope', fn() => inertia('kinerja/on-scope'))->name('kinerja.on-scope');
+    Route::get('kinerja/on-safety', fn() => inertia('kinerja/on-safety'))->name('kinerja.on-safety');
 });
 
 // Public attendance routes (no auth - scanned via QR on phone)
