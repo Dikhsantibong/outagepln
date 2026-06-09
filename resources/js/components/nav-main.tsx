@@ -17,7 +17,7 @@ import {
 } from '@/components/ui/sidebar';
 import { useCurrentUrl } from '@/hooks/use-current-url';
 import type { NavItem } from '@/types';
-import { toUrl } from '@/lib/utils';
+import { cn, toUrl } from '@/lib/utils';
 
 export function NavMain({ items = [] }: { items: NavItem[] }) {
     const { isCurrentUrl } = useCurrentUrl();
@@ -45,11 +45,15 @@ export function NavMain({ items = [] }: { items: NavItem[] }) {
                                 <SidebarMenuSub>
                                     {item.items.map((subItem) => (
                                         <SidebarMenuSubItem key={subItem.title}>
-                                            <SidebarMenuSubButton asChild isActive={isCurrentUrl(subItem.href)}>
-                                                <Link href={toUrl(subItem.href)}>
-                                                    <span>{subItem.title}</span>
-                                                </Link>
-                                            </SidebarMenuSubButton>
+                                            <Link
+                                                href={toUrl(subItem.href)}
+                                                className={cn(
+                                                    "flex h-7 min-w-0 -translate-x-px items-center gap-2 overflow-hidden rounded-md px-2 text-sidebar-foreground ring-sidebar-ring hover:bg-sidebar-accent hover:text-sidebar-accent-foreground text-sm",
+                                                    isCurrentUrl(subItem.href) && "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
+                                                )}
+                                            >
+                                                <span>{subItem.title}</span>
+                                            </Link>
                                         </SidebarMenuSubItem>
                                     ))}
                                 </SidebarMenuSub>
