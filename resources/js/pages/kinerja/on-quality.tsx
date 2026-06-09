@@ -1,41 +1,22 @@
 import { Head } from '@inertiajs/react';
-import AppSidebarLayout from '@/layouts/app/app-sidebar-layout';
-import { Card, CardContent } from '@/components/ui/card';
 import { ShieldCheck, Construction } from 'lucide-react';
 
 export default function OnQuality() {
     return (
-        <AppSidebarLayout breadcrumbs={[
-            { title: 'Kinerja Outage', href: '#' },
-            { title: 'On Quality', href: '/kinerja/on-quality' },
-        ]}>
+        <>
             <Head title="Kinerja - On Quality" />
             <div className="flex flex-1 flex-col items-center justify-center p-8 min-h-[70vh]">
-                <Card className="w-full max-w-lg border-dashed border-2 border-primary/20 bg-primary/5 shadow-none">
-                    <CardContent className="flex flex-col items-center text-center py-16 px-8 gap-6">
-                        <div className="flex h-20 w-20 items-center justify-center rounded-full bg-primary/10">
-                            <ShieldCheck className="h-10 w-10 text-primary" />
-                        </div>
-                        <div className="space-y-2">
-                            <h2 className="text-2xl font-bold tracking-tight text-foreground">
-                                On Quality
-                            </h2>
-                            <div className="flex items-center justify-center gap-2 text-amber-600 dark:text-amber-400">
-                                <Construction className="h-4 w-4" />
-                                <span className="text-sm font-semibold uppercase tracking-wider">Dalam Pengembangan</span>
-                            </div>
-                        </div>
-                        <p className="text-muted-foreground text-sm leading-relaxed max-w-md">
-                            Modul pemantauan kualitas pelaksanaan outage sedang dalam tahap pengembangan. 
-                            Fitur ini akan menyediakan analisis komprehensif terkait standar mutu, 
-                            hasil inspeksi, dan kepatuhan terhadap prosedur pemeliharaan.
-                        </p>
-                        <div className="mt-2 rounded-full bg-muted px-4 py-1.5">
-                            <span className="text-xs font-medium text-muted-foreground">Estimasi Rilis: Segera Hadir</span>
-                        </div>
-                    </CardContent>
-                </Card>
+                <div className="flex flex-col items-center gap-4 text-center">
+                    <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
+                        <ShieldCheck className="h-8 w-8 text-primary" />
+                    </div>
+                    <h2 className="text-xl font-semibold text-foreground">On Quality</h2>
+                    <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
+                        <Construction className="h-4 w-4" />
+                        <span className="text-sm font-medium">Dalam Pengembangan</span>
+                    </div>
+                </div>
             </div>
-        </AppSidebarLayout>
+        </>
     );
 }
