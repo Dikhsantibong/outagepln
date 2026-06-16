@@ -36,7 +36,32 @@ export default function DailyMeetingsIndex({ meetings }: { meetings: Meeting[] }
         lokasi: '',
     });
 
-    const filteredMeetings = meetings.filter((meeting) => {
+    const sortedMeetings = [...meetings].sort((a, b) => {
+        const getPriority = (status: string) => {
+            if (status === 'berlangsung') return 1;
+            if (status === 'active') return 2;
+            return 3; // completed or draft
+        };
+        
+        const priorityA = getPriority(a.status);
+        const priorityB = getPriority(b.status);
+        
+        if (priorityA !== priorityB) {
+            return priorityA - priorityB;
+        }
+        
+        // If 'active', sort ascending by date (closest date first)
+        // Otherwise (e.g. completed), sort descending by date (most recent first)
+        const dateA = new Date(a.tanggal).getTime();
+        const dateB = new Date(b.tanggal).getTime();
+        
+        if (priorityA === 2) {
+            return dateA - dateB;
+        }
+        return dateB - dateA;
+    });
+
+    const filteredMeetings = sortedMeetings.filter((meeting) => {
         if (!filterDate) return true;
         return meeting.tanggal === filterDate;
     });
@@ -300,27 +325,37 @@ export default function DailyMeetingsIndex({ meetings }: { meetings: Meeting[] }
                         <Button
                             variant="outline"
                             size="sm"
+                            className="cursor-pointer"
                             disabled={currentPage === 1}
                             onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
                         >
                             Sebelumnya
                         </Button>
                         <div className="flex items-center gap-1">
-                            {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
-                                <Button
-                                    key={page}
-                                    variant={currentPage === page ? 'default' : 'ghost'}
-                                    size="sm"
-                                    className="w-8 h-8 p-0 text-xs"
-                                    onClick={() => setCurrentPage(page)}
-                                >
-                                    {page}
-                                </Button>
-                            ))}
+                            {Array.from({ length: totalPages }, (_, i) => i + 1)
+                                .filter(page => page === 1 || page === totalPages || Math.abs(currentPage - page) <= 2)
+                                .map((page, index, array) => {
+                                    return (
+                                        <div key={page} className="flex items-center">
+                                            {index > 0 && array[index - 1] !== page - 1 && (
+                                                <span className="px-2 text-muted-foreground">...</span>
+                                            )}
+                                            <Button
+                                                variant={currentPage === page ? 'default' : 'ghost'}
+                                                size="sm"
+                                                className="w-8 h-8 p-0 text-xs cursor-pointer"
+                                                onClick={() => setCurrentPage(page)}
+                                            >
+                                                {page}
+                                            </Button>
+                                        </div>
+                                    );
+                                })}
                         </div>
                         <Button
                             variant="outline"
                             size="sm"
+                            className="cursor-pointer"
                             disabled={currentPage === totalPages}
                             onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
                         >
