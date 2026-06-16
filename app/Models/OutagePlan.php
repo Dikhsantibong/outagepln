@@ -31,7 +31,7 @@ class OutagePlan extends Model
     {
         $syncMeetings = function (OutagePlan $plan) {
             $jenisRapat = ['rapat_r2', 'rapat_r3', 'rapat_p1', 'rapat_p2', 'rapat_p3'];
-            $defaultLink = 'https://zoom.us/j/static123456789'; // Default static link
+            $defaultLink = 'https://us06web.zoom.us/j/3581038593?pwd=7kztGUbcQepuqwTsgfXr72CkIptiI3.1&omn=82322217212'; // Default static link
 
             foreach ($jenisRapat as $jenis) {
                 if ($plan->$jenis) {
