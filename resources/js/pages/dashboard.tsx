@@ -103,69 +103,89 @@ export default function Dashboard({ stats, recentOutages, outageMeetings }: Dash
                 </div>
 
                 {/* ROW 2: Highlighted Jadwal Rapat */}
-                <Card className="border-l-4 border-l-blue-500">
-                    <CardHeader className="bg-muted/30 border-b pb-4">
-                        <CardTitle className="flex items-center gap-2 text-lg">
-                            <Calendar className="h-5 w-5 text-blue-500" />
-                            Jadwal Rapat Outage
-                        </CardTitle>
-                        <CardDescription>Rapat persiapan outage hari ini dan yang akan datang</CardDescription>
+                <Card className="border-t-4 border-t-blue-500 shadow-sm overflow-hidden">
+                    <CardHeader className="bg-muted/20 border-b pb-4 flex flex-row items-center justify-between">
+                        <div>
+                            <CardTitle className="flex items-center gap-2 text-lg">
+                                <Calendar className="h-5 w-5 text-blue-500" />
+                                Jadwal Rapat Outage
+                            </CardTitle>
+                            <CardDescription className="mt-1">Rapat persiapan outage hari ini dan yang akan datang</CardDescription>
+                        </div>
                     </CardHeader>
-                    <CardContent className="pt-6">
+                    <CardContent className="p-0">
                         {outageMeetings.today.length === 0 && outageMeetings.upcoming.length === 0 ? (
-                            <div className="text-sm text-muted-foreground py-6 text-center italic border-2 border-dashed rounded-lg">
+                            <div className="text-sm text-muted-foreground p-10 text-center italic">
+                                <div className="mx-auto w-12 h-12 rounded-full bg-muted flex items-center justify-center mb-3">
+                                    <Calendar className="h-6 w-6 opacity-30" />
+                                </div>
                                 Belum ada jadwal rapat terdekat.
                             </div>
                         ) : (
-                            <div className="grid gap-6 lg:grid-cols-2">
+                            <div className="grid divide-y lg:divide-y-0 lg:divide-x lg:grid-cols-2">
                                 {/* Hari Ini */}
-                                <div>
-                                    <div className="text-xs font-semibold text-blue-600 uppercase tracking-wider mb-4 flex items-center gap-1.5">
-                                        <Clock className="h-3.5 w-3.5" /> HARI INI
+                                <div className="p-6">
+                                    <div className="text-[11px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-widest mb-5 flex items-center gap-2">
+                                        <div className="h-1.5 w-1.5 rounded-full bg-blue-600 animate-pulse" />
+                                        HARI INI
                                     </div>
                                     {outageMeetings.today.length > 0 ? (
-                                        <div className="space-y-3">
+                                        <div className="space-y-4">
                                             {outageMeetings.today.map((mtg, i) => (
-                                                <div key={`t-${i}`} className="flex items-center gap-3 p-3 rounded-lg border bg-blue-50/50 dark:bg-blue-950/20">
-                                                    <div className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-100 dark:bg-blue-900/40">
-                                                        <span className="text-[11px] font-bold text-blue-700 dark:text-blue-300">{mtg.type}</span>
+                                                <div key={`t-${i}`} className="flex items-start gap-4 p-4 rounded-xl border border-blue-100 bg-gradient-to-r from-blue-50/50 to-white dark:border-blue-900/30 dark:from-blue-950/20 dark:to-background shadow-sm hover:shadow transition-all relative overflow-hidden group">
+                                                    <div className="absolute top-0 left-0 w-1 h-full bg-blue-500"></div>
+                                                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-400 shrink-0">
+                                                        <Clock className="h-5 w-5" />
                                                     </div>
                                                     <div className="flex-1 min-w-0">
-                                                        <p className="text-sm font-semibold truncate">{mtg.mesin}</p>
-                                                        <p className="text-xs text-muted-foreground">{mtg.jenis} · {mtg.scope}</p>
+                                                        <div className="flex items-center gap-2 mb-1.5">
+                                                            <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-blue-600 text-white shadow-sm">
+                                                                {mtg.type}
+                                                            </span>
+                                                        </div>
+                                                        <p className="text-sm font-bold text-foreground mb-0.5">{mtg.mesin}</p>
+                                                        <p className="text-xs text-muted-foreground truncate">{mtg.jenis} · {mtg.scope}</p>
                                                     </div>
                                                 </div>
                                             ))}
                                         </div>
                                     ) : (
-                                        <p className="text-sm text-muted-foreground italic">Tidak ada rapat hari ini.</p>
+                                        <div className="flex flex-col items-center justify-center py-8 text-center bg-muted/20 rounded-xl border border-dashed">
+                                            <p className="text-sm text-muted-foreground italic">Tidak ada rapat hari ini.</p>
+                                        </div>
                                     )}
                                 </div>
 
                                 {/* Mendatang */}
-                                <div>
-                                    <div className="text-xs font-semibold text-amber-600 uppercase tracking-wider mb-4 flex items-center gap-1.5">
-                                        <Calendar className="h-3.5 w-3.5" /> AKAN DATANG
+                                <div className="p-6 bg-muted/5">
+                                    <div className="text-[11px] font-bold text-amber-600 dark:text-amber-500 uppercase tracking-widest mb-5 flex items-center gap-2">
+                                        <Calendar className="h-3.5 w-3.5" />
+                                        AKAN DATANG
                                     </div>
                                     {outageMeetings.upcoming.length > 0 ? (
-                                        <div className="space-y-3">
+                                        <div className="space-y-4">
                                             {outageMeetings.upcoming.map((mtg, i) => (
-                                                <div key={`u-${i}`} className="flex items-center gap-3 p-3 rounded-lg border hover:bg-muted/30 transition-colors">
-                                                    <div className="flex h-9 w-9 items-center justify-center rounded-full bg-muted">
-                                                        <span className="text-[11px] font-medium text-muted-foreground">{mtg.type}</span>
+                                                <div key={`u-${i}`} className="flex items-start gap-4 p-4 rounded-xl border bg-card hover:bg-accent/50 hover:border-accent-foreground/10 transition-all">
+                                                    <div className="flex flex-col items-center justify-center w-12 shrink-0 py-1 border rounded-lg bg-muted/30">
+                                                        <span className="text-[10px] font-semibold text-muted-foreground uppercase">{new Date(mtg.date).toLocaleDateString('id-ID', { month: 'short' })}</span>
+                                                        <span className="text-lg font-bold text-foreground leading-none mt-0.5">{new Date(mtg.date).getDate()}</span>
                                                     </div>
-                                                    <div className="flex-1 min-w-0">
-                                                        <p className="text-sm font-medium truncate">{mtg.mesin}</p>
-                                                        <p className="text-xs text-muted-foreground">{mtg.jenis} · {mtg.scope}</p>
+                                                    <div className="flex-1 min-w-0 pt-0.5">
+                                                        <div className="flex items-center gap-2 mb-1">
+                                                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold border bg-amber-50/50 text-amber-600 dark:bg-amber-950/30 dark:text-amber-400 border-amber-200 dark:border-amber-900/50">
+                                                                {mtg.type}
+                                                            </span>
+                                                        </div>
+                                                        <p className="text-sm font-bold text-foreground truncate">{mtg.mesin}</p>
+                                                        <p className="text-xs text-muted-foreground truncate mt-0.5">{mtg.jenis} · {mtg.scope}</p>
                                                     </div>
-                                                    <span className="text-xs font-medium text-muted-foreground shrink-0">
-                                                        {new Date(mtg.date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
-                                                    </span>
                                                 </div>
                                             ))}
                                         </div>
                                     ) : (
-                                        <p className="text-sm text-muted-foreground italic">Tidak ada rapat mendatang.</p>
+                                        <div className="flex flex-col items-center justify-center py-8 text-center bg-muted/20 rounded-xl border border-dashed">
+                                            <p className="text-sm text-muted-foreground italic">Tidak ada rapat mendatang.</p>
+                                        </div>
                                     )}
                                 </div>
                             </div>

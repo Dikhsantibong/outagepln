@@ -20,6 +20,25 @@ class DailyMeeting extends Model
                 $meeting->token = Str::random(32);
             }
         });
+
+        static::created(function (DailyMeeting $meeting) {
+            $target = env('FONNTE_TARGET_GROUP');
+            if ($target) {
+                // Convert date to readable format
+                $tanggal = \Carbon\Carbon::parse($meeting->tanggal)->isoFormat('dddd, D MMMM Y');
+                $waktuMulai = $meeting->waktu_mulai ? \Carbon\Carbon::parse($meeting->waktu_mulai)->format('H:i') : '09:00';
+                
+                $message = "*[NOTIFIKASI RAPAT BARU]*\n\n";
+                $message .= "Agenda: {$meeting->judul}\n";
+                $message .= "Tanggal: {$tanggal}\n";
+                $message .= "Waktu: {$waktuMulai} Wita\n";
+                $message .= "Lokasi: " . ($meeting->lokasi ?? 'Online') . "\n\n";
+                $message .= "*Link Zoom:*\n" . ($meeting->link_meeting ?? 'Tidak ada link') . "\n\n";
+                $message .= "Mohon kehadiran Bapak/Ibu tepat waktu.";
+
+                \App\Services\WhatsAppService::sendMessage($target, $message);
+            }
+        });
     }
 
     public function attendees()
