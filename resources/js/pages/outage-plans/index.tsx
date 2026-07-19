@@ -178,67 +178,83 @@ export default function OutagePlansIndex({ outagePlans, units = [], filters }: {
                     <CardContent className="p-0 overflow-x-auto">
                         <Table className="whitespace-nowrap">
                                 <TableHeader>
-                                    <TableRow className="bg-muted/50">
-                                        <TableHead className="text-center font-bold border-r last:border-r-0 px-2">No</TableHead>
-                                        <TableHead className="font-bold text-center border-r last:border-r-0 px-2">Mesin</TableHead>
-                                        <TableHead className="font-bold text-center border-r last:border-r-0 px-2">Scope</TableHead>
-                                        <TableHead className="font-bold text-center border-r last:border-r-0 px-2">Jenis</TableHead>
-                                        <TableHead className="font-bold text-center border-r last:border-r-0 px-2">Durasi</TableHead>
-                                        <TableHead className="font-bold text-center border-r last:border-r-0 px-2">Mulai</TableHead>
-                                        <TableHead className="font-bold text-center border-r last:border-r-0 px-2">Selesai</TableHead>
-                                        <TableHead className="font-bold text-center border-r last:border-r-0 px-2">Progres</TableHead>
-                                        <TableHead className="font-bold text-center border-r last:border-r-0 px-2">R2</TableHead>
-                                        <TableHead className="font-bold text-center border-r last:border-r-0 px-2">R3</TableHead>
-                                        <TableHead className="font-bold text-center border-r last:border-r-0 px-2">P1</TableHead>
-                                        <TableHead className="font-bold text-center border-r last:border-r-0 px-2">P2</TableHead>
-                                        <TableHead className="font-bold text-center border-r last:border-r-0 px-2">P3</TableHead>
-                                        <TableHead className="font-bold text-center border-r last:border-r-0 px-2">Ket</TableHead>
-                                        {!isTamu && <TableHead className="text-center font-bold border-r last:border-r-0 px-2">Aksi</TableHead>}
+                                    <TableRow className="bg-muted/30 border-y">
+                                        <TableHead className="text-center font-bold px-4 w-12">No</TableHead>
+                                        <TableHead className="font-bold px-4 min-w-[200px]">Mesin</TableHead>
+                                        <TableHead className="font-bold text-center px-4">Scope</TableHead>
+                                        <TableHead className="font-bold text-center px-4">Jenis</TableHead>
+                                        <TableHead className="font-bold text-center px-4">Durasi</TableHead>
+                                        <TableHead className="font-bold text-center px-4">Mulai</TableHead>
+                                        <TableHead className="font-bold text-center px-4">Selesai</TableHead>
+                                        <TableHead className="font-bold text-center px-4 w-24">Progres</TableHead>
+                                        <TableHead className="font-bold text-center px-4">R2</TableHead>
+                                        <TableHead className="font-bold text-center px-4">R3</TableHead>
+                                        <TableHead className="font-bold text-center px-4">P1</TableHead>
+                                        <TableHead className="font-bold text-center px-4">P2</TableHead>
+                                        <TableHead className="font-bold text-center px-4">P3</TableHead>
+                                        <TableHead className="font-bold text-center px-4">Ket</TableHead>
+                                        {!isTamu && <TableHead className="text-center font-bold px-4">Aksi</TableHead>}
                                     </TableRow>
                                 </TableHeader>
                             <TableBody>
                                 {filteredOutagePlans.length > 0 ? (
                                     filteredOutagePlans.map((plan: any, idx: number) => (
-                                        <TableRow key={plan.id} className="hover:bg-muted/30">
-                                            <TableCell className="text-center border-r last:border-r-0 font-mono text-xs text-muted-foreground px-2">{idx + 1}</TableCell>
-                                            <TableCell className="font-medium border-r last:border-r-0 px-2 text-xs">{plan.mesin_pembangkit}</TableCell>
-                                            <TableCell className="border-r last:border-r-0 text-center text-xs px-2 uppercase">{plan.scope}</TableCell>
-                                            <TableCell className="uppercase text-xs font-semibold border-r last:border-r-0 text-center px-2">{plan.jenis_pembangkit}</TableCell>
-                                            <TableCell className="border-r last:border-r-0 text-center px-2">
-                                                <div className="flex items-center justify-center gap-1 text-xs">
-                                                    <Clock className="h-3 w-3 text-muted-foreground" />
+                                        <TableRow key={plan.id} className="hover:bg-muted/30 group">
+                                            <TableCell className="text-center font-mono text-xs text-muted-foreground px-4">{idx + 1}</TableCell>
+                                            <TableCell className="font-medium px-4 text-xs">{plan.mesin_pembangkit}</TableCell>
+                                            <TableCell className="text-center text-[11px] font-semibold text-muted-foreground px-4 uppercase">{plan.scope}</TableCell>
+                                            <TableCell className="text-center px-4">
+                                                <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-secondary text-secondary-foreground uppercase">
+                                                    {plan.jenis_pembangkit}
+                                                </span>
+                                            </TableCell>
+                                            <TableCell className="text-center px-4">
+                                                <div className="flex items-center justify-center gap-1.5 text-xs font-medium">
+                                                    <Clock className="h-3.5 w-3.5 text-muted-foreground" />
                                                     {plan.durasi}
                                                 </div>
                                             </TableCell>
-                                            <TableCell className="border-r last:border-r-0 text-center text-xs px-2">{plan.start_date}</TableCell>
-                                            <TableCell className="border-r last:border-r-0 text-center text-xs px-2">{plan.selesai}</TableCell>
-                                            <TableCell className="border-r last:border-r-0 text-center text-xs font-medium px-2">
-                                                {plan.progress}
+                                            <TableCell className="text-center font-mono text-[11px] text-muted-foreground px-4">{plan.start_date || '-'}</TableCell>
+                                            <TableCell className="text-center font-mono text-[11px] text-muted-foreground px-4">{plan.selesai || '-'}</TableCell>
+                                            <TableCell className="text-center px-4">
+                                                <div className="flex flex-col gap-1.5">
+                                                    <span className="text-[11px] font-bold leading-none">{plan.progress}%</span>
+                                                    <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden">
+                                                        <div 
+                                                            className={`h-full rounded-full ${Number(plan.progress) >= 100 ? 'bg-emerald-500' : 'bg-blue-500'}`} 
+                                                            style={{ width: `${Math.min(100, Math.max(0, Number(plan.progress) || 0))}%` }} 
+                                                        />
+                                                    </div>
+                                                </div>
                                             </TableCell>
-                                            <TableCell className="border-r last:border-r-0 text-center text-xs px-2">{plan.rapat_r2 || '-'}</TableCell>
-                                            <TableCell className="border-r last:border-r-0 text-center text-xs px-2">{plan.rapat_r3 || '-'}</TableCell>
-                                            <TableCell className="border-r last:border-r-0 text-center text-xs px-2">{plan.rapat_p1 || '-'}</TableCell>
-                                            <TableCell className="border-r last:border-r-0 text-center text-xs px-2">{plan.rapat_p2 || '-'}</TableCell>
-                                            <TableCell className="border-r last:border-r-0 text-center text-xs px-2">{plan.rapat_p3 || '-'}</TableCell>
-                                            <TableCell className="border-r last:border-r-0 text-center text-xs px-2">{plan.ket}</TableCell>
+                                            <TableCell className="text-center font-mono text-[11px] text-muted-foreground px-4">{plan.rapat_r2 || '-'}</TableCell>
+                                            <TableCell className="text-center font-mono text-[11px] text-muted-foreground px-4">{plan.rapat_r3 || '-'}</TableCell>
+                                            <TableCell className="text-center font-mono text-[11px] text-muted-foreground px-4">{plan.rapat_p1 || '-'}</TableCell>
+                                            <TableCell className="text-center font-mono text-[11px] text-muted-foreground px-4">{plan.rapat_p2 || '-'}</TableCell>
+                                            <TableCell className="text-center font-mono text-[11px] text-muted-foreground px-4">{plan.rapat_p3 || '-'}</TableCell>
+                                            <TableCell className="text-center px-4">
+                                                <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase ${plan.ket === 'CLOSE' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400'}`}>
+                                                    {plan.ket || 'OPEN'}
+                                                </span>
+                                            </TableCell>
                                             {!isTamu && (
-                                                <TableCell className="text-center border-r last:border-r-0 px-2">
-                                                    <div className="flex items-center justify-center gap-1">
+                                                <TableCell className="text-center px-4">
+                                                    <div className="flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                                         <Button 
                                                             variant="ghost" 
                                                             size="icon"
-                                                            className="h-6 w-6 text-primary hover:text-primary hover:bg-primary/10"
+                                                            className="h-7 w-7 text-primary hover:bg-primary/10"
                                                             onClick={() => openEditDialog(plan)}
                                                         >
-                                                            <Pencil className="h-3 w-3" />
+                                                            <Pencil className="h-3.5 w-3.5" />
                                                         </Button>
                                                         <Button 
                                                             variant="ghost" 
                                                             size="icon"
-                                                            className="h-6 w-6 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                                            className="h-7 w-7 text-destructive hover:bg-destructive/10"
                                                             onClick={() => handleDelete(plan.id)}
                                                         >
-                                                            <Trash2 className="h-3 w-3" />
+                                                            <Trash2 className="h-3.5 w-3.5" />
                                                         </Button>
                                                     </div>
                                                 </TableCell>
