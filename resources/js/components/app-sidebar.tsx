@@ -70,7 +70,7 @@ export function AppSidebar() {
             </SidebarHeader>
 
             <SidebarContent>
-                <div className="px-4 py-6">
+                <div className="px-4 py-6 group-data-[collapsible=icon]:hidden">
                     <h2 className="text-xs font-bold uppercase tracking-[0.2em] text-primary/70">
                         Application
                     </h2>

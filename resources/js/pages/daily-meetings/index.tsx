@@ -24,17 +24,9 @@ type Meeting = {
 export default function DailyMeetingsIndex({ meetings }: { meetings: Meeting[] }) {
     const { auth } = usePage<any>().props;
     const isTamu = auth?.user?.role === 'tamu';
-    const [showForm, setShowForm] = useState(false);
     const [filterDate, setFilterDate] = useState<string>('');
     const [currentPage, setCurrentPage] = useState(1);
     const itemsPerPage = 6;
-
-    const { data, setData, post, processing, errors, reset } = useForm({
-        judul: '',
-        tanggal: new Date().toISOString().split('T')[0],
-        waktu_mulai: new Date().toTimeString().slice(0, 5),
-        lokasi: '',
-    });
 
     const sortedMeetings = [...meetings].sort((a, b) => {
         const getPriority = (status: string) => {
@@ -77,16 +69,6 @@ export default function DailyMeetingsIndex({ meetings }: { meetings: Meeting[] }
     useEffect(() => {
         setCurrentPage(1);
     }, [filterDate]);
-
-    const submit: FormEventHandler = (e) => {
-        e.preventDefault();
-        post('/daily-meetings', {
-            onSuccess: () => {
-                reset();
-                setShowForm(false);
-            },
-        });
-    };
 
     const handleDelete = (id: number) => {
         if (confirm('Apakah Anda yakin ingin menghapus meeting ini?')) {
@@ -153,76 +135,8 @@ export default function DailyMeetingsIndex({ meetings }: { meetings: Meeting[] }
                                 </Button>
                             )}
                         </div>
-                        {!isTamu && (
-                            <Button onClick={() => setShowForm(!showForm)} className="gap-2">
-                                <Plus className="h-4 w-4" />
-                                Mulai Meeting Baru
-                            </Button>
-                        )}
                     </div>
                 </div>
-
-                {/* Create Form */}
-                {showForm && (
-                    <Card className="border-primary/20 shadow-lg shadow-primary/5 animate-in fade-in slide-in-from-top-4 duration-300">
-                        <CardHeader>
-                            <CardTitle>Buat Meeting Baru</CardTitle>
-                            <CardDescription>Lengkapi detail untuk memulai sesi rapat baru</CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                            <form onSubmit={submit} className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                                <div className="space-y-2">
-                                    <Label htmlFor="judul">Judul Meeting</Label>
-                                    <Input
-                                        id="judul"
-                                        value={data.judul}
-                                        onChange={(e) => setData('judul', e.target.value)}
-                                        placeholder="Daily Standup..."
-                                        required
-                                    />
-                                    {errors.judul && <p className="text-xs text-destructive">{errors.judul}</p>}
-                                </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="tanggal">Tanggal</Label>
-                                    <Input
-                                        id="tanggal"
-                                        type="date"
-                                        value={data.tanggal}
-                                        onChange={(e) => setData('tanggal', e.target.value)}
-                                        required
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="waktu_mulai">Waktu Mulai</Label>
-                                    <Input
-                                        id="waktu_mulai"
-                                        type="time"
-                                        value={data.waktu_mulai}
-                                        onChange={(e) => setData('waktu_mulai', e.target.value)}
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="lokasi">Lokasi</Label>
-                                    <Input
-                                        id="lokasi"
-                                        value={data.lokasi}
-                                        onChange={(e) => setData('lokasi', e.target.value)}
-                                        placeholder="Ruang Meeting Utama"
-                                    />
-                                </div>
-                                <div className="md:col-span-4 flex justify-end gap-3 pt-2">
-                                    <Button type="button" variant="ghost" onClick={() => setShowForm(false)}>
-                                        Batal
-                                    </Button>
-                                    <Button type="submit" disabled={processing} className="gap-2">
-                                        <QrCode className="h-4 w-4" />
-                                        Mulai & Generate QR Code
-                                    </Button>
-                                </div>
-                            </form>
-                        </CardContent>
-                    </Card>
-                )}
 
                 {/* Meeting List */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
