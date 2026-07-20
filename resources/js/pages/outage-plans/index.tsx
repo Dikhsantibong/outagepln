@@ -180,6 +180,7 @@ export default function OutagePlansIndex({ outagePlans, units = [], filters }: {
                                 <TableHeader>
                                     <TableRow className="bg-muted/30 border-y">
                                         <TableHead className="text-center font-bold px-4 w-12">No</TableHead>
+                                        {!isTamu && <TableHead className="text-center font-bold px-4 w-20">Aksi</TableHead>}
                                         <TableHead className="font-bold px-4 min-w-[200px]">Mesin</TableHead>
                                         <TableHead className="font-bold text-center px-4">Scope</TableHead>
                                         <TableHead className="font-bold text-center px-4">Jenis</TableHead>
@@ -193,7 +194,6 @@ export default function OutagePlansIndex({ outagePlans, units = [], filters }: {
                                         <TableHead className="font-bold text-center px-4">P2</TableHead>
                                         <TableHead className="font-bold text-center px-4">P3</TableHead>
                                         <TableHead className="font-bold text-center px-4">Ket</TableHead>
-                                        {!isTamu && <TableHead className="text-center font-bold px-4">Aksi</TableHead>}
                                     </TableRow>
                                 </TableHeader>
                             <TableBody>
@@ -201,6 +201,28 @@ export default function OutagePlansIndex({ outagePlans, units = [], filters }: {
                                     filteredOutagePlans.map((plan: any, idx: number) => (
                                         <TableRow key={plan.id} className="hover:bg-muted/30 group">
                                             <TableCell className="text-center font-mono text-xs text-muted-foreground px-4">{idx + 1}</TableCell>
+                                            {!isTamu && (
+                                                <TableCell className="text-center px-4">
+                                                    <div className="flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                        <Button 
+                                                            variant="ghost" 
+                                                            size="icon"
+                                                            className="h-7 w-7 text-primary hover:bg-primary/10"
+                                                            onClick={() => openEditDialog(plan)}
+                                                        >
+                                                            <Pencil className="h-3.5 w-3.5" />
+                                                        </Button>
+                                                        <Button 
+                                                            variant="ghost" 
+                                                            size="icon"
+                                                            className="h-7 w-7 text-destructive hover:bg-destructive/10"
+                                                            onClick={() => handleDelete(plan.id)}
+                                                        >
+                                                            <Trash2 className="h-3.5 w-3.5" />
+                                                        </Button>
+                                                    </div>
+                                                </TableCell>
+                                            )}
                                             <TableCell className="font-medium px-4 text-xs">{plan.mesin_pembangkit}</TableCell>
                                             <TableCell className="text-center text-[11px] font-semibold text-muted-foreground px-4 uppercase">{plan.scope}</TableCell>
                                             <TableCell className="text-center px-4">
@@ -237,28 +259,6 @@ export default function OutagePlansIndex({ outagePlans, units = [], filters }: {
                                                     {plan.ket || 'OPEN'}
                                                 </span>
                                             </TableCell>
-                                            {!isTamu && (
-                                                <TableCell className="text-center px-4">
-                                                    <div className="flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                        <Button 
-                                                            variant="ghost" 
-                                                            size="icon"
-                                                            className="h-7 w-7 text-primary hover:bg-primary/10"
-                                                            onClick={() => openEditDialog(plan)}
-                                                        >
-                                                            <Pencil className="h-3.5 w-3.5" />
-                                                        </Button>
-                                                        <Button 
-                                                            variant="ghost" 
-                                                            size="icon"
-                                                            className="h-7 w-7 text-destructive hover:bg-destructive/10"
-                                                            onClick={() => handleDelete(plan.id)}
-                                                        >
-                                                            <Trash2 className="h-3.5 w-3.5" />
-                                                        </Button>
-                                                    </div>
-                                                </TableCell>
-                                            )}
                                         </TableRow>
                                     ))
                                 ) : (

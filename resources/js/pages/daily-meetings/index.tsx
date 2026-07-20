@@ -144,11 +144,11 @@ export default function DailyMeetingsIndex({ meetings }: { meetings: Meeting[] }
                         paginatedMeetings.map((meeting) => (
                             <Card
                                 key={meeting.id}
-                                className="group transition-all duration-300 hover:shadow-md hover:border-primary/50 overflow-hidden border-sidebar-border/60 bg-card"
+                                className="group transition-all duration-300 hover:shadow-md hover:border-primary/50 overflow-hidden border-sidebar-border/60 bg-card flex flex-col"
                             >
-                                <div className="p-4 space-y-3">
+                                <div className="p-4 flex flex-col h-full gap-3">
                                     <div className="flex items-start justify-between gap-3">
-                                        <h3 className="text-sm font-bold leading-tight line-clamp-2 group-hover:text-primary transition-colors flex-1 min-h-[2.5rem]">
+                                        <h3 className="text-sm font-bold leading-tight group-hover:text-primary transition-colors flex-1">
                                             {meeting.judul}
                                         </h3>
                                         <div className="shrink-0 scale-90 origin-top-right">
@@ -169,7 +169,7 @@ export default function DailyMeetingsIndex({ meetings }: { meetings: Meeting[] }
                                         </div>
                                     </div>
 
-                                    <div className="flex gap-2 pt-3 border-t border-sidebar-border/30">
+                                    <div className="flex gap-2 pt-3 border-t border-sidebar-border/30 mt-auto">
                                         <Button
                                             size="sm"
                                             variant="secondary"
