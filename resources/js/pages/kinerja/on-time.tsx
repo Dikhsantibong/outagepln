@@ -103,7 +103,8 @@ export default function OnTime({ outagePlans }: { outagePlans: OutagePlan[] }) {
 
     const submit = (e: React.FormEvent) => {
         e.preventDefault();
-        post(route('kinerja.on-time.store'), {
+        post('/kinerja/on-time', {
+            preserveScroll: true,
             onSuccess: () => {
                 toast.success('Data On Time aktual berhasil disimpan');
             },

@@ -97,7 +97,8 @@ export default function OnCost({ outagePlans }: { outagePlans: OutagePlan[] }) {
 
     const submit = (e: React.FormEvent) => {
         e.preventDefault();
-        post(route('kinerja.on-cost.store'), {
+        post('/kinerja/on-cost', {
+            preserveScroll: true,
             onSuccess: () => {
                 toast.success('Data On Cost berhasil disimpan');
             },

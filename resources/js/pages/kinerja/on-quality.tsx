@@ -117,7 +117,8 @@ export default function OnQuality({ outagePlans }: { outagePlans: OutagePlan[] }
 
     const submitSebelum = (e: React.FormEvent) => {
         e.preventDefault();
-        postSebelum(route('kinerja.on-quality.store'), {
+        postSebelum('/kinerja/on-quality', {
+            preserveScroll: true,
             onSuccess: () => {
                 toast.success('Data Sebelum Overhaul berhasil disimpan');
             },
@@ -129,7 +130,8 @@ export default function OnQuality({ outagePlans }: { outagePlans: OutagePlan[] }
 
     const submitSesudah = (e: React.FormEvent) => {
         e.preventDefault();
-        postSesudah(route('kinerja.on-quality.store'), {
+        postSesudah('/kinerja/on-quality', {
+            preserveScroll: true,
             onSuccess: () => {
                 toast.success('Data Sesudah Overhaul berhasil disimpan');
             },
