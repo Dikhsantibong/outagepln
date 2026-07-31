@@ -6,6 +6,13 @@ use Illuminate\Http\Request;
 
 use Inertia\Inertia;
 use App\Models\OutagePlan;
+use App\Support\SCurveChartRenderer;
+use Barryvdh\DomPDF\Facade\Pdf;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Style\Alignment;
+use PhpOffice\PhpSpreadsheet\Style\Fill;
+use PhpOffice\PhpSpreadsheet\Worksheet\MemoryDrawing;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
 class OutagePlanController extends Controller
 {
@@ -21,14 +28,183 @@ class OutagePlanController extends Controller
             });
         }
 
-        $outagePlans = $query->latest()->paginate(10)->withQueryString();
+        $outagePlans = $query->with('dailyProgresses')->latest()->paginate(10)->withQueryString();
         $units = \App\Models\Unit::with('mesins')->get();
-        
+
         return Inertia::render('outage-plans/index', [
             'outagePlans' => $outagePlans,
             'units' => $units,
             'filters' => $request->only(['search']),
         ]);
+    }
+
+    public function show(OutagePlan $outagePlan)
+    {
+        $outagePlan->load('dailyProgresses');
+        $summary = $this->summarize($outagePlan);
+
+        return Inertia::render('outage-plans/show', [
+            'outagePlan' => $outagePlan,
+            ...$summary,
+        ]);
+    }
+
+    /**
+     * Compute the total duration and overall plan/actual progress shared by
+     * the detail page and the PDF/Excel exports.
+     */
+    private function summarize(OutagePlan $outagePlan): array
+    {
+        $totalHari = null;
+        if ($outagePlan->start_date && $outagePlan->selesai) {
+            $totalHari = \Carbon\Carbon::parse($outagePlan->start_date)
+                ->diffInDays(\Carbon\Carbon::parse($outagePlan->selesai)) + 1;
+        }
+
+        // Progress is cumulative, so the highest recorded value is the current progress.
+        $overallPlan = $outagePlan->dailyProgresses->max('plan_progress');
+        $overallActual = $outagePlan->dailyProgresses->max('actual_progress');
+
+        return [
+            'totalHari' => $totalHari,
+            'overallPlan' => $overallPlan ?? $outagePlan->progress ?? 0,
+            'overallActual' => $overallActual ?? $outagePlan->progress ?? 0,
+        ];
+    }
+
+    public function exportPdf(OutagePlan $outagePlan)
+    {
+        $outagePlan->load('dailyProgresses');
+        $summary = $this->summarize($outagePlan);
+
+        $pdf = Pdf::loadView('exports.outage-plan', [
+            'outagePlan' => $outagePlan,
+            'chartImage' => SCurveChartRenderer::renderDataUri($outagePlan),
+            'logo' => $this->logoDataUri(),
+            ...$summary,
+        ])->setPaper('a4', 'portrait');
+
+        return $pdf->download($this->exportFilename($outagePlan, 'pdf'));
+    }
+
+    private function logoDataUri(): ?string
+    {
+        $path = public_path('sidebar-logo.png');
+
+        if (! is_file($path)) {
+            return null;
+        }
+
+        return 'data:image/png;base64,' . base64_encode(file_get_contents($path));
+    }
+
+    public function exportExcel(OutagePlan $outagePlan)
+    {
+        $outagePlan->load('dailyProgresses');
+        $summary = $this->summarize($outagePlan);
+
+        $spreadsheet = new Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+        $sheet->setTitle('Progress Harian');
+
+        $headerFill = [
+            'fillType' => Fill::FILL_SOLID,
+            'startColor' => ['rgb' => 'F1F5F9'],
+        ];
+
+        $sheet->setCellValue('A1', 'LAPORAN PERENCANAAN & REALISASI OUTAGE');
+        $sheet->mergeCells('A1:F1');
+        $sheet->getStyle('A1')->getFont()->setBold(true)->setSize(14);
+
+        $sheet->setCellValue('A2', $outagePlan->mesin_pembangkit);
+        $sheet->mergeCells('A2:F2');
+        $sheet->getStyle('A2')->getFont()->setItalic(true)->setColor(new \PhpOffice\PhpSpreadsheet\Style\Color('64748B'));
+
+        $infoRows = [
+            ['Mesin Pembangkit', $outagePlan->mesin_pembangkit ?? '-', 'Scope', $outagePlan->scope ?? '-'],
+            ['Jenis Pembangkit', $outagePlan->jenis_pembangkit ?? '-', 'Status', $outagePlan->ket ?? 'OPEN'],
+            ['Waktu Mulai', $outagePlan->start_date ? \Carbon\Carbon::parse($outagePlan->start_date)->format('d-m-Y') : '-', 'Waktu Selesai', $outagePlan->selesai ? \Carbon\Carbon::parse($outagePlan->selesai)->format('d-m-Y') : '-'],
+            ['Total Hari', $summary['totalHari'] ? $summary['totalHari'] . ' Hari' : '-', 'Progress Keseluruhan', 'Plan ' . number_format($summary['overallPlan'], 0) . '% / Actual ' . number_format($summary['overallActual'], 0) . '%'],
+        ];
+
+        $row = 4;
+        foreach ($infoRows as $info) {
+            $sheet->setCellValue("A{$row}", $info[0]);
+            $sheet->setCellValue("B{$row}", $info[1]);
+            $sheet->setCellValue("D{$row}", $info[2]);
+            $sheet->setCellValue("E{$row}", $info[3]);
+            $sheet->getStyle("A{$row}")->getFont()->setBold(true);
+            $sheet->getStyle("D{$row}")->getFont()->setBold(true);
+            $row++;
+        }
+
+        $row++;
+        $sheet->setCellValue("A{$row}", 'Kurva S - Plan vs Actual');
+        $sheet->getStyle("A{$row}")->getFont()->setBold(true)->setSize(11);
+        $row++;
+
+        $chartImage = SCurveChartRenderer::buildImage($outagePlan, 640, 260);
+        if ($chartImage !== null) {
+            $drawing = new MemoryDrawing();
+            $drawing->setName('Kurva S');
+            $drawing->setDescription('Kurva S - Plan vs Actual');
+            $drawing->setImageResource($chartImage);
+            $drawing->setRenderingFunction(MemoryDrawing::RENDERING_PNG);
+            $drawing->setMimeType(MemoryDrawing::MIMETYPE_PNG);
+            $drawing->setCoordinates("A{$row}");
+            $drawing->setWorksheet($sheet);
+            $row += 14; // reserve roughly the chart's rendered height in rows
+        }
+
+        $row++;
+        $headerRow = $row;
+        $headers = ['Day', 'Tanggal', 'Plan (%)', 'Actual (%)', 'Status', 'Keterangan'];
+        foreach ($headers as $i => $label) {
+            $col = chr(65 + $i);
+            $sheet->setCellValue("{$col}{$headerRow}", $label);
+        }
+        $sheet->getStyle("A{$headerRow}:F{$headerRow}")->getFont()->setBold(true);
+        $sheet->getStyle("A{$headerRow}:F{$headerRow}")->getFill()->applyFromArray($headerFill);
+        $sheet->getStyle("A{$headerRow}:F{$headerRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+
+        $row = $headerRow + 1;
+        foreach ($outagePlan->dailyProgresses as $idx => $dp) {
+            $sheet->setCellValue("A{$row}", 'Day ' . ($idx + 1));
+            $sheet->setCellValue("B{$row}", \Carbon\Carbon::parse($dp->tanggal)->format('d-m-Y'));
+            $sheet->setCellValue("C{$row}", (float) $dp->plan_progress);
+            $sheet->setCellValue("D{$row}", (float) $dp->actual_progress);
+            $sheet->setCellValue("E{$row}", $dp->status);
+            $sheet->setCellValue("F{$row}", $dp->keterangan ?: '-');
+            $sheet->getStyle("A{$row}:E{$row}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+            $row++;
+        }
+
+        $lastRow = $row - 1;
+        if ($lastRow >= $headerRow) {
+            $sheet->getStyle("A{$headerRow}:F{$lastRow}")
+                ->getBorders()->getAllBorders()
+                ->setBorderStyle(\PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN);
+        }
+
+        foreach (range('A', 'F') as $col) {
+            $sheet->getColumnDimension($col)->setAutoSize(true);
+        }
+
+        $writer = new Xlsx($spreadsheet);
+        $filename = $this->exportFilename($outagePlan, 'xlsx');
+
+        return response()->streamDownload(function () use ($writer) {
+            $writer->save('php://output');
+        }, $filename, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        ]);
+    }
+
+    private function exportFilename(OutagePlan $outagePlan, string $extension): string
+    {
+        $slug = \Illuminate\Support\Str::slug($outagePlan->mesin_pembangkit ?: 'outage-plan');
+
+        return "Outage-{$slug}-{$outagePlan->id}.{$extension}";
     }
 
     public function store(Request $request)
@@ -70,9 +246,41 @@ class OutagePlanController extends Controller
             'rapat_p2' => 'nullable|string',
             'rapat_p3' => 'nullable|string',
             'ket' => 'nullable|string|max:50',
+            'daily_progress' => 'nullable|array',
+            'daily_progress.*.tanggal' => 'required_with:daily_progress|date',
+            'daily_progress.*.plan_progress' => 'nullable|numeric|min:0|max:100',
+            'daily_progress.*.actual_progress' => 'nullable|numeric|min:0|max:100',
+            'daily_progress.*.keterangan' => 'nullable|string|max:255',
         ]);
 
+        $dailyProgress = $validated['daily_progress'] ?? null;
+        unset($validated['daily_progress']);
+
         $outagePlan->update($validated);
+
+        if ($dailyProgress !== null && count($dailyProgress) > 0) {
+            $tanggalList = collect($dailyProgress)->pluck('tanggal')->all();
+            $outagePlan->dailyProgresses()->whereNotIn('tanggal', $tanggalList)->delete();
+
+            foreach ($dailyProgress as $row) {
+                $outagePlan->dailyProgresses()->updateOrCreate(
+                    ['tanggal' => $row['tanggal']],
+                    [
+                        'plan_progress' => $row['plan_progress'] ?? 0,
+                        'actual_progress' => $row['actual_progress'] ?? 0,
+                        'keterangan' => $row['keterangan'] ?? null,
+                    ]
+                );
+            }
+
+            // Progress is cumulative, so the highest recorded actual value is the
+            // current overall progress. Keep it authoritative on the plan itself
+            // so every listing/dashboard that reads `progress` stays in sync.
+            $overallActual = $outagePlan->dailyProgresses()->max('actual_progress');
+            if ($overallActual !== null) {
+                $outagePlan->update(['progress' => $overallActual]);
+            }
+        }
 
         return redirect()->back()->with('success', 'Data berhasil diperbarui.');
     }

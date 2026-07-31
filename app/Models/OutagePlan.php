@@ -27,6 +27,11 @@ class OutagePlan extends Model
         return $this->hasMany(DailyMeeting::class);
     }
 
+    public function dailyProgresses()
+    {
+        return $this->hasMany(OutagePlanProgress::class)->orderBy('tanggal');
+    }
+
     public function kinerjaQuality()
     {
         return $this->hasOne(KinerjaQuality::class);

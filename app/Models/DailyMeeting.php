@@ -51,6 +51,11 @@ class DailyMeeting extends Model
         return $this->hasOne(MeetingMinute::class, 'meeting_id');
     }
 
+    public function findings()
+    {
+        return $this->hasMany(MeetingFinding::class, 'meeting_id');
+    }
+
     public function outagePlan()
     {
         return $this->belongsTo(OutagePlan::class);

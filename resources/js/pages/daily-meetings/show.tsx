@@ -13,8 +13,24 @@ import {
     TableRow,
 } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
+import { Input } from '@/components/ui/input';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Users, FileText, QrCode, CheckCircle2, Clock, MapPin, Calendar, Printer, Info, Video } from 'lucide-react';
+import {
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+    DialogDescription,
+    DialogFooter,
+} from '@/components/ui/dialog';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
+import { Users, FileText, QrCode, CheckCircle2, Clock, MapPin, Calendar, Printer, Info, Video, ClipboardList, Plus, Pencil, Trash2, FileSpreadsheet, ImageOff } from 'lucide-react';
 
 type Attendee = {
     id: number;
@@ -46,19 +62,105 @@ type Meeting = {
     link_meeting?: string | null;
 };
 
+type Finding = {
+    id: number;
+    tanggal: string | null;
+    uraian: string;
+    part_number: string | null;
+    qty: number | null;
+    satuan: string | null;
+    foto: string | null;
+    keterangan: string | null;
+    tindak_lanjut: string | null;
+    target: string | null;
+};
+
+type FindingInfo = {
+    unit: string;
+    jenis_inspeksi: string;
+};
+
+const emptyFinding = {
+    tanggal: '',
+    uraian: '',
+    part_number: '',
+    qty: '',
+    satuan: '',
+    keterangan: '',
+    tindak_lanjut: '',
+    target: 'Open',
+    foto: null as File | null,
+};
+
 export default function DailyMeetingShow({
     meeting,
     attendees: initialAttendees,
     minutes,
+    findings = [],
+    findingInfo,
 }: {
     meeting: Meeting;
     attendees: Attendee[];
     minutes: Minutes;
+    findings?: Finding[];
+    findingInfo?: FindingInfo;
 }) {
     const { auth } = usePage<any>().props;
     const isTamu = auth?.user?.role === 'tamu';
-    const [activeTab, setActiveTab] = useState<'hadir' | 'notulen'>('hadir');
+    const [activeTab, setActiveTab] = useState<'hadir' | 'notulen' | 'temuan'>('hadir');
     const [attendees, setAttendees] = useState<Attendee[]>(initialAttendees);
+    const [findingDialogOpen, setFindingDialogOpen] = useState(false);
+    const [editingFinding, setEditingFinding] = useState<Finding | null>(null);
+
+    const findingForm = useForm({ ...emptyFinding });
+
+    const openAddFinding = () => {
+        setEditingFinding(null);
+        findingForm.setData({ ...emptyFinding });
+        findingForm.clearErrors();
+        setFindingDialogOpen(true);
+    };
+
+    const openEditFinding = (f: Finding) => {
+        setEditingFinding(f);
+        findingForm.setData({
+            tanggal: f.tanggal || '',
+            uraian: f.uraian || '',
+            part_number: f.part_number || '',
+            qty: f.qty?.toString() || '',
+            satuan: f.satuan || '',
+            keterangan: f.keterangan || '',
+            tindak_lanjut: f.tindak_lanjut || '',
+            target: f.target || 'Open',
+            foto: null,
+        });
+        findingForm.clearErrors();
+        setFindingDialogOpen(true);
+    };
+
+    const submitFinding: FormEventHandler = (e) => {
+        e.preventDefault();
+        const url = editingFinding
+            ? `/daily-meetings/${meeting.id}/findings/${editingFinding.id}`
+            : `/daily-meetings/${meeting.id}/findings`;
+
+        // Always POST: file uploads cannot be sent through a PUT request.
+        findingForm.post(url, {
+            forceFormData: true,
+            preserveScroll: true,
+            onSuccess: () => {
+                setFindingDialogOpen(false);
+                setEditingFinding(null);
+                findingForm.reset();
+            },
+        });
+    };
+
+    const deleteFinding = (f: Finding) => {
+        if (confirm(`Hapus temuan "${f.uraian}"?`)) {
+            router.delete(`/daily-meetings/${meeting.id}/findings/${f.id}`, { preserveScroll: true });
+        }
+    };
 
     // Poll for new attendees every 5 seconds
     useEffect(() => {
@@ -380,6 +482,7 @@ export default function DailyMeetingShow({
     const tabs = [
         { key: 'hadir' as const, label: 'Daftar Hadir', icon: Users, count: attendees.length },
         { key: 'notulen' as const, label: 'Notulen Rapat', icon: FileText },
+        { key: 'temuan' as const, label: 'Notulen Temuan', icon: ClipboardList, count: findings.length },
     ];
 
     return (
@@ -662,8 +765,290 @@ export default function DailyMeetingShow({
                             </CardContent>
                         </Card>
                     )}
+
+                    {activeTab === 'temuan' && (
+                        <Card>
+                            <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-4 gap-4">
+                                <div>
+                                    <CardTitle>Notulen Temuan</CardTitle>
+                                    <CardDescription>Daftar material temuan overhaul beserta tindak lanjutnya</CardDescription>
+                                    {findingInfo && (
+                                        <div className="mt-3 flex flex-wrap gap-x-8 gap-y-1 text-xs">
+                                            <div>
+                                                <span className="font-semibold text-muted-foreground">UNIT</span>
+                                                <span className="mx-2 text-muted-foreground">:</span>
+                                                <span className="font-medium text-red-600 dark:text-red-400">{findingInfo.unit}</span>
+                                            </div>
+                                            <div>
+                                                <span className="font-semibold text-muted-foreground">JENIS INSPEKSI</span>
+                                                <span className="mx-2 text-muted-foreground">:</span>
+                                                <span className="font-medium text-red-600 dark:text-red-400">{findingInfo.jenis_inspeksi}</span>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="flex flex-wrap gap-2 shrink-0">
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="gap-2 h-9"
+                                        onClick={() => window.open(`/daily-meetings/${meeting.id}/findings/export-pdf`, '_blank')}
+                                    >
+                                        <FileText className="h-4 w-4 text-red-500" />
+                                        PDF
+                                    </Button>
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="gap-2 h-9"
+                                        onClick={() => window.open(`/daily-meetings/${meeting.id}/findings/export-excel`, '_blank')}
+                                    >
+                                        <FileSpreadsheet className="h-4 w-4 text-emerald-600" />
+                                        Excel
+                                    </Button>
+                                    {!isTamu && (
+                                        <Button size="sm" className="gap-2 h-9" onClick={openAddFinding}>
+                                            <Plus className="h-4 w-4" />
+                                            Tambah Temuan
+                                        </Button>
+                                    )}
+                                </div>
+                            </CardHeader>
+                            <CardContent className="p-0 overflow-x-auto">
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow className="bg-muted/50 hover:bg-muted/50">
+                                            <TableHead className="w-12 text-center font-bold border-r">NO</TableHead>
+                                            <TableHead className="text-center font-bold border-r whitespace-nowrap">TGL</TableHead>
+                                            <TableHead className="font-bold border-r min-w-[180px]">URAIAN</TableHead>
+                                            <TableHead className="text-center font-bold border-r whitespace-nowrap">P/N</TableHead>
+                                            <TableHead className="text-center font-bold border-r">QTY</TableHead>
+                                            <TableHead className="text-center font-bold border-r">SATUAN</TableHead>
+                                            <TableHead className="text-center font-bold border-r">FOTO</TableHead>
+                                            <TableHead className="font-bold border-r min-w-[150px]">KETERANGAN</TableHead>
+                                            <TableHead className="font-bold border-r min-w-[220px]">TINDAK LANJUT</TableHead>
+                                            <TableHead className="text-center font-bold border-r">TARGET</TableHead>
+                                            {!isTamu && <TableHead className="text-center font-bold w-20">AKSI</TableHead>}
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {findings.length > 0 ? (
+                                            findings.map((f, idx) => (
+                                                <TableRow key={f.id} className="hover:bg-muted/30 group">
+                                                    <TableCell className="text-center font-mono text-xs text-muted-foreground border-r">{idx + 1}</TableCell>
+                                                    <TableCell className="text-center font-mono text-[11px] text-muted-foreground border-r whitespace-nowrap">
+                                                        {f.tanggal ? new Date(f.tanggal).toLocaleDateString('id-ID') : '-'}
+                                                    </TableCell>
+                                                    <TableCell className="text-xs font-medium border-r">{f.uraian}</TableCell>
+                                                    <TableCell className="text-center font-mono text-[11px] border-r whitespace-nowrap">{f.part_number || '-'}</TableCell>
+                                                    <TableCell className="text-center text-xs border-r">{f.qty ?? '-'}</TableCell>
+                                                    <TableCell className="text-center text-xs border-r">{f.satuan || '-'}</TableCell>
+                                                    <TableCell className="text-center border-r">
+                                                        {f.foto ? (
+                                                            <img
+                                                                src={f.foto}
+                                                                alt={f.uraian}
+                                                                className="h-16 w-24 object-cover rounded border mx-auto cursor-zoom-in"
+                                                                onClick={() => window.open(f.foto!, '_blank')}
+                                                            />
+                                                        ) : (
+                                                            <ImageOff className="h-5 w-5 mx-auto opacity-20" />
+                                                        )}
+                                                    </TableCell>
+                                                    <TableCell className="text-xs border-r">{f.keterangan || '-'}</TableCell>
+                                                    <TableCell className="text-xs border-r whitespace-pre-line">{f.tindak_lanjut || '-'}</TableCell>
+                                                    <TableCell className="text-center border-r">
+                                                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                                                            (f.target || '').toUpperCase() === 'CLOSE'
+                                                                ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400'
+                                                                : 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400'
+                                                        }`}>
+                                                            {f.target || 'Open'}
+                                                        </span>
+                                                    </TableCell>
+                                                    {!isTamu && (
+                                                        <TableCell className="text-center">
+                                                            <div className="flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                                <Button
+                                                                    variant="ghost"
+                                                                    size="icon"
+                                                                    className="h-7 w-7 text-primary hover:bg-primary/10"
+                                                                    onClick={() => openEditFinding(f)}
+                                                                >
+                                                                    <Pencil className="h-3.5 w-3.5" />
+                                                                </Button>
+                                                                <Button
+                                                                    variant="ghost"
+                                                                    size="icon"
+                                                                    className="h-7 w-7 text-destructive hover:bg-destructive/10"
+                                                                    onClick={() => deleteFinding(f)}
+                                                                >
+                                                                    <Trash2 className="h-3.5 w-3.5" />
+                                                                </Button>
+                                                            </div>
+                                                        </TableCell>
+                                                    )}
+                                                </TableRow>
+                                            ))
+                                        ) : (
+                                            <TableRow>
+                                                <TableCell colSpan={isTamu ? 10 : 11} className="h-48 text-center text-muted-foreground">
+                                                    <div className="flex flex-col items-center justify-center space-y-3">
+                                                        <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center">
+                                                            <ClipboardList className="h-6 w-6 opacity-30" />
+                                                        </div>
+                                                        <div className="space-y-1">
+                                                            <p className="font-semibold">Belum ada temuan</p>
+                                                            <p className="text-xs max-w-xs mx-auto">
+                                                                Tambahkan material temuan overhaul beserta foto dan tindak lanjutnya.
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                </TableCell>
+                                            </TableRow>
+                                        )}
+                                    </TableBody>
+                                </Table>
+                            </CardContent>
+                        </Card>
+                    )}
                 </div>
             </div>
+
+            {/* Dialog Tambah / Edit Temuan */}
+            <Dialog open={findingDialogOpen} onOpenChange={(open) => { if (!open) { setFindingDialogOpen(false); setEditingFinding(null); } }}>
+                <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+                    <DialogHeader>
+                        <DialogTitle>{editingFinding ? 'Edit Temuan' : 'Tambah Temuan'}</DialogTitle>
+                        <DialogDescription>
+                            {editingFinding
+                                ? 'Perbarui data material temuan overhaul.'
+                                : 'Input data material temuan overhaul baru.'}
+                        </DialogDescription>
+                    </DialogHeader>
+                    <form onSubmit={submitFinding} className="space-y-4">
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label htmlFor="f_tanggal">Tanggal</Label>
+                                <Input
+                                    id="f_tanggal"
+                                    type="date"
+                                    value={findingForm.data.tanggal}
+                                    onChange={(e) => findingForm.setData('tanggal', e.target.value)}
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="f_target">Target</Label>
+                                <Select value={findingForm.data.target} onValueChange={(v) => findingForm.setData('target', v)}>
+                                    <SelectTrigger id="f_target">
+                                        <SelectValue placeholder="Pilih Target" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="Open">Open</SelectItem>
+                                        <SelectItem value="Close">Close</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label htmlFor="f_uraian">Uraian</Label>
+                            <Input
+                                id="f_uraian"
+                                type="text"
+                                placeholder="cth: STUD BOLT CYLINDER HEAD NO. 7"
+                                value={findingForm.data.uraian}
+                                onChange={(e) => findingForm.setData('uraian', e.target.value)}
+                            />
+                            {findingForm.errors.uraian && <p className="text-xs text-destructive">{findingForm.errors.uraian}</p>}
+                        </div>
+
+                        <div className="grid grid-cols-3 gap-4">
+                            <div className="space-y-2">
+                                <Label htmlFor="f_pn">P/N</Label>
+                                <Input
+                                    id="f_pn"
+                                    type="text"
+                                    placeholder="1.1110-007"
+                                    value={findingForm.data.part_number}
+                                    onChange={(e) => findingForm.setData('part_number', e.target.value)}
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="f_qty">Qty</Label>
+                                <Input
+                                    id="f_qty"
+                                    type="number"
+                                    min={0}
+                                    value={findingForm.data.qty}
+                                    onChange={(e) => findingForm.setData('qty', e.target.value)}
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="f_satuan">Satuan</Label>
+                                <Input
+                                    id="f_satuan"
+                                    type="text"
+                                    placeholder="Bh"
+                                    value={findingForm.data.satuan}
+                                    onChange={(e) => findingForm.setData('satuan', e.target.value)}
+                                />
+                            </div>
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label htmlFor="f_foto">Foto</Label>
+                            <Input
+                                id="f_foto"
+                                type="file"
+                                accept="image/*"
+                                onChange={(e) => findingForm.setData('foto', e.target.files?.[0] ?? null)}
+                            />
+                            {editingFinding?.foto && !findingForm.data.foto && (
+                                <div className="flex items-center gap-2 pt-1">
+                                    <img src={editingFinding.foto} alt="Foto saat ini" className="h-14 w-20 object-cover rounded border" />
+                                    <span className="text-xs text-muted-foreground">
+                                        Foto saat ini. Pilih file baru untuk mengganti.
+                                    </span>
+                                </div>
+                            )}
+                            {findingForm.errors.foto && <p className="text-xs text-destructive">{findingForm.errors.foto}</p>}
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label htmlFor="f_ket">Keterangan</Label>
+                            <Textarea
+                                id="f_ket"
+                                placeholder="cth: Stud Bolt Patah"
+                                className="min-h-[70px] resize-none"
+                                value={findingForm.data.keterangan}
+                                onChange={(e) => findingForm.setData('keterangan', e.target.value)}
+                            />
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label htmlFor="f_tl">Tindak Lanjut</Label>
+                            <Textarea
+                                id="f_tl"
+                                placeholder={'Perlu dilakukan penggantian\nAkan menggunakan stok unit'}
+                                className="min-h-[100px] resize-none"
+                                value={findingForm.data.tindak_lanjut}
+                                onChange={(e) => findingForm.setData('tindak_lanjut', e.target.value)}
+                            />
+                            <p className="text-xs text-muted-foreground">Gunakan baris baru untuk memisahkan tiap poin.</p>
+                        </div>
+
+                        <DialogFooter className="pt-2">
+                            <Button type="button" variant="outline" onClick={() => { setFindingDialogOpen(false); setEditingFinding(null); }}>
+                                Batal
+                            </Button>
+                            <Button type="submit" disabled={findingForm.processing}>
+                                {editingFinding ? 'Simpan Perubahan' : 'Simpan Temuan'}
+                            </Button>
+                        </DialogFooter>
+                    </form>
+                </DialogContent>
+            </Dialog>
         </>
     );
 }

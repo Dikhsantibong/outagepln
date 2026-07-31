@@ -16,7 +16,9 @@ Route::get('/', [WelcomeController::class, 'index'])->name('home');
 
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('dashboard', [DashboardController::class, 'index'])->name('dashboard');
-    Route::resource('outage-plans', OutagePlanController::class)->only(['index', 'store', 'update', 'destroy']);
+    Route::resource('outage-plans', OutagePlanController::class)->only(['index', 'show', 'store', 'update', 'destroy']);
+    Route::get('outage-plans/{outage_plan}/export-pdf', [OutagePlanController::class, 'exportPdf'])->name('outage-plans.export-pdf');
+    Route::get('outage-plans/{outage_plan}/export-excel', [OutagePlanController::class, 'exportExcel'])->name('outage-plans.export-excel');
     Route::get('team-outage', function() {
         return inertia('team-outage');
     })->name('team-outage');
@@ -27,6 +29,13 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('daily-meetings/{dailyMeeting}/minutes', [DailyMeetingController::class, 'storeMinutes'])->name('daily-meetings.minutes');
     Route::post('daily-meetings/{dailyMeeting}/complete', [DailyMeetingController::class, 'complete'])->name('daily-meetings.complete');
     Route::get('daily-meetings/{dailyMeeting}/attendees-json', [DailyMeetingController::class, 'attendeesJson'])->name('daily-meetings.attendees-json');
+
+    // Notulen Temuan (material temuan overhaul)
+    Route::post('daily-meetings/{dailyMeeting}/findings', [DailyMeetingController::class, 'storeFinding'])->name('daily-meetings.findings.store');
+    Route::post('daily-meetings/{dailyMeeting}/findings/{finding}', [DailyMeetingController::class, 'updateFinding'])->name('daily-meetings.findings.update');
+    Route::delete('daily-meetings/{dailyMeeting}/findings/{finding}', [DailyMeetingController::class, 'destroyFinding'])->name('daily-meetings.findings.destroy');
+    Route::get('daily-meetings/{dailyMeeting}/findings/export-pdf', [DailyMeetingController::class, 'exportFindingsPdf'])->name('daily-meetings.findings.export-pdf');
+    Route::get('daily-meetings/{dailyMeeting}/findings/export-excel', [DailyMeetingController::class, 'exportFindingsExcel'])->name('daily-meetings.findings.export-excel');
 
     // Kinerja Outage routes
     Route::get('kinerja/on-quality', [KinerjaQualityController::class, 'index'])->name('kinerja.on-quality');
