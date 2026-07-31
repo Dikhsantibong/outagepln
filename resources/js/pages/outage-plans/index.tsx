@@ -245,13 +245,13 @@ export default function OutagePlansIndex({
         <>
             <Head title="Perencanaan dan Jadwal Outage" />
 
-            <div className="flex h-full flex-1 flex-col gap-4 p-4">
-                <div className="mb-2 flex items-center justify-between">
+            <div className="flex flex-1 flex-col gap-3 p-4">
+                <div className="flex items-center justify-between">
                     <div>
                         <h1 className="text-2xl font-bold tracking-tight">
                             Perencanaan dan Jadwal Outage
                         </h1>
-                        <p className="mt-1 text-sm text-muted-foreground">
+                        <p className="mt-0.5 text-sm text-muted-foreground">
                             Monitoring dan penjadwalan pemeliharaan unit
                             pembangkit
                         </p>
@@ -265,8 +265,8 @@ export default function OutagePlansIndex({
                 </div>
 
                 {/* Table Section - Full Width */}
-                <Card className="h-fit">
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+                <Card className="h-fit gap-0 py-4">
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
                         <CardTitle className="text-lg">
                             Data Jadwal Outage
                         </CardTitle>
@@ -300,7 +300,8 @@ export default function OutagePlansIndex({
                         </div>
                     </CardHeader>
                     <CardContent className="overflow-x-auto p-0">
-                        <Table className="whitespace-nowrap">
+                        {/* Compact density is scoped here so the shared Table component stays untouched. */}
+                        <Table className="whitespace-nowrap [&_td]:py-1.5 [&_th]:h-9">
                             <TableHeader>
                                 <TableRow className="border-y bg-muted/30">
                                     <TableHead className="w-12 px-4 text-center font-bold">
@@ -464,11 +465,8 @@ export default function OutagePlansIndex({
                                                     {plan.selesai || '-'}
                                                 </TableCell>
                                                 <TableCell className="px-4 text-center">
-                                                    <div className="flex flex-col gap-1.5">
-                                                        <span className="text-[11px] leading-none font-bold">
-                                                            {plan.progress}%
-                                                        </span>
-                                                        <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
                                                             <div
                                                                 className={`h-full rounded-full ${Number(plan.progress) >= 100 ? 'bg-emerald-500' : 'bg-blue-500'}`}
                                                                 style={{
@@ -476,6 +474,9 @@ export default function OutagePlansIndex({
                                                                 }}
                                                             />
                                                         </div>
+                                                        <span className="w-8 shrink-0 text-right text-[11px] leading-none font-bold">
+                                                            {plan.progress}%
+                                                        </span>
                                                     </div>
                                                 </TableCell>
                                                 <TableCell className="px-4 text-center font-mono text-[11px] text-muted-foreground">
@@ -522,7 +523,7 @@ export default function OutagePlansIndex({
                         </Table>
                     </CardContent>
                     {outagePlans.links && outagePlans.links.length > 3 && (
-                        <div className="flex flex-wrap items-center justify-center gap-1 border-t p-4">
+                        <div className="flex flex-wrap items-center justify-center gap-1 border-t px-4 pt-3">
                             {outagePlans.links.map((link: any, k: number) => (
                                 <Link
                                     key={k}

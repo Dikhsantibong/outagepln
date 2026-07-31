@@ -28,7 +28,7 @@ class OutagePlanController extends Controller
             });
         }
 
-        $outagePlans = $query->with('dailyProgresses')->latest()->paginate(10)->withQueryString();
+        $outagePlans = $query->with('dailyProgresses')->latest()->paginate(15)->withQueryString();
         $units = \App\Models\Unit::with('mesins')->get();
 
         return Inertia::render('outage-plans/index', [

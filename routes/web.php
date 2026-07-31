@@ -37,6 +37,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('daily-meetings/{dailyMeeting}/findings/export-pdf', [DailyMeetingController::class, 'exportFindingsPdf'])->name('daily-meetings.findings.export-pdf');
     Route::get('daily-meetings/{dailyMeeting}/findings/export-excel', [DailyMeetingController::class, 'exportFindingsExcel'])->name('daily-meetings.findings.export-excel');
 
+    // Notulen Kick Off Meeting (rapat P3)
+    Route::post('daily-meetings/{dailyMeeting}/kickoff', [DailyMeetingController::class, 'storeKickoff'])->name('daily-meetings.kickoff.store');
+    Route::post('daily-meetings/{dailyMeeting}/kickoff/photos', [DailyMeetingController::class, 'storeKickoffPhoto'])->name('daily-meetings.kickoff.photos.store');
+    Route::delete('daily-meetings/{dailyMeeting}/kickoff/photos/{photo}', [DailyMeetingController::class, 'destroyKickoffPhoto'])->name('daily-meetings.kickoff.photos.destroy');
+    Route::get('daily-meetings/{dailyMeeting}/kickoff/export-pdf', [DailyMeetingController::class, 'exportKickoffPdf'])->name('daily-meetings.kickoff.export-pdf');
+
     // Kinerja Outage routes
     Route::get('kinerja/on-quality', [KinerjaQualityController::class, 'index'])->name('kinerja.on-quality');
     Route::post('kinerja/on-quality', [KinerjaQualityController::class, 'store'])->name('kinerja.on-quality.store');

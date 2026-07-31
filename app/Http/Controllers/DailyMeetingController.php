@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use App\Models\DailyMeeting;
 use App\Models\MeetingAttendee;
 use App\Models\MeetingFinding;
+use App\Models\MeetingKickoff;
+use App\Models\MeetingKickoffPhoto;
 use App\Models\MeetingMinute;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
@@ -47,7 +49,7 @@ class DailyMeetingController extends Controller
 
     public function show(DailyMeeting $dailyMeeting)
     {
-        $dailyMeeting->load(['attendees', 'minutes', 'findings', 'outagePlan']);
+        $dailyMeeting->load(['attendees', 'minutes', 'findings', 'outagePlan', 'kickoff', 'kickoffPhotos']);
 
         return Inertia::render('daily-meetings/show', [
             'meeting' => $dailyMeeting,
@@ -55,7 +57,118 @@ class DailyMeetingController extends Controller
             'minutes' => $dailyMeeting->minutes,
             'findings' => $dailyMeeting->findings,
             'findingInfo' => $this->findingInfo($dailyMeeting),
+            'kickoff' => $dailyMeeting->kickoff,
+            'kickoffPhotos' => $dailyMeeting->kickoffPhotos,
+            'kickoffDefaults' => $this->kickoffDefaults($dailyMeeting),
         ]);
+    }
+
+    /**
+     * Sensible starting values for a Kick Off notulen so the form is not blank
+     * on first open; derived from the meeting and its outage plan.
+     */
+    private function kickoffDefaults(DailyMeeting $dailyMeeting): array
+    {
+        $plan = $dailyMeeting->outagePlan;
+        $mesin = $plan->mesin_pembangkit ?? '-';
+        $scope = $plan->scope ?? '';
+
+        return [
+            'nomor_dokumen' => 'FMKP - 145 - 13.3.4.a.a.i - 001',
+            'revisi' => '001',
+            'pimpinan_rapat' => 'TL Outage Management UP Kendari',
+            'tempat' => $dailyMeeting->lokasi ?: 'Room Zoom UP Kendari',
+            'waktu' => ($dailyMeeting->waktu_mulai ? substr($dailyMeeting->waktu_mulai, 0, 5) : '09.00') . ' WITA - Selesai',
+            'agenda' => trim("Kick Off Meeting Pelaksanaan Pekerjaan OH {$scope} {$mesin}"),
+            'peserta' => '(Daftar peserta terlampir)',
+            'pimpinan_jabatan' => 'TL Outage Management',
+            'notulis_jabatan' => 'OF Outage Management',
+            'kota_ttd' => 'Kendari',
+        ];
+    }
+
+    public function storeKickoff(Request $request, DailyMeeting $dailyMeeting)
+    {
+        $validated = $request->validate([
+            'nomor_dokumen' => 'nullable|string|max:150',
+            'revisi' => 'nullable|string|max:20',
+            'tanggal_terbit' => 'nullable|date',
+            'pimpinan_rapat' => 'nullable|string|max:255',
+            'tempat' => 'nullable|string|max:255',
+            'waktu' => 'nullable|string|max:100',
+            'agenda' => 'nullable|string',
+            'peserta' => 'nullable|string|max:255',
+            'penyampaian_pln' => 'nullable|string',
+            'nama_mitra' => 'nullable|string|max:255',
+            'penyampaian_mitra' => 'nullable|string',
+            'hasil_kesepakatan' => 'nullable|string',
+            'link_absensi' => 'nullable|string|max:500',
+            'pimpinan_nama' => 'nullable|string|max:255',
+            'pimpinan_jabatan' => 'nullable|string|max:255',
+            'notulis_nama' => 'nullable|string|max:255',
+            'notulis_jabatan' => 'nullable|string|max:255',
+            'kota_ttd' => 'nullable|string|max:100',
+            'tanggal_ttd' => 'nullable|date',
+        ]);
+
+        MeetingKickoff::updateOrCreate(
+            ['meeting_id' => $dailyMeeting->id],
+            $validated
+        );
+
+        return redirect()->back()->with('success', 'Notulen Kick Off Meeting berhasil disimpan.');
+    }
+
+    public function storeKickoffPhoto(Request $request, DailyMeeting $dailyMeeting)
+    {
+        $request->validate([
+            'foto' => 'required|image|max:8192',
+            'caption' => 'nullable|string|max:255',
+        ]);
+
+        $encoded = $this->encodePhoto($request->file('foto'));
+
+        if ($encoded === null) {
+            return redirect()->back()->with('error', 'Foto tidak dapat diproses.');
+        }
+
+        $dailyMeeting->kickoffPhotos()->create([
+            'foto' => $encoded,
+            'caption' => $request->input('caption'),
+        ]);
+
+        return redirect()->back()->with('success', 'Dokumentasi berhasil ditambahkan.');
+    }
+
+    public function destroyKickoffPhoto(DailyMeeting $dailyMeeting, MeetingKickoffPhoto $photo)
+    {
+        abort_unless($photo->meeting_id === $dailyMeeting->id, 404);
+
+        $photo->delete();
+
+        return redirect()->back()->with('success', 'Dokumentasi berhasil dihapus.');
+    }
+
+    public function exportKickoffPdf(DailyMeeting $dailyMeeting)
+    {
+        $dailyMeeting->load(['kickoff', 'kickoffPhotos', 'attendees', 'outagePlan']);
+
+        $logoPath = public_path('sidebar-logo.png');
+
+        $pdf = Pdf::loadView('exports.meeting-kickoff', [
+            'meeting' => $dailyMeeting,
+            'kickoff' => $dailyMeeting->kickoff,
+            'photos' => $dailyMeeting->kickoffPhotos,
+            'attendees' => $dailyMeeting->attendees,
+            'defaults' => $this->kickoffDefaults($dailyMeeting),
+            'logo' => is_file($logoPath)
+                ? 'data:image/png;base64,' . base64_encode(file_get_contents($logoPath))
+                : null,
+        ])->setPaper('a4', 'portrait');
+
+        $slug = \Illuminate\Support\Str::slug($dailyMeeting->outagePlan->mesin_pembangkit ?? $dailyMeeting->judul);
+
+        return $pdf->download("Notulen-Kick-Off-{$slug}-{$dailyMeeting->id}.pdf");
     }
 
     /**
