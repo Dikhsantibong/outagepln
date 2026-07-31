@@ -8,6 +8,9 @@ use App\Http\Controllers\WelcomeController;
 use App\Http\Controllers\OutagePlanController;
 use App\Http\Controllers\DailyMeetingController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\KinerjaQualityController;
+use App\Http\Controllers\KinerjaTimeController;
+use App\Http\Controllers\KinerjaCostController;
 
 Route::get('/', [WelcomeController::class, 'index'])->name('home');
 
@@ -26,9 +29,14 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('daily-meetings/{dailyMeeting}/attendees-json', [DailyMeetingController::class, 'attendeesJson'])->name('daily-meetings.attendees-json');
 
     // Kinerja Outage routes
-    Route::get('kinerja/on-quality', fn() => inertia('kinerja/on-quality'))->name('kinerja.on-quality');
-    Route::get('kinerja/on-time', fn() => inertia('kinerja/on-time'))->name('kinerja.on-time');
-    Route::get('kinerja/on-cost', fn() => inertia('kinerja/on-cost'))->name('kinerja.on-cost');
+    Route::get('kinerja/on-quality', [KinerjaQualityController::class, 'index'])->name('kinerja.on-quality');
+    Route::post('kinerja/on-quality', [KinerjaQualityController::class, 'store'])->name('kinerja.on-quality.store');
+    
+    Route::get('kinerja/on-time', [KinerjaTimeController::class, 'index'])->name('kinerja.on-time');
+    Route::post('kinerja/on-time', [KinerjaTimeController::class, 'store'])->name('kinerja.on-time.store');
+    
+    Route::get('kinerja/on-cost', [KinerjaCostController::class, 'index'])->name('kinerja.on-cost');
+    Route::post('kinerja/on-cost', [KinerjaCostController::class, 'store'])->name('kinerja.on-cost.store');
     Route::get('kinerja/on-scope', fn() => inertia('kinerja/on-scope'))->name('kinerja.on-scope');
     Route::get('kinerja/on-safety', fn() => inertia('kinerja/on-safety'))->name('kinerja.on-safety');
 });

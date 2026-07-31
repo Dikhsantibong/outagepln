@@ -4,6 +4,9 @@ namespace App\Http\Controllers;
 
 use App\Models\OutagePlan;
 use App\Models\DailyMeeting;
+use App\Models\Unit;
+use App\Models\Mesin;
+use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\Route;
@@ -113,13 +116,34 @@ class WelcomeController extends Controller
 
         $upcomingMeetingsCount = count($upcomingMeetings);
 
+        // Additional Master Data Stats
+        $totalUnit = Unit::count();
+        $totalMesin = Mesin::count();
+        $totalUser = User::count();
+
+        // Detailed Lists for Dashboard
+        $recentOutages = OutagePlan::where('progress', '<', 100)
+            ->orderBy('start_date', 'asc')
+            ->take(10)
+            ->get();
+
+        $activeMeetingsList = DailyMeeting::whereIn('status', ['berlangsung', 'active'])
+            ->orderBy('tanggal', 'asc')
+            ->take(10)
+            ->get();
+
         return Inertia::render('welcome', [
             'canLogin' => Route::has('login'),
             'stats' => [
                 'total' => $totalOutage,
+                'totalUnit' => $totalUnit,
+                'totalMesin' => $totalMesin,
+                'totalUser' => $totalUser,
                 'plantStats' => $plantStats,
                 'scopeDistribution' => $scopeDistribution,
                 'progressDistribution' => $progressDistribution,
+                'recentOutages' => $recentOutages,
+                'activeMeetingsList' => $activeMeetingsList,
                 'meetings' => [
                     'active' => $activeMeetings,
                     'total' => $totalMeetings,

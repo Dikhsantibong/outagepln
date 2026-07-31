@@ -1,7 +1,7 @@
 import { Head } from '@inertiajs/react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { dashboard } from '@/routes';
-import { Calendar, Clock, Activity, Zap, BarChart3 } from 'lucide-react';
+import { Calendar, Clock, Activity, Zap, BarChart3, ShieldCheck, DollarSign, Crosshair, HeartPulse } from 'lucide-react';
 import {
     BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
     LineChart, Line, CartesianGrid, Legend
@@ -15,6 +15,8 @@ interface DashboardProps {
         monthlyTimeline: { bulan: string; total: number }[];
         progressDistribution: { range: string; count: number }[];
         durasiByScope: { scope: string; avg_durasi: number; total: number }[];
+        eksekusi: { pltd: number; pltm: number };
+        kinerja: { onQuality: number; onTime: number; onCost: number; onScope: number; onSafety: number };
         meetings: { active: number; total: number };
     };
     recentOutages: {
@@ -24,6 +26,13 @@ interface DashboardProps {
         progress: number;
         start_date: string;
         time: string;
+    }[];
+    ongoingOutages: {
+        mesin: string;
+        scope: string;
+        jenis: string;
+        progress: number;
+        start_date: string;
     }[];
     outageMeetings: {
         today: { id: number; mesin: string; scope: string; jenis: string; type: string; date: string }[];
@@ -38,7 +47,7 @@ const CustomTooltipStyle = {
     fontSize: '12px',
 };
 
-export default function Dashboard({ stats, recentOutages, outageMeetings }: DashboardProps) {
+export default function Dashboard({ stats, ongoingOutages, outageMeetings }: DashboardProps) {
     const scopeBarData = stats.scopeDistribution.map(s => ({
         name: s.scope || '-',
         jumlah: s.total,
@@ -77,8 +86,54 @@ export default function Dashboard({ stats, recentOutages, outageMeetings }: Dash
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
                     {/* LEFT COLUMN: Stats, Charts, and Activity */}
                     <div className="lg:col-span-8 space-y-6">
+                        
+                        {/* KINERJA OUTAGE WIDGET */}
+                        <div className="mb-6">
+                            <h3 className="text-lg font-bold mb-3 flex items-center gap-2">
+                                <Activity className="h-5 w-5 text-blue-500" />
+                                Kinerja Outage
+                            </h3>
+                            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                                <Card className="bg-emerald-50 dark:bg-emerald-950/20 border-emerald-100 dark:border-emerald-900/50 shadow-sm">
+                                    <CardContent className="p-4 flex flex-col items-center justify-center text-center">
+                                        <ShieldCheck className="h-6 w-6 text-emerald-600 mb-2" />
+                                        <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider">On Quality</p>
+                                        <h4 className="text-xl font-black text-emerald-700 dark:text-emerald-400">{stats.kinerja.onQuality}%</h4>
+                                    </CardContent>
+                                </Card>
+                                <Card className="bg-blue-50 dark:bg-blue-950/20 border-blue-100 dark:border-blue-900/50 shadow-sm">
+                                    <CardContent className="p-4 flex flex-col items-center justify-center text-center">
+                                        <Clock className="h-6 w-6 text-blue-600 mb-2" />
+                                        <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider">On Time</p>
+                                        <h4 className="text-xl font-black text-blue-700 dark:text-blue-400">{stats.kinerja.onTime}%</h4>
+                                    </CardContent>
+                                </Card>
+                                <Card className="bg-amber-50 dark:bg-amber-950/20 border-amber-100 dark:border-amber-900/50 shadow-sm">
+                                    <CardContent className="p-4 flex flex-col items-center justify-center text-center">
+                                        <DollarSign className="h-6 w-6 text-amber-600 mb-2" />
+                                        <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider">On Cost</p>
+                                        <h4 className="text-xl font-black text-amber-700 dark:text-amber-400">{stats.kinerja.onCost}%</h4>
+                                    </CardContent>
+                                </Card>
+                                <Card className="bg-indigo-50 dark:bg-indigo-950/20 border-indigo-100 dark:border-indigo-900/50 shadow-sm">
+                                    <CardContent className="p-4 flex flex-col items-center justify-center text-center">
+                                        <Crosshair className="h-6 w-6 text-indigo-600 mb-2" />
+                                        <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider">On Scope</p>
+                                        <h4 className="text-xl font-black text-indigo-700 dark:text-indigo-400">{stats.kinerja.onScope}%</h4>
+                                    </CardContent>
+                                </Card>
+                                <Card className="bg-rose-50 dark:bg-rose-950/20 border-rose-100 dark:border-rose-900/50 shadow-sm">
+                                    <CardContent className="p-4 flex flex-col items-center justify-center text-center">
+                                        <HeartPulse className="h-6 w-6 text-rose-600 mb-2" />
+                                        <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider">On Safety</p>
+                                        <h4 className="text-xl font-black text-rose-700 dark:text-rose-400">{stats.kinerja.onSafety}%</h4>
+                                    </CardContent>
+                                </Card>
+                            </div>
+                        </div>
+
                         {/* Summary Cards */}
-                        <div className="grid gap-4 grid-cols-2 md:grid-cols-3">
+                        <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
                             <Card>
                                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                                     <CardTitle className="text-sm font-medium">Total Outage Plan</CardTitle>
@@ -86,23 +141,39 @@ export default function Dashboard({ stats, recentOutages, outageMeetings }: Dash
                                 </CardHeader>
                                 <CardContent>
                                     <div className="text-2xl font-bold">{stats.total}</div>
-                                    <p className="text-xs text-muted-foreground">Seluruh rencana pemeliharaan</p>
+                                    <p className="text-xs text-muted-foreground">Seluruh rencana</p>
                                 </CardContent>
                             </Card>
-                            {Object.entries(stats.plantStats).map(([jenis, data]) => (
-                                <Card key={jenis}>
-                                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                                        <CardTitle className="text-sm font-medium">{jenis}</CardTitle>
-                                        <Zap className="h-4 w-4 text-muted-foreground" />
-                                    </CardHeader>
-                                    <CardContent>
-                                        <div className="text-2xl font-bold">{data.count}</div>
-                                        <p className="text-xs text-muted-foreground">
-                                            Rata-rata progres {data.progress}%
-                                        </p>
-                                    </CardContent>
-                                </Card>
-                            ))}
+                            <Card className="bg-primary/5 border-primary/20">
+                                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                                    <CardTitle className="text-sm font-medium text-primary">Rapat Aktif</CardTitle>
+                                    <Activity className="h-4 w-4 text-primary" />
+                                </CardHeader>
+                                <CardContent>
+                                    <div className="text-2xl font-bold text-primary">{stats.meetings.active}</div>
+                                    <p className="text-xs text-primary/80">Sedang berlangsung</p>
+                                </CardContent>
+                            </Card>
+                            <Card>
+                                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                                    <CardTitle className="text-sm font-medium">Eksekusi PLTD</CardTitle>
+                                    <Zap className="h-4 w-4 text-emerald-500" />
+                                </CardHeader>
+                                <CardContent>
+                                    <div className="text-2xl font-bold text-emerald-600">{stats.eksekusi.pltd}%</div>
+                                    <p className="text-xs text-muted-foreground">Tingkat penyelesaian</p>
+                                </CardContent>
+                            </Card>
+                            <Card>
+                                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                                    <CardTitle className="text-sm font-medium">Eksekusi PLTM</CardTitle>
+                                    <Zap className="h-4 w-4 text-blue-500" />
+                                </CardHeader>
+                                <CardContent>
+                                    <div className="text-2xl font-bold text-blue-600">{stats.eksekusi.pltm}%</div>
+                                    <p className="text-xs text-muted-foreground">Tingkat penyelesaian</p>
+                                </CardContent>
+                            </Card>
                         </div>
 
                         {/* Charts Row 1 */}
@@ -160,85 +231,49 @@ export default function Dashboard({ stats, recentOutages, outageMeetings }: Dash
                             </Card>
                         </div>
 
-                        {/* Charts Row 2 */}
-                        <div className="grid gap-4 md:grid-cols-2">
-                            <Card>
-                                <CardHeader className="pb-2">
-                                    <CardTitle className="flex items-center gap-2 text-base">
-                                        <BarChart3 className="h-4 w-4 text-amber-500" />
-                                        Distribusi Progres
-                                    </CardTitle>
-                                </CardHeader>
-                                <CardContent className="pl-0">
-                                    <div className="h-[220px]">
-                                        <ResponsiveContainer width="100%" height="100%">
-                                            <BarChart data={progressBarData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                                                <CartesianGrid strokeDasharray="3 3" vertical={false} opacity={0.3} />
-                                                <XAxis dataKey="range" fontSize={10} tickLine={false} axisLine={false} />
-                                                <YAxis fontSize={10} tickLine={false} axisLine={false} allowDecimals={false} />
-                                                <Tooltip contentStyle={CustomTooltipStyle} />
-                                                <Bar dataKey="count" fill="#f59e0b" radius={[4, 4, 0, 0]} barSize={24} />
-                                            </BarChart>
-                                        </ResponsiveContainer>
-                                    </div>
-                                </CardContent>
-                            </Card>
-
-                            <Card>
-                                <CardHeader className="pb-2">
-                                    <CardTitle className="flex items-center gap-2 text-base">
-                                        <Activity className="h-4 w-4 text-rose-500" />
-                                        Rata-rata Durasi (Scope)
-                                    </CardTitle>
-                                </CardHeader>
-                                <CardContent className="pl-0">
-                                    <div className="h-[220px]">
-                                        {durasiLineData.length > 0 ? (
-                                            <ResponsiveContainer width="100%" height="100%">
-                                                <LineChart data={durasiLineData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                                                    <CartesianGrid strokeDasharray="3 3" vertical={false} opacity={0.3} />
-                                                    <XAxis dataKey="name" fontSize={10} tickLine={false} axisLine={false} />
-                                                    <YAxis fontSize={10} tickLine={false} axisLine={false} unit="hr" />
-                                                    <Tooltip contentStyle={CustomTooltipStyle} formatter={(val: any) => `${val} hari`} />
-                                                    <Line type="monotone" dataKey="durasi" stroke="#f43f5e" strokeWidth={2.5} dot={{ r: 3, fill: '#fff', strokeWidth: 2 }} activeDot={{ r: 5 }} />
-                                                </LineChart>
-                                            </ResponsiveContainer>
-                                        ) : (
-                                            <div className="h-full flex items-center justify-center text-xs text-muted-foreground italic">Belum ada data.</div>
-                                        )}
-                                    </div>
-                                </CardContent>
-                            </Card>
-                        </div>
-
                         {/* Recent Outage Activity */}
-                        <Card>
+                        <Card className="border-t-4 border-t-amber-500 shadow-sm">
                             <CardHeader>
-                                <CardTitle>Aktivitas Outage Terbaru</CardTitle>
-                                <CardDescription>Rencana outage yang terakhir ditambahkan ke sistem</CardDescription>
+                                <CardTitle className="flex items-center gap-2">
+                                    <Activity className="h-5 w-5 text-amber-500" />
+                                    Progres Sementara Berlangsung
+                                </CardTitle>
+                                <CardDescription>Pekerjaan pemeliharaan yang saat ini sedang dikerjakan secara aktif</CardDescription>
                             </CardHeader>
                             <CardContent>
-                                <div className="space-y-4">
-                                    {recentOutages.length > 0 ? recentOutages.map((item, i) => (
+                                <div className="space-y-5">
+                                    {ongoingOutages.length > 0 ? ongoingOutages.map((item, i) => (
                                         <div key={i} className="flex items-center gap-4">
-                                            <div className="flex h-9 w-9 items-center justify-center rounded-full border bg-muted shrink-0">
-                                                <Calendar className="h-4 w-4 text-muted-foreground" />
-                                            </div>
                                             <div className="flex-1 min-w-0 space-y-1">
-                                                <p className="text-sm font-medium leading-none truncate">{item.mesin}</p>
-                                                <p className="text-xs text-muted-foreground">
-                                                    {item.jenis} · {item.scope} · Mulai {item.start_date || '-'}
+                                                <p className="text-sm font-bold text-foreground leading-none truncate">{item.mesin}</p>
+                                                <p className="text-[11px] text-muted-foreground uppercase font-semibold tracking-wider">
+                                                    {item.jenis} · <span className="text-blue-500">{item.scope}</span>
                                                 </p>
+                                                <p className="text-[10px] text-slate-400">Mulai: {item.start_date || '-'}</p>
                                             </div>
-                                            <div className={`text-sm font-bold shrink-0 ${progressColor(item.progress)}`}>
-                                                {item.progress}%
-                                            </div>
-                                            <div className="text-xs text-muted-foreground shrink-0 w-24 text-right">
-                                                {item.time}
+                                            <div className="flex-1 max-w-[250px]">
+                                                <div className="flex justify-between text-xs mb-1.5 items-end">
+                                                    <span className="font-semibold text-slate-500">Progres</span>
+                                                    <span className="font-black text-lg leading-none" style={{ color: item.progress >= 75 ? '#10b981' : item.progress >= 40 ? '#f59e0b' : '#3b82f6' }}>
+                                                        {item.progress}%
+                                                    </span>
+                                                </div>
+                                                <div className="h-2.5 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden shadow-inner">
+                                                    <div 
+                                                        className="h-full rounded-full transition-all duration-1000" 
+                                                        style={{ 
+                                                            width: `${item.progress}%`,
+                                                            backgroundColor: item.progress >= 75 ? '#10b981' : item.progress >= 40 ? '#f59e0b' : '#3b82f6'
+                                                        }}
+                                                    ></div>
+                                                </div>
                                             </div>
                                         </div>
                                     )) : (
-                                        <p className="text-sm text-muted-foreground italic text-center py-4">Belum ada data.</p>
+                                        <div className="flex flex-col items-center justify-center py-6">
+                                            <ShieldCheck className="h-10 w-10 text-muted-foreground opacity-20 mb-2" />
+                                            <p className="text-sm text-muted-foreground italic text-center">Tidak ada pekerjaan yang sedang berlangsung.</p>
+                                        </div>
                                     )}
                                 </div>
                             </CardContent>

@@ -132,6 +132,61 @@ class DashboardController extends Controller
 
         $upcomingMeetings = array_slice($upcomingMeetings, 0, 8);
 
+        // 1. Persentase Eksekusi OH PLTD dan PLTM
+        $pltdTotal = OutagePlan::where('jenis_pembangkit', 'PLTD')->count();
+        $pltdSelesai = OutagePlan::where('jenis_pembangkit', 'PLTD')->where('progress', 100)->count();
+        $pltmTotal = OutagePlan::where('jenis_pembangkit', 'PLTM')->count();
+        $pltmSelesai = OutagePlan::where('jenis_pembangkit', 'PLTM')->where('progress', 100)->count();
+
+        $eksekusiPLTD = $pltdTotal > 0 ? round(($pltdSelesai / $pltdTotal) * 100, 1) : 0;
+        $eksekusiPLTM = $pltmTotal > 0 ? round(($pltmSelesai / $pltmTotal) * 100, 1) : 0;
+
+        // 2. Progres Sementara Berlangsung (Ongoing Outages)
+        $ongoingOutages = OutagePlan::where('progress', '>', 0)
+            ->where('progress', '<', 100)
+            ->orderByDesc('progress')
+            ->take(10)
+            ->get()->map(fn($item) => [
+                'mesin' => $item->mesin_pembangkit,
+                'scope' => $item->scope,
+                'jenis' => $item->jenis_pembangkit,
+                'progress' => $item->progress ?? 0,
+                'start_date' => $item->start_date,
+            ]);
+
+        // 3. Menghitung Data Aktual dari Kinerja Outage
+        // onQuality
+        $totalQuality = \App\Models\KinerjaQuality::whereNotNull('dm_sesudah')->count();
+        $goodQuality = \App\Models\KinerjaQuality::whereNotNull('dm_sesudah')
+            ->whereRaw('dm_sesudah >= dm_sebelum')
+            ->count();
+        $onQuality = $totalQuality > 0 ? round(($goodQuality / $totalQuality) * 100, 1) : 0;
+
+        // onTime
+        $totalTime = \App\Models\KinerjaTime::whereNotNull('selesai_aktual')->count();
+        $goodTime = \App\Models\KinerjaTime::join('outage_plans', 'kinerja_times.outage_plan_id', '=', 'outage_plans.id')
+            ->whereNotNull('kinerja_times.selesai_aktual')
+            ->whereNotNull('outage_plans.selesai')
+            ->whereRaw('kinerja_times.selesai_aktual <= outage_plans.selesai')
+            ->count();
+        $onTime = $totalTime > 0 ? round(($goodTime / $totalTime) * 100, 1) : 0;
+
+        // onCost
+        $totalCost = \App\Models\KinerjaCost::whereNotNull('anggaran_aktual')->count();
+        $goodCost = \App\Models\KinerjaCost::whereNotNull('anggaran_aktual')
+            ->whereNotNull('anggaran_rencana')
+            ->whereRaw('anggaran_aktual <= anggaran_rencana')
+            ->count();
+        $onCost = $totalCost > 0 ? round(($goodCost / $totalCost) * 100, 1) : 0;
+
+        $kinerjaStats = [
+            'onQuality' => $onQuality,
+            'onTime' => $onTime,
+            'onCost' => $onCost,
+            'onScope' => 0, // Belum ada modul terkait
+            'onSafety' => 0, // Belum ada modul terkait
+        ];
+
         return Inertia::render('dashboard', [
             'stats' => [
                 'total' => $totalOutage,
@@ -140,12 +195,18 @@ class DashboardController extends Controller
                 'monthlyTimeline' => $monthlyTimeline,
                 'progressDistribution' => $progressDistribution,
                 'durasiByScope' => $durasiByScope,
+                'eksekusi' => [
+                    'pltd' => $eksekusiPLTD,
+                    'pltm' => $eksekusiPLTM,
+                ],
+                'kinerja' => $kinerjaStats,
                 'meetings' => [
                     'active' => $activeMeetings,
                     'total' => $totalMeetings,
                 ],
             ],
             'recentOutages' => $recentOutages,
+            'ongoingOutages' => $ongoingOutages,
             'outageMeetings' => [
                 'today' => $todayMeetings,
                 'upcoming' => $upcomingMeetings,

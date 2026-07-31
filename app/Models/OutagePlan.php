@@ -27,6 +27,21 @@ class OutagePlan extends Model
         return $this->hasMany(DailyMeeting::class);
     }
 
+    public function kinerjaQuality()
+    {
+        return $this->hasOne(KinerjaQuality::class);
+    }
+
+    public function kinerjaTime()
+    {
+        return $this->hasOne(KinerjaTime::class);
+    }
+
+    public function kinerjaCost()
+    {
+        return $this->hasOne(KinerjaCost::class);
+    }
+
     protected static function booted(): void
     {
         $syncMeetings = function (OutagePlan $plan) {
