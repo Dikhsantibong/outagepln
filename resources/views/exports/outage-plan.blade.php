@@ -123,18 +123,27 @@
             <td class="sep">:</td>
             <td>Plan {{ number_format($overallPlan, 0) }}% / Actual {{ number_format($overallActual, 0) }}%</td>
         </tr>
+        <tr>
+            <td class="label">Sistem</td>
+            <td class="sep">:</td>
+            <td>{{ $outagePlan->sistem ?? '-' }}</td>
+            <td class="label">Realisasi</td>
+            <td class="sep">:</td>
+            <td>
+                {{ $outagePlan->real_start ? \Carbon\Carbon::parse($outagePlan->real_start)->format('d-m-Y') : '-' }}
+                s/d
+                {{ $outagePlan->real_stop ? \Carbon\Carbon::parse($outagePlan->real_stop)->format('d-m-Y') : '-' }}
+                @if ($outagePlan->ket_realisasi)
+                    ({{ $outagePlan->ket_realisasi }})
+                @endif
+            </td>
+        </tr>
     </table>
 
     <div class="section-title">Kurva S - Plan vs Actual</div>
     @if ($chartImage)
+        {{-- The chart image carries its own RENCANA/REALISASI legend. --}}
         <img src="{{ $chartImage }}" style="width: 100%; display: block;">
-        <div style="font-size: 9.5px; color: #475569; margin: 4px 0 2px 0;">
-            <span style="display: inline-block; width: 22px; height: 5px; background-color: #1d4ed8; vertical-align: middle;"></span>
-            <span style="vertical-align: middle;">Plan Progress</span>
-            &nbsp;&nbsp;&nbsp;&nbsp;
-            <span style="display: inline-block; width: 22px; height: 5px; background-color: #047857; vertical-align: middle;"></span>
-            <span style="vertical-align: middle;">Actual Progress</span>
-        </div>
     @else
         <p style="font-size: 10px; color: #94a3b8; font-style: italic;">Belum ada data progress harian.</p>
     @endif

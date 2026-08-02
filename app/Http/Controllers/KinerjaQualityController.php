@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Controllers\Concerns\FiltersOutagePlans;
 use App\Models\OutagePlan;
 use App\Models\KinerjaQuality;
 use Illuminate\Http\Request;
@@ -10,31 +11,79 @@ use Illuminate\Support\Facades\Storage;
 
 class KinerjaQualityController extends Controller
 {
-    public function index()
+    use FiltersOutagePlans;
+
+    public function index(Request $request)
     {
-        $outagePlans = OutagePlan::with('kinerjaQuality')
-            ->orderBy('created_at', 'desc')
-            ->get()
-            ->map(function ($plan) {
-                return [
-                    'id' => $plan->id,
-                    'mesin_pembangkit' => $plan->mesin_pembangkit,
-                    'jenis_pembangkit' => $plan->jenis_pembangkit,
-                    'progress' => $plan->progress,
-                    'kinerja_quality' => $plan->kinerjaQuality ? [
-                        'dm_sebelum' => $plan->kinerjaQuality->dm_sebelum,
-                        'sfc_sebelum' => $plan->kinerjaQuality->sfc_sebelum,
-                        'eviden_sebelum_url' => $plan->kinerjaQuality->eviden_sebelum ? Storage::url($plan->kinerjaQuality->eviden_sebelum) : null,
-                        'dm_sesudah' => $plan->kinerjaQuality->dm_sesudah,
-                        'sfc_sesudah' => $plan->kinerjaQuality->sfc_sesudah,
-                        'eviden_sesudah_url' => $plan->kinerjaQuality->eviden_sesudah ? Storage::url($plan->kinerjaQuality->eviden_sesudah) : null,
-                    ] : null,
-                ];
-            });
+        $query = OutagePlan::with('kinerjaQuality');
+
+        $this->applyPlanFilters($query, $request);
+        $this->applyStatusFilter(
+            $query,
+            $request,
+            'kinerjaQuality',
+            // Lengkap = both the "sebelum" and "sesudah" readings are recorded.
+            fn ($q) => $q->whereNotNull('dm_sebelum')->whereNotNull('dm_sesudah'),
+            fn ($q) => $q->whereNotNull('dm_sebelum')->whereNull('dm_sesudah'),
+        );
+
+        $outagePlans = $query
+            ->orderBy('id')
+            ->paginate(15)
+            ->withQueryString()
+            ->through(fn ($plan) => $this->mapPlan($plan));
+
+        // The picker can select a plan from any page, so its full record is
+        // resolved server-side rather than looked up in the current page.
+        $selected = $request->filled('plan')
+            ? OutagePlan::with('kinerjaQuality')->find($request->input('plan'))
+            : null;
 
         return Inertia::render('kinerja/on-quality', [
             'outagePlans' => $outagePlans,
+            'planOptions' => $this->planPickerList(),
+            'selectedPlan' => $selected ? $this->mapPlan($selected) : null,
+            'filters' => $request->only([...$this->kinerjaFilterKeys, 'plan']),
+            'filterOptions' => $this->planFilterOptions(),
+            'summary' => $this->summary(),
         ]);
+    }
+
+    private function mapPlan(OutagePlan $plan): array
+    {
+        $k = $plan->kinerjaQuality;
+
+        return [
+            'id' => $plan->id,
+            'mesin_pembangkit' => $plan->mesin_pembangkit,
+            'jenis_pembangkit' => $plan->jenis_pembangkit,
+            'scope' => $plan->scope,
+            'sistem' => $plan->sistem,
+            'progress' => $plan->progress,
+            'kinerja_quality' => $k ? [
+                'dm_sebelum' => $k->dm_sebelum,
+                'sfc_sebelum' => $k->sfc_sebelum,
+                'eviden_sebelum_url' => $k->eviden_sebelum ? Storage::url($k->eviden_sebelum) : null,
+                'dm_sesudah' => $k->dm_sesudah,
+                'sfc_sesudah' => $k->sfc_sesudah,
+                'eviden_sesudah_url' => $k->eviden_sesudah ? Storage::url($k->eviden_sesudah) : null,
+            ] : null,
+        ];
+    }
+
+    /** Completion counts across every plan, independent of the active filters. */
+    private function summary(): array
+    {
+        $total = OutagePlan::count();
+        $lengkap = OutagePlan::whereHas('kinerjaQuality', fn ($q) => $q->whereNotNull('dm_sebelum')->whereNotNull('dm_sesudah'))->count();
+        $sebagian = OutagePlan::whereHas('kinerjaQuality', fn ($q) => $q->whereNotNull('dm_sebelum')->whereNull('dm_sesudah'))->count();
+
+        return [
+            'total' => $total,
+            'lengkap' => $lengkap,
+            'sebagian' => $sebagian,
+            'belum' => $total - $lengkap - $sebagian,
+        ];
     }
 
     public function store(Request $request)

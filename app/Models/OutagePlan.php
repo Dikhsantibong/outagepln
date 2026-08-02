@@ -20,6 +20,10 @@ class OutagePlan extends Model
         'rapat_p2',
         'rapat_p3',
         'ket',
+        'sistem',
+        'real_start',
+        'real_stop',
+        'ket_realisasi',
     ];
 
     public function dailyMeetings()

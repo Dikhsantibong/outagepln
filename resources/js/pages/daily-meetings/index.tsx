@@ -1,11 +1,18 @@
-import { Head, useForm, router, usePage } from '@inertiajs/react';
-import { FormEventHandler, useState, useEffect } from 'react';
+import { Head, router, usePage, Link } from '@inertiajs/react';
+import { Calendar, Users, Eye, QrCode, Trash2, CheckCircle2, Video, Filter, X, Search } from 'lucide-react';
+import { useState } from 'react';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Card, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Plus, Calendar, MapPin, Users, Eye, QrCode, Trash2, CheckCircle2, Info, Video } from 'lucide-react';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 
 type Meeting = {
     id: number;
@@ -21,54 +28,116 @@ type Meeting = {
     created_at: string;
 };
 
-export default function DailyMeetingsIndex({ meetings }: { meetings: Meeting[] }) {
+type FilterOptions = {
+    tipe_rapat: string[];
+    lokasi: string[];
+    tahun: (string | number)[];
+};
+
+/** Sentinel for "no filter" - Radix Select does not allow an empty item value. */
+const ALL = '__all__';
+
+const BULAN = [
+    'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+    'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
+];
+
+function FilterSelect({
+    label,
+    value,
+    onChange,
+    options,
+    width,
+}: {
+    label: string;
+    value: string;
+    onChange: (value: string) => void;
+    options: { value: string; label: string }[];
+    width: string;
+}) {
+    return (
+        <div className="space-y-1">
+            <Label className="text-[10px] font-semibold text-muted-foreground uppercase">
+                {label}
+            </Label>
+            <Select value={value} onValueChange={onChange}>
+                <SelectTrigger className={`h-8 ${width} text-xs`}>
+                    <SelectValue placeholder="Semua" />
+                </SelectTrigger>
+                <SelectContent>
+                    <SelectItem value={ALL}>Semua</SelectItem>
+                    {options.map((o) => (
+                        <SelectItem key={o.value} value={o.value}>
+                            {o.label}
+                        </SelectItem>
+                    ))}
+                </SelectContent>
+            </Select>
+        </div>
+    );
+}
+
+export default function DailyMeetingsIndex({
+    meetings,
+    filters,
+    filterOptions,
+}: {
+    meetings: any;
+    filters?: any;
+    filterOptions?: FilterOptions;
+}) {
     const { auth } = usePage<any>().props;
     const isTamu = auth?.user?.role === 'tamu';
-    const [filterDate, setFilterDate] = useState<string>('');
-    const [currentPage, setCurrentPage] = useState(1);
-    const itemsPerPage = 6;
+    const [searchTerm, setSearchTerm] = useState(filters?.search || '');
 
-    const sortedMeetings = [...meetings].sort((a, b) => {
-        const getPriority = (status: string) => {
-            if (status === 'berlangsung') return 1;
-            if (status === 'active') return 2;
-            return 3; // completed or draft
+    const opts: FilterOptions = filterOptions ?? {
+        tipe_rapat: [],
+        lokasi: [],
+        tahun: [],
+    };
+
+    // Sorting, filtering and pagination all happen server-side now; the list
+    // used to load every meeting at once which does not scale past a few hundred.
+    const paginatedMeetings: Meeting[] = meetings.data || [];
+
+    const applyFilter = (patch: Record<string, string>) => {
+        const next: Record<string, string> = {
+            search: searchTerm,
+            tipe_rapat: filters?.tipe_rapat ?? '',
+            status: filters?.status ?? '',
+            tahun: filters?.tahun ?? '',
+            bulan: filters?.bulan ?? '',
+            lokasi: filters?.lokasi ?? '',
+            dari: filters?.dari ?? '',
+            sampai: filters?.sampai ?? '',
+            ...patch,
         };
-        
-        const priorityA = getPriority(a.status);
-        const priorityB = getPriority(b.status);
-        
-        if (priorityA !== priorityB) {
-            return priorityA - priorityB;
-        }
-        
-        // If 'active', sort ascending by date (closest date first)
-        // Otherwise (e.g. completed), sort descending by date (most recent first)
-        const dateA = new Date(a.tanggal).getTime();
-        const dateB = new Date(b.tanggal).getTime();
-        
-        if (priorityA === 2) {
-            return dateA - dateB;
-        }
-        return dateB - dateA;
-    });
 
-    const filteredMeetings = sortedMeetings.filter((meeting) => {
-        if (!filterDate) return true;
-        return meeting.tanggal === filterDate;
-    });
+        const clean = Object.fromEntries(
+            Object.entries(next).filter(([, v]) => v !== '' && v !== ALL),
+        );
 
-    // Pagination logic
-    const totalPages = Math.ceil(filteredMeetings.length / itemsPerPage);
-    const paginatedMeetings = filteredMeetings.slice(
-        (currentPage - 1) * itemsPerPage,
-        currentPage * itemsPerPage
-    );
+        router.get('/daily-meetings', clean, {
+            preserveState: true,
+            preserveScroll: true,
+            replace: true,
+        });
+    };
 
-    // Reset to page 1 when filter changes
-    useEffect(() => {
-        setCurrentPage(1);
-    }, [filterDate]);
+    const resetFilters = () => {
+        setSearchTerm('');
+        router.get('/daily-meetings', {}, {
+            preserveState: true,
+            preserveScroll: true,
+            replace: true,
+        });
+    };
+
+    const activeFilterCount = [
+        'search', 'tipe_rapat', 'status', 'tahun', 'bulan', 'lokasi', 'dari', 'sampai',
+    ].filter((k) => filters?.[k]).length;
+
+    const selectValue = (key: string) => filters?.[key] || ALL;
 
     const handleDelete = (id: number) => {
         if (confirm('Apakah Anda yakin ingin menghapus meeting ini?')) {
@@ -114,28 +183,108 @@ export default function DailyMeetingsIndex({ meetings }: { meetings: Meeting[] }
                         <h1 className="text-2xl font-bold tracking-tight">Daily Meeting</h1>
                         <p className="text-sm text-muted-foreground mt-1">Kelola rapat harian, daftar hadir, dan notulen</p>
                     </div>
-                    <div className="flex items-center gap-4">
-                        <div className="flex items-center gap-2">
-                            <Label htmlFor="filter-date" className="text-xs text-muted-foreground whitespace-nowrap">Filter Tanggal:</Label>
+                    <div className="flex items-center gap-2">
+                        <div className="relative w-56">
+                            <Search className="absolute top-2.5 left-2.5 h-4 w-4 text-muted-foreground" />
                             <Input
-                                id="filter-date"
-                                type="date"
-                                className="h-9 w-[160px] text-sm"
-                                value={filterDate}
-                                onChange={(e) => setFilterDate(e.target.value)}
+                                placeholder="Cari judul/lokasi... (enter)"
+                                className="h-9 pl-9"
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                        applyFilter({ search: searchTerm });
+                                    }
+                                }}
                             />
-                            {filterDate && (
-                                <Button 
-                                    variant="ghost" 
-                                    size="sm" 
-                                    className="h-9 px-2 text-xs"
-                                    onClick={() => setFilterDate('')}
-                                >
-                                    Reset
-                                </Button>
-                            )}
+                        </div>
+                        <div className="rounded-md border bg-muted px-2 py-1 text-xs font-medium text-muted-foreground whitespace-nowrap">
+                            Total: {meetings.total || 0}
                         </div>
                     </div>
+                </div>
+
+                {/* Filter bar */}
+                <div className="flex flex-wrap items-end gap-2 rounded-lg border bg-muted/20 p-2.5">
+                    <div className="flex items-center gap-1.5 pb-1.5 text-xs font-semibold text-muted-foreground">
+                        <Filter className="h-3.5 w-3.5" />
+                        Filter
+                    </div>
+
+                    <FilterSelect
+                        label="Tipe Rapat"
+                        value={selectValue('tipe_rapat')}
+                        onChange={(v) => applyFilter({ tipe_rapat: v })}
+                        options={opts.tipe_rapat.map((t) => ({ value: t, label: t }))}
+                        width="w-[140px]"
+                    />
+                    <FilterSelect
+                        label="Status"
+                        value={selectValue('status')}
+                        onChange={(v) => applyFilter({ status: v })}
+                        options={[
+                            { value: 'berlangsung', label: 'Berlangsung' },
+                            { value: 'akan_datang', label: 'Akan Datang' },
+                            { value: 'selesai', label: 'Selesai' },
+                        ]}
+                        width="w-[140px]"
+                    />
+                    <FilterSelect
+                        label="Tahun"
+                        value={selectValue('tahun')}
+                        onChange={(v) => applyFilter({ tahun: v })}
+                        options={opts.tahun.map((t) => ({ value: String(t), label: String(t) }))}
+                        width="w-[110px]"
+                    />
+                    <FilterSelect
+                        label="Bulan"
+                        value={selectValue('bulan')}
+                        onChange={(v) => applyFilter({ bulan: v })}
+                        options={BULAN.map((b, i) => ({ value: String(i + 1), label: b }))}
+                        width="w-[130px]"
+                    />
+                    <FilterSelect
+                        label="Lokasi"
+                        value={selectValue('lokasi')}
+                        onChange={(v) => applyFilter({ lokasi: v })}
+                        options={opts.lokasi.map((l) => ({ value: l, label: l }))}
+                        width="w-[130px]"
+                    />
+
+                    <div className="space-y-1">
+                        <Label className="text-[10px] font-semibold text-muted-foreground uppercase">
+                            Tanggal dari
+                        </Label>
+                        <Input
+                            type="date"
+                            className="h-8 w-[150px] text-xs"
+                            value={filters?.dari ?? ''}
+                            onChange={(e) => applyFilter({ dari: e.target.value })}
+                        />
+                    </div>
+                    <div className="space-y-1">
+                        <Label className="text-[10px] font-semibold text-muted-foreground uppercase">
+                            Sampai
+                        </Label>
+                        <Input
+                            type="date"
+                            className="h-8 w-[150px] text-xs"
+                            value={filters?.sampai ?? ''}
+                            onChange={(e) => applyFilter({ sampai: e.target.value })}
+                        />
+                    </div>
+
+                    {activeFilterCount > 0 && (
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={resetFilters}
+                            className="h-8 gap-1.5 text-xs text-destructive hover:bg-destructive/10"
+                        >
+                            <X className="h-3.5 w-3.5" />
+                            Reset ({activeFilterCount})
+                        </Button>
+                    )}
                 </div>
 
                 {/* Meeting List */}
@@ -216,16 +365,16 @@ export default function DailyMeetingsIndex({ meetings }: { meetings: Meeting[] }
                     ) : (
                         <Card className="col-span-full border-dashed p-12 flex flex-col items-center justify-center text-center">
                             <div className="h-16 w-16 rounded-full bg-muted/50 flex items-center justify-center mb-6">
-                                {filterDate ? <Calendar className="h-8 w-8 text-muted-foreground opacity-40" /> : <QrCode className="h-8 w-8 text-muted-foreground opacity-40" />}
+                                {activeFilterCount > 0 ? <Calendar className="h-8 w-8 text-muted-foreground opacity-40" /> : <QrCode className="h-8 w-8 text-muted-foreground opacity-40" />}
                             </div>
-                            <CardTitle className="text-lg mb-2">{filterDate ? 'Tidak ada meeting' : 'Belum ada meeting'}</CardTitle>
+                            <CardTitle className="text-lg mb-2">{activeFilterCount > 0 ? 'Tidak ada meeting' : 'Belum ada meeting'}</CardTitle>
                             <CardDescription className="text-sm max-w-[300px] mb-6">
-                                {filterDate 
-                                    ? 'Tidak ada rapat yang ditemukan pada tanggal tersebut.' 
+                                {activeFilterCount > 0
+                                    ? 'Tidak ada rapat yang cocok dengan filter yang dipilih.'
                                     : 'Silakan buat meeting baru untuk mulai mendata kehadiran.'}
                             </CardDescription>
-                            {filterDate && (
-                                <Button variant="outline" onClick={() => setFilterDate('')}>
+                            {activeFilterCount > 0 && (
+                                <Button variant="outline" onClick={resetFilters}>
                                     Hapus Filter
                                 </Button>
                             )}
@@ -234,47 +383,22 @@ export default function DailyMeetingsIndex({ meetings }: { meetings: Meeting[] }
                 </div>
 
                 {/* Pagination Controls */}
-                {totalPages > 1 && (
-                    <div className="flex items-center justify-center gap-2 mt-4 pt-4 border-t">
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            className="cursor-pointer"
-                            disabled={currentPage === 1}
-                            onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                        >
-                            Sebelumnya
-                        </Button>
-                        <div className="flex items-center gap-1">
-                            {Array.from({ length: totalPages }, (_, i) => i + 1)
-                                .filter(page => page === 1 || page === totalPages || Math.abs(currentPage - page) <= 2)
-                                .map((page, index, array) => {
-                                    return (
-                                        <div key={page} className="flex items-center">
-                                            {index > 0 && array[index - 1] !== page - 1 && (
-                                                <span className="px-2 text-muted-foreground">...</span>
-                                            )}
-                                            <Button
-                                                variant={currentPage === page ? 'default' : 'ghost'}
-                                                size="sm"
-                                                className="w-8 h-8 p-0 text-xs cursor-pointer"
-                                                onClick={() => setCurrentPage(page)}
-                                            >
-                                                {page}
-                                            </Button>
-                                        </div>
-                                    );
-                                })}
-                        </div>
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            className="cursor-pointer"
-                            disabled={currentPage === totalPages}
-                            onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-                        >
-                            Berikutnya
-                        </Button>
+                {meetings.links && meetings.links.length > 3 && (
+                    <div className="flex flex-wrap items-center justify-center gap-1 mt-4 pt-4 border-t">
+                        {meetings.links.map((link: any, k: number) => (
+                            <Link
+                                key={k}
+                                href={link.url || '#'}
+                                preserveState
+                                preserveScroll
+                                className={`rounded-md border px-3 py-1.5 text-xs transition-colors ${
+                                    link.active
+                                        ? 'border-primary bg-primary text-primary-foreground'
+                                        : 'bg-background hover:bg-muted'
+                                } ${!link.url ? 'pointer-events-none cursor-not-allowed opacity-50' : ''}`}
+                                dangerouslySetInnerHTML={{ __html: link.label }}
+                            />
+                        ))}
                     </div>
                 )}
             </div>

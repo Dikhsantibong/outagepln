@@ -1,78 +1,300 @@
-import { useState, useEffect, useMemo } from 'react';
-import { Head, useForm, router } from '@inertiajs/react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Label } from '@/components/ui/label';
-import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
-import { ShieldCheck, Upload, FileText, CheckCircle, BarChart3, AlertCircle, Search, ChevronLeft, ChevronRight, Filter } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend, PieChart, Pie, Cell } from 'recharts';
+import { Head, Link, router, useForm } from '@inertiajs/react';
+import {
+    ShieldCheck,
+    FileText,
+    CheckCircle2,
+    AlertCircle,
+    Search,
+    Lock,
+    Pencil,
+    TrendingUp,
+    TrendingDown,
+    Minus,
+    X,
+    ListChecks,
+} from 'lucide-react';
+import { useMemo, useState } from 'react';
+import {
+    Bar,
+    BarChart,
+    CartesianGrid,
+    Cell,
+    LabelList,
+    Legend,
+    ResponsiveContainer,
+    Tooltip,
+    XAxis,
+    YAxis,
+} from 'recharts';
 import { toast } from 'sonner';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
+import {
+    ALL,
+    FilterBar,
+    FilterSelect,
+    buildFilterQuery,
+    countActiveFilters,
+} from '@/components/data-filter-bar';
+import { Button } from '@/components/ui/button';
+import {
+    Card,
+    CardContent,
+    CardDescription,
+    CardHeader,
+    CardTitle,
+} from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+    Table,
+    TableBody,
+    TableCell,
+    TableHead,
+    TableHeader,
+    TableRow,
+} from '@/components/ui/table';
 
-interface OutagePlan {
+type Kinerja = {
+    dm_sebelum: number | null;
+    sfc_sebelum: number | null;
+    eviden_sebelum_url: string | null;
+    dm_sesudah: number | null;
+    sfc_sesudah: number | null;
+    eviden_sesudah_url: string | null;
+} | null;
+
+type Plan = {
     id: number;
     mesin_pembangkit: string;
-    jenis_pembangkit: string;
-    progress: number;
-    kinerja_quality: {
-        dm_sebelum: number | null;
-        sfc_sebelum: number | null;
-        eviden_sebelum_url: string | null;
-        dm_sesudah: number | null;
-        sfc_sesudah: number | null;
-        eviden_sesudah_url: string | null;
-    } | null;
+    jenis_pembangkit: string | null;
+    scope: string | null;
+    sistem: string | null;
+    progress: number | null;
+    kinerja_quality: Kinerja;
+};
+
+type PlanOption = {
+    id: number;
+    mesin_pembangkit: string;
+    jenis_pembangkit: string | null;
+    scope: string | null;
+    sistem: string | null;
+    progress: number | null;
+};
+
+type Options = {
+    tahun: (string | number)[];
+    scope: string[];
+    jenis: string[];
+    sistem: string[];
+};
+
+const FILTER_KEYS = ['search', 'tahun', 'scope', 'jenis', 'sistem', 'status'];
+const URL = '/kinerja/on-quality';
+
+/** Completion state of a row, used for the badge and the status filter. */
+function statusOf(plan: Plan) {
+    const k = plan.kinerja_quality;
+
+    if (k?.dm_sebelum != null && k?.dm_sesudah != null) {
+        return 'lengkap' as const;
+    }
+
+    if (k?.dm_sebelum != null) {
+        return 'sebagian' as const;
+    }
+
+    return 'belum' as const;
 }
 
-export default function OnQuality({ outagePlans }: { outagePlans: OutagePlan[] }) {
-    const [selectedPlanId, setSelectedPlanId] = useState<string>('');
-    const [selectedPlan, setSelectedPlan] = useState<OutagePlan | null>(null);
-    const [searchQuery, setSearchQuery] = useState('');
-    const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-    const [filterStatus, setFilterStatus] = useState<string>('all');
-    const [currentPage, setCurrentPage] = useState(1);
-    const itemsPerPage = 10;
+function StatusBadge({ plan }: { plan: Plan }) {
+    const s = statusOf(plan);
+    const map = {
+        lengkap: {
+            label: 'Lengkap',
+            cls: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400',
+        },
+        sebagian: {
+            label: 'Sesudah kosong',
+            cls: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400',
+        },
+        belum: {
+            label: 'Belum diinput',
+            cls: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400',
+        },
+    }[s];
 
-    const stats = useMemo(() => {
-        let lengkap = 0;
-        let sebagian = 0;
-        let belum = 0;
-        outagePlans.forEach(plan => {
-            const isFilled = plan.kinerja_quality?.dm_sebelum && plan.kinerja_quality?.dm_sesudah;
-            const isPartial = plan.kinerja_quality?.dm_sebelum && !plan.kinerja_quality?.dm_sesudah;
-            if (isFilled) lengkap++;
-            else if (isPartial) sebagian++;
-            else belum++;
+    return (
+        <span
+            className={`inline-flex items-center rounded px-2 py-0.5 text-[10px] font-bold uppercase ${map.cls}`}
+        >
+            {map.label}
+        </span>
+    );
+}
+
+/** Shows the change between two readings; SFC improves when it goes down. */
+function Delta({
+    before,
+    after,
+    lowerIsBetter = false,
+    suffix = '',
+}: {
+    before: number | null | undefined;
+    after: number | null | undefined;
+    lowerIsBetter?: boolean;
+    suffix?: string;
+}) {
+    if (before == null || after == null) {
+        return <span className="text-xs text-muted-foreground">-</span>;
+    }
+
+    const diff = Number(after) - Number(before);
+    const better = lowerIsBetter ? diff < 0 : diff > 0;
+    const same = Math.abs(diff) < 0.0001;
+    const Icon = same ? Minus : better ? TrendingUp : TrendingDown;
+    const cls = same
+        ? 'text-muted-foreground'
+        : better
+          ? 'text-emerald-600 dark:text-emerald-400'
+          : 'text-red-600 dark:text-red-400';
+
+    return (
+        <span className={`inline-flex items-center gap-1 text-xs font-bold ${cls}`}>
+            <Icon className="h-3.5 w-3.5" />
+            {diff > 0 ? '+' : ''}
+            {Number(diff.toFixed(2))}
+            {suffix}
+        </span>
+    );
+}
+
+function SummaryCard({
+    label,
+    value,
+    tone,
+    icon: Icon,
+    active,
+    onClick,
+}: {
+    label: string;
+    value: number;
+    tone: 'slate' | 'emerald' | 'amber' | 'primary';
+    icon: typeof ShieldCheck;
+    active?: boolean;
+    onClick?: () => void;
+}) {
+    const tones = {
+        primary: 'bg-primary/10 text-primary',
+        emerald: 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/40 dark:text-emerald-400',
+        amber: 'bg-amber-100 text-amber-600 dark:bg-amber-900/40 dark:text-amber-400',
+        slate: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400',
+    };
+
+    return (
+        <Card
+            onClick={onClick}
+            className={`transition-all ${onClick ? 'cursor-pointer hover:border-primary/50 hover:shadow-sm' : ''} ${active ? 'border-primary ring-1 ring-primary/30' : ''}`}
+        >
+            <CardContent className="flex items-center gap-3 p-4">
+                <div
+                    className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${tones[tone]}`}
+                >
+                    <Icon className="h-5 w-5" />
+                </div>
+                <div className="min-w-0">
+                    <p className="truncate text-xs text-muted-foreground">{label}</p>
+                    <p className="text-xl font-bold">{value}</p>
+                </div>
+            </CardContent>
+        </Card>
+    );
+}
+
+export default function OnQuality({
+    outagePlans,
+    planOptions = [],
+    selectedPlan = null,
+    filters,
+    filterOptions,
+    summary,
+}: {
+    outagePlans: any;
+    planOptions?: PlanOption[];
+    selectedPlan?: Plan | null;
+    filters?: any;
+    filterOptions?: Options;
+    summary?: { total: number; lengkap: number; sebagian: number; belum: number };
+}) {
+    const [searchTerm, setSearchTerm] = useState(filters?.search || '');
+    const [pickerOpen, setPickerOpen] = useState(false);
+    const [pickerQuery, setPickerQuery] = useState('');
+
+    const opts: Options = filterOptions ?? {
+        tahun: [],
+        scope: [],
+        jenis: [],
+        sistem: [],
+    };
+    const sum = summary ?? { total: 0, lengkap: 0, sebagian: 0, belum: 0 };
+    const rows: Plan[] = useMemo(
+        () => outagePlans?.data ?? [],
+        [outagePlans?.data],
+    );
+
+    // Filtering, sorting and pagination are all server-side; this page used to
+    // load every plan and slice it in the browser.
+    const go = (query: Record<string, string>) =>
+        router.get(URL, query, {
+            preserveState: true,
+            preserveScroll: true,
+            replace: true,
         });
-        return [
-            { name: 'Lengkap', value: lengkap, color: '#10b981' },
-            { name: 'Sebagian', value: sebagian, color: '#f59e0b' },
-            { name: 'Belum Diinput', value: belum, color: '#64748b' }
-        ];
-    }, [outagePlans]);
 
-    const safeSearch = String(searchQuery || '').toLowerCase();
-    const filteredPlans = outagePlans.filter(plan => {
-        const mesin = String(plan?.mesin_pembangkit || '').toLowerCase();
-        const jenis = String(plan?.jenis_pembangkit || '').toLowerCase();
-        const matchesSearch = mesin.includes(safeSearch) || jenis.includes(safeSearch);
-        
-        let matchesStatus = true;
-        if (filterStatus !== 'all') {
-            const isFilled = plan.kinerja_quality?.dm_sebelum && plan.kinerja_quality?.dm_sesudah;
-            const isPartial = plan.kinerja_quality?.dm_sebelum && !plan.kinerja_quality?.dm_sesudah;
-            const status = isFilled ? 'lengkap' : isPartial ? 'sebagian' : 'belum';
-            matchesStatus = status === filterStatus;
-        }
+    const applyFilter = (patch: Record<string, string>) =>
+        go(
+            buildFilterQuery(filters, [...FILTER_KEYS, 'plan'], {
+                search: searchTerm,
+                ...patch,
+            }),
+        );
 
-        return matchesSearch && matchesStatus;
-    });
+    const resetFilters = () => {
+        setSearchTerm('');
+        go(filters?.plan ? { plan: String(filters.plan) } : {});
+    };
 
-    const totalPages = Math.ceil(filteredPlans.length / itemsPerPage);
-    const paginatedPlans = filteredPlans.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+    const activeFilterCount = countActiveFilters(filters, FILTER_KEYS);
+    const selectValue = (key: string) => filters?.[key] || ALL;
 
-    const { data: formSebelum, setData: setFormSebelum, post: postSebelum, processing: processingSebelum, reset: resetSebelum } = useForm({
+    const openPlan = (id: number | string) => {
+        setPickerOpen(false);
+        setPickerQuery('');
+        applyFilter({ plan: String(id) });
+    };
+
+    const closePlan = () => {
+        const q = buildFilterQuery(filters, FILTER_KEYS, { search: searchTerm });
+        go(q);
+    };
+
+    // The picker searches across every plan, not just the current page.
+    const pickerMatches = useMemo(() => {
+        const q = pickerQuery.trim().toLowerCase();
+        const list = q
+            ? planOptions.filter((p) =>
+                  `${p.mesin_pembangkit ?? ''} ${p.jenis_pembangkit ?? ''} ${p.scope ?? ''} ${p.sistem ?? ''}`
+                      .toLowerCase()
+                      .includes(q),
+              )
+            : planOptions;
+
+        return list.slice(0, 50);
+    }, [planOptions, pickerQuery]);
+
+    const k = selectedPlan?.kinerja_quality ?? null;
+    const locked = (selectedPlan?.progress ?? 0) < 100;
+
+    const formSebelum = useForm({
         outage_plan_id: '',
         tipe: 'sebelum',
         dm: '',
@@ -80,7 +302,7 @@ export default function OnQuality({ outagePlans }: { outagePlans: OutagePlan[] }
         eviden: null as File | null,
     });
 
-    const { data: formSesudah, setData: setFormSesudah, post: postSesudah, processing: processingSesudah, reset: resetSesudah } = useForm({
+    const formSesudah = useForm({
         outage_plan_id: '',
         tipe: 'sesudah',
         dm: '',
@@ -88,568 +310,820 @@ export default function OnQuality({ outagePlans }: { outagePlans: OutagePlan[] }
         eviden: null as File | null,
     });
 
-    // Sync forms when selection changes
-    useEffect(() => {
-        if (selectedPlanId) {
-            const plan = outagePlans.find(p => p.id.toString() === selectedPlanId) || null;
-            setSelectedPlan(plan);
-            
-            if (plan) {
-                setFormSebelum({
-                    outage_plan_id: plan.id.toString(),
-                    tipe: 'sebelum',
-                    dm: plan.kinerja_quality?.dm_sebelum?.toString() || '',
-                    sfc: plan.kinerja_quality?.sfc_sebelum?.toString() || '',
-                    eviden: null,
-                });
-                setFormSesudah({
-                    outage_plan_id: plan.id.toString(),
-                    tipe: 'sesudah',
-                    dm: plan.kinerja_quality?.dm_sesudah?.toString() || '',
-                    sfc: plan.kinerja_quality?.sfc_sesudah?.toString() || '',
-                    eviden: null,
-                });
-            }
-        } else {
-            setSelectedPlan(null);
-        }
-    }, [selectedPlanId, outagePlans]);
+    // Re-seed both forms whenever a different plan is opened.
+    const [seededFor, setSeededFor] = useState<number | null>(null);
 
-    const submitSebelum = (e: React.FormEvent) => {
+    if (selectedPlan && seededFor !== selectedPlan.id) {
+        setSeededFor(selectedPlan.id);
+        formSebelum.setData({
+            outage_plan_id: String(selectedPlan.id),
+            tipe: 'sebelum',
+            dm: k?.dm_sebelum?.toString() ?? '',
+            sfc: k?.sfc_sebelum?.toString() ?? '',
+            eviden: null,
+        });
+        formSesudah.setData({
+            outage_plan_id: String(selectedPlan.id),
+            tipe: 'sesudah',
+            dm: k?.dm_sesudah?.toString() ?? '',
+            sfc: k?.sfc_sesudah?.toString() ?? '',
+            eviden: null,
+        });
+    }
+
+    // Charts follow what is being typed so the comparison updates live.
+    const dmChart = [
+        {
+            name: 'Sebelum',
+            nilai: Number(formSebelum.data.dm || k?.dm_sebelum || 0),
+            warna: '#3b82f6',
+        },
+        {
+            name: 'Sesudah',
+            nilai: Number(formSesudah.data.dm || k?.dm_sesudah || 0),
+            warna: '#10b981',
+        },
+    ];
+
+    const sfcChart = [
+        {
+            name: 'Sebelum',
+            nilai: Number(formSebelum.data.sfc || k?.sfc_sebelum || 0),
+            warna: '#3b82f6',
+        },
+        {
+            name: 'Sesudah',
+            nilai: Number(formSesudah.data.sfc || k?.sfc_sesudah || 0),
+            warna: '#10b981',
+        },
+    ];
+
+    // Overview across the current page, skipping machines with no readings yet.
+    const overviewChart = useMemo(
+        () =>
+            rows
+                .filter((p) => p.kinerja_quality?.dm_sebelum != null)
+                .map((p) => ({
+                    name:
+                        p.mesin_pembangkit.length > 18
+                            ? p.mesin_pembangkit.slice(0, 18) + '…'
+                            : p.mesin_pembangkit,
+                    Sebelum: Number(p.kinerja_quality?.dm_sebelum ?? 0),
+                    Sesudah: Number(p.kinerja_quality?.dm_sesudah ?? 0),
+                })),
+        [rows],
+    );
+
+    const submit = (which: 'sebelum' | 'sesudah') => (e: React.FormEvent) => {
         e.preventDefault();
-        postSebelum('/kinerja/on-quality', {
+        const form = which === 'sebelum' ? formSebelum : formSesudah;
+        form.post(URL, {
             preserveScroll: true,
-            onSuccess: () => {
-                toast.success('Data Sebelum Overhaul berhasil disimpan');
-            },
-            onError: () => {
-                toast.error('Gagal menyimpan data');
-            }
+            forceFormData: true,
+            onSuccess: () =>
+                toast.success(
+                    `Data ${which === 'sebelum' ? 'Sebelum' : 'Sesudah'} Overhaul tersimpan`,
+                ),
+            onError: (errs) =>
+                toast.error(
+                    (Object.values(errs)[0] as string) || 'Gagal menyimpan data',
+                ),
         });
     };
-
-    const submitSesudah = (e: React.FormEvent) => {
-        e.preventDefault();
-        postSesudah('/kinerja/on-quality', {
-            preserveScroll: true,
-            onSuccess: () => {
-                toast.success('Data Sesudah Overhaul berhasil disimpan');
-            },
-            onError: () => {
-                toast.error('Gagal menyimpan data');
-            }
-        });
-    };
-
-    // Chart Data Preparation
-    const dmChartData = selectedPlan ? [
-        {
-            name: 'Daya Mampu',
-            'Sebelum OH': Number(formSebelum.dm || selectedPlan.kinerja_quality?.dm_sebelum || 0),
-            'Sesudah OH': Number(formSesudah.dm || selectedPlan.kinerja_quality?.dm_sesudah || 0),
-        }
-    ] : [];
-
-    const comparisonChartData = paginatedPlans.map(plan => {
-        const name = plan.mesin_pembangkit.length > 12 ? plan.mesin_pembangkit.substring(0, 12) + '...' : plan.mesin_pembangkit;
-        
-        return {
-            name,
-            fullName: plan.mesin_pembangkit,
-            'Sebelum (MW)': plan.kinerja_quality?.dm_sebelum || 0,
-            'Sesudah (MW)': plan.kinerja_quality?.dm_sesudah || 0
-        };
-    });
-
-    const sfcChartData = selectedPlan ? [
-        {
-            name: 'SFC',
-            'Sebelum OH': Number(formSebelum.sfc || selectedPlan.kinerja_quality?.sfc_sebelum || 0),
-            'Sesudah OH': Number(formSesudah.sfc || selectedPlan.kinerja_quality?.sfc_sesudah || 0),
-        }
-    ] : [];
 
     return (
         <>
             <Head title="Kinerja - On Quality" />
-            <div className="flex-1 p-4 md:p-8 pt-6">
-                <div className="flex items-center gap-3 mb-6">
-                    <div className="h-10 w-10 bg-primary/10 rounded-xl flex items-center justify-center">
-                        <ShieldCheck className="h-6 w-6 text-primary" />
+
+            <div className="flex flex-1 flex-col gap-4 p-4">
+                {/* Judul */}
+                <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10">
+                        <ShieldCheck className="h-5 w-5 text-primary" />
                     </div>
                     <div>
-                        <h2 className="text-3xl font-bold tracking-tight">On Quality</h2>
-                        <p className="text-muted-foreground text-sm">Input dan pantau evaluasi Daya Mampu & SFC sebelum dan sesudah Overhaul.</p>
+                        <h1 className="text-2xl font-bold tracking-tight">On Quality</h1>
+                        <p className="text-sm text-muted-foreground">
+                            Catat Daya Mampu &amp; SFC sebelum dan sesudah overhaul
+                        </p>
                     </div>
                 </div>
 
-                <div className="mb-6 max-w-md relative z-50">
-                    <Label className="mb-2 block">Cari Mesin Pembangkit</Label>
-                    <div className="relative">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                        <Input
-                            placeholder="Ketik nama mesin..."
-                            value={searchQuery}
-                            onChange={(e) => {
-                                setSearchQuery(e.target.value);
-                                setCurrentPage(1);
-                                setIsDropdownOpen(true);
-                            }}
-                            onFocus={() => setIsDropdownOpen(true)}
-                            onBlur={() => setTimeout(() => setIsDropdownOpen(false), 200)}
-                            className="pl-10 h-12 bg-white dark:bg-slate-900 shadow-sm border-slate-300 dark:border-slate-800 focus-visible:ring-primary"
-                        />
-                    </div>
-                    {isDropdownOpen && (
-                        <div className="absolute w-full mt-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-md shadow-xl max-h-60 overflow-auto">
-                            {filteredPlans.length > 0 ? (
-                                filteredPlans.map(plan => (
-                                    <div
-                                        key={plan.id}
-                                        className="px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer border-b last:border-0 border-slate-100 dark:border-slate-800 flex items-center justify-between transition-colors"
-                                        onMouseDown={(e) => {
-                                            e.preventDefault(); // Prevent focus loss on input
-                                            setSelectedPlanId(plan.id.toString());
-                                            setSearchQuery(`${plan.mesin_pembangkit} - ${plan.jenis_pembangkit}`);
-                                            setIsDropdownOpen(false);
-                                        }}
+                {/* Ringkasan - juga berfungsi sebagai filter cepat */}
+                <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                    <SummaryCard
+                        label="Total Mesin"
+                        value={sum.total}
+                        tone="primary"
+                        icon={ListChecks}
+                        active={!filters?.status}
+                        onClick={() => applyFilter({ status: ALL })}
+                    />
+                    <SummaryCard
+                        label="Lengkap"
+                        value={sum.lengkap}
+                        tone="emerald"
+                        icon={CheckCircle2}
+                        active={filters?.status === 'lengkap'}
+                        onClick={() => applyFilter({ status: 'lengkap' })}
+                    />
+                    <SummaryCard
+                        label="Sesudah kosong"
+                        value={sum.sebagian}
+                        tone="amber"
+                        icon={AlertCircle}
+                        active={filters?.status === 'sebagian'}
+                        onClick={() => applyFilter({ status: 'sebagian' })}
+                    />
+                    <SummaryCard
+                        label="Belum diinput"
+                        value={sum.belum}
+                        tone="slate"
+                        icon={FileText}
+                        active={filters?.status === 'belum'}
+                        onClick={() => applyFilter({ status: 'belum' })}
+                    />
+                </div>
+
+                {/* Panel input - hanya muncul saat sebuah mesin dibuka */}
+                {selectedPlan && (
+                    <Card className="border-primary/40 shadow-sm">
+                        <CardHeader className="flex flex-row items-start justify-between gap-4 space-y-0 border-b bg-primary/5 pb-4">
+                            <div className="min-w-0">
+                                <CardTitle className="truncate text-lg">
+                                    {selectedPlan.mesin_pembangkit}
+                                </CardTitle>
+                                <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                                    <span>{selectedPlan.jenis_pembangkit || '-'}</span>
+                                    <span>Scope: {selectedPlan.scope || '-'}</span>
+                                    <span>Sistem: {selectedPlan.sistem || '-'}</span>
+                                    <span
+                                        className={`font-bold ${locked ? 'text-amber-600' : 'text-emerald-600'}`}
                                     >
-                                        <div>
-                                            <div className="font-medium text-sm">{plan.mesin_pembangkit}</div>
-                                            <div className="text-xs text-muted-foreground">{plan.jenis_pembangkit}</div>
-                                        </div>
-                                        <div className="text-[10px] font-bold px-2 py-1 bg-primary/10 text-primary rounded-full">
-                                            {plan.progress}%
+                                        Progres {selectedPlan.progress ?? 0}%
+                                    </span>
+                                </div>
+                            </div>
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={closePlan}
+                                className="shrink-0 gap-1.5"
+                            >
+                                <X className="h-4 w-4" />
+                                Tutup
+                            </Button>
+                        </CardHeader>
+
+                        <CardContent className="grid gap-6 pt-6 lg:grid-cols-2">
+                            {/* SEBELUM */}
+                            <form
+                                onSubmit={submit('sebelum')}
+                                className="space-y-4 rounded-lg border border-blue-200 p-4 dark:border-blue-900/50"
+                            >
+                                <div className="flex items-center justify-between">
+                                    <h3 className="font-bold text-blue-700 dark:text-blue-400">
+                                        Sebelum Overhaul
+                                    </h3>
+                                    {k?.eviden_sebelum_url && (
+                                        <a
+                                            href={k.eviden_sebelum_url}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="inline-flex items-center gap-1 rounded border border-blue-200 bg-blue-50 px-2 py-1 text-xs text-blue-600 hover:underline dark:border-blue-900 dark:bg-blue-950/40"
+                                        >
+                                            <FileText className="h-3.5 w-3.5" />
+                                            Lihat eviden
+                                        </a>
+                                    )}
+                                </div>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div className="space-y-1.5">
+                                        <Label htmlFor="dm_seb">Daya Mampu (MW)</Label>
+                                        <Input
+                                            id="dm_seb"
+                                            type="number"
+                                            step="0.01"
+                                            placeholder="10.50"
+                                            value={formSebelum.data.dm}
+                                            onChange={(e) =>
+                                                formSebelum.setData('dm', e.target.value)
+                                            }
+                                            required
+                                        />
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <Label htmlFor="sfc_seb">SFC</Label>
+                                        <Input
+                                            id="sfc_seb"
+                                            type="number"
+                                            step="0.01"
+                                            placeholder="0.25"
+                                            value={formSebelum.data.sfc}
+                                            onChange={(e) =>
+                                                formSebelum.setData('sfc', e.target.value)
+                                            }
+                                            required
+                                        />
+                                    </div>
+                                </div>
+                                <div className="space-y-1.5">
+                                    <Label htmlFor="ev_seb">Eviden (PDF/JPG/PNG)</Label>
+                                    <Input
+                                        id="ev_seb"
+                                        type="file"
+                                        accept=".pdf,.jpg,.jpeg,.png"
+                                        onChange={(e) =>
+                                            formSebelum.setData(
+                                                'eviden',
+                                                e.target.files?.[0] ?? null,
+                                            )
+                                        }
+                                    />
+                                </div>
+                                <Button
+                                    type="submit"
+                                    disabled={formSebelum.processing}
+                                    className="w-full bg-blue-600 hover:bg-blue-700"
+                                >
+                                    {formSebelum.processing
+                                        ? 'Menyimpan...'
+                                        : 'Simpan Sebelum OH'}
+                                </Button>
+                            </form>
+
+                            {/* SESUDAH */}
+                            <form
+                                onSubmit={submit('sesudah')}
+                                className={`space-y-4 rounded-lg border p-4 ${locked ? 'border-slate-200 bg-muted/30 dark:border-slate-800' : 'border-emerald-200 dark:border-emerald-900/50'}`}
+                            >
+                                <div className="flex items-center justify-between">
+                                    <h3
+                                        className={`font-bold ${locked ? 'text-muted-foreground' : 'text-emerald-700 dark:text-emerald-400'}`}
+                                    >
+                                        Sesudah Overhaul
+                                    </h3>
+                                    {k?.eviden_sesudah_url && (
+                                        <a
+                                            href={k.eviden_sesudah_url}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="inline-flex items-center gap-1 rounded border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs text-emerald-600 hover:underline dark:border-emerald-900 dark:bg-emerald-950/40"
+                                        >
+                                            <FileText className="h-3.5 w-3.5" />
+                                            Lihat eviden
+                                        </a>
+                                    )}
+                                </div>
+
+                                {locked && (
+                                    <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-700 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-400">
+                                        <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                                        <span>
+                                            Terkunci sampai progres pekerjaan 100%. Saat ini{' '}
+                                            {selectedPlan.progress ?? 0}%.
+                                        </span>
+                                    </div>
+                                )}
+
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div className="space-y-1.5">
+                                        <Label htmlFor="dm_ses">Daya Mampu (MW)</Label>
+                                        <Input
+                                            id="dm_ses"
+                                            type="number"
+                                            step="0.01"
+                                            placeholder="12.00"
+                                            value={formSesudah.data.dm}
+                                            onChange={(e) =>
+                                                formSesudah.setData('dm', e.target.value)
+                                            }
+                                            required
+                                            disabled={locked}
+                                        />
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <Label htmlFor="sfc_ses">SFC</Label>
+                                        <Input
+                                            id="sfc_ses"
+                                            type="number"
+                                            step="0.01"
+                                            placeholder="0.22"
+                                            value={formSesudah.data.sfc}
+                                            onChange={(e) =>
+                                                formSesudah.setData('sfc', e.target.value)
+                                            }
+                                            required
+                                            disabled={locked}
+                                        />
+                                    </div>
+                                </div>
+                                <div className="space-y-1.5">
+                                    <Label htmlFor="ev_ses">Eviden (PDF/JPG/PNG)</Label>
+                                    <Input
+                                        id="ev_ses"
+                                        type="file"
+                                        accept=".pdf,.jpg,.jpeg,.png"
+                                        disabled={locked}
+                                        onChange={(e) =>
+                                            formSesudah.setData(
+                                                'eviden',
+                                                e.target.files?.[0] ?? null,
+                                            )
+                                        }
+                                    />
+                                </div>
+                                <Button
+                                    type="submit"
+                                    disabled={formSesudah.processing || locked}
+                                    className="w-full bg-emerald-600 hover:bg-emerald-700"
+                                >
+                                    {formSesudah.processing
+                                        ? 'Menyimpan...'
+                                        : 'Simpan Sesudah OH'}
+                                </Button>
+                            </form>
+
+                            {/* Ringkasan hasil */}
+                            <div className="lg:col-span-2">
+                                <div className="grid gap-3 rounded-lg border bg-muted/20 p-4 sm:grid-cols-2">
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-xs text-muted-foreground">
+                                            Perubahan Daya Mampu
+                                        </span>
+                                        <div className="flex items-center gap-2 text-sm">
+                                            <span className="font-mono">
+                                                {k?.dm_sebelum ?? '-'} &rarr;{' '}
+                                                {k?.dm_sesudah ?? '-'}
+                                            </span>
+                                            <Delta
+                                                before={k?.dm_sebelum}
+                                                after={k?.dm_sesudah}
+                                                suffix=" MW"
+                                            />
                                         </div>
                                     </div>
-                                ))
-                            ) : (
-                                <div className="p-4 text-sm text-center text-muted-foreground italic">Tidak ada mesin yang cocok.</div>
-                            )}
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-xs text-muted-foreground">
+                                            Perubahan SFC
+                                        </span>
+                                        <div className="flex items-center gap-2 text-sm">
+                                            <span className="font-mono">
+                                                {k?.sfc_sebelum ?? '-'} &rarr;{' '}
+                                                {k?.sfc_sesudah ?? '-'}
+                                            </span>
+                                            <Delta
+                                                before={k?.sfc_sebelum}
+                                                after={k?.sfc_sesudah}
+                                                lowerIsBetter
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                                <p className="mt-2 text-xs text-muted-foreground">
+                                    Daya Mampu naik dan SFC turun berarti membaik.
+                                </p>
+                            </div>
+
+                            {/* Grafik perbandingan sebelum vs sesudah */}
+                            <div className="grid gap-4 lg:col-span-2 sm:grid-cols-2">
+                                <div className="rounded-lg border p-4">
+                                    <h4 className="mb-1 text-sm font-bold">
+                                        Daya Mampu (MW)
+                                    </h4>
+                                    <p className="mb-3 text-xs text-muted-foreground">
+                                        Semakin tinggi semakin baik
+                                    </p>
+                                    <div className="h-[190px] w-full">
+                                        <ResponsiveContainer width="100%" height="100%">
+                                            <BarChart
+                                                data={dmChart}
+                                                margin={{ top: 22, right: 10, left: -18, bottom: 0 }}
+                                            >
+                                                <CartesianGrid
+                                                    strokeDasharray="3 3"
+                                                    vertical={false}
+                                                    opacity={0.3}
+                                                />
+                                                <XAxis
+                                                    dataKey="name"
+                                                    tick={{ fontSize: 11 }}
+                                                    axisLine={false}
+                                                    tickLine={false}
+                                                />
+                                                <YAxis
+                                                    tick={{ fontSize: 11 }}
+                                                    axisLine={false}
+                                                    tickLine={false}
+                                                />
+                                                <Tooltip
+                                                    cursor={{ fill: 'rgba(0,0,0,0.04)' }}
+                                                    contentStyle={{
+                                                        borderRadius: 8,
+                                                        border: 'none',
+                                                        boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                                                    }}
+                                                    formatter={(v) => [`${v} MW`, 'Daya Mampu']}
+                                                />
+                                                <Bar dataKey="nilai" radius={[6, 6, 0, 0]} barSize={70}>
+                                                    {dmChart.map((d, i) => (
+                                                        <Cell key={i} fill={d.warna} />
+                                                    ))}
+                                                    <LabelList
+                                                        dataKey="nilai"
+                                                        position="top"
+                                                        fontSize={12}
+                                                        fontWeight="bold"
+                                                    />
+                                                </Bar>
+                                            </BarChart>
+                                        </ResponsiveContainer>
+                                    </div>
+                                </div>
+
+                                <div className="rounded-lg border p-4">
+                                    <h4 className="mb-1 text-sm font-bold">SFC</h4>
+                                    <p className="mb-3 text-xs text-muted-foreground">
+                                        Semakin rendah semakin baik
+                                    </p>
+                                    <div className="h-[190px] w-full">
+                                        <ResponsiveContainer width="100%" height="100%">
+                                            <BarChart
+                                                data={sfcChart}
+                                                margin={{ top: 22, right: 10, left: -18, bottom: 0 }}
+                                            >
+                                                <CartesianGrid
+                                                    strokeDasharray="3 3"
+                                                    vertical={false}
+                                                    opacity={0.3}
+                                                />
+                                                <XAxis
+                                                    dataKey="name"
+                                                    tick={{ fontSize: 11 }}
+                                                    axisLine={false}
+                                                    tickLine={false}
+                                                />
+                                                <YAxis
+                                                    tick={{ fontSize: 11 }}
+                                                    axisLine={false}
+                                                    tickLine={false}
+                                                />
+                                                <Tooltip
+                                                    cursor={{ fill: 'rgba(0,0,0,0.04)' }}
+                                                    contentStyle={{
+                                                        borderRadius: 8,
+                                                        border: 'none',
+                                                        boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                                                    }}
+                                                    formatter={(v) => [`${v}`, 'SFC']}
+                                                />
+                                                <Bar dataKey="nilai" radius={[6, 6, 0, 0]} barSize={70}>
+                                                    {sfcChart.map((d, i) => (
+                                                        <Cell key={i} fill={d.warna} />
+                                                    ))}
+                                                    <LabelList
+                                                        dataKey="nilai"
+                                                        position="top"
+                                                        fontSize={12}
+                                                        fontWeight="bold"
+                                                    />
+                                                </Bar>
+                                            </BarChart>
+                                        </ResponsiveContainer>
+                                    </div>
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
+                )}
+
+                {/* Grafik perbandingan seluruh mesin di halaman ini */}
+                {overviewChart.length > 0 && (
+                    <Card>
+                        <CardHeader className="pb-2">
+                            <CardTitle className="text-base">
+                                Perbandingan Daya Mampu Antar Mesin
+                            </CardTitle>
+                            <CardDescription>
+                                {overviewChart.length} mesin dengan data pada halaman ini
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="h-[260px] w-full">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <BarChart
+                                        data={overviewChart}
+                                        margin={{ top: 10, right: 10, left: -18, bottom: 40 }}
+                                    >
+                                        <CartesianGrid
+                                            strokeDasharray="3 3"
+                                            vertical={false}
+                                            opacity={0.3}
+                                        />
+                                        <XAxis
+                                            dataKey="name"
+                                            angle={-25}
+                                            textAnchor="end"
+                                            interval={0}
+                                            height={60}
+                                            tick={{ fontSize: 10 }}
+                                        />
+                                        <YAxis tick={{ fontSize: 11 }} />
+                                        <Tooltip
+                                            cursor={{ fill: 'rgba(0,0,0,0.04)' }}
+                                            contentStyle={{
+                                                borderRadius: 8,
+                                                border: 'none',
+                                                boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                                            }}
+                                        />
+                                        <Legend wrapperStyle={{ fontSize: 12 }} />
+                                        <Bar
+                                            dataKey="Sebelum"
+                                            fill="#3b82f6"
+                                            radius={[4, 4, 0, 0]}
+                                            maxBarSize={26}
+                                        />
+                                        <Bar
+                                            dataKey="Sesudah"
+                                            fill="#10b981"
+                                            radius={[4, 4, 0, 0]}
+                                            maxBarSize={26}
+                                        />
+                                    </BarChart>
+                                </ResponsiveContainer>
+                            </div>
+                        </CardContent>
+                    </Card>
+                )}
+
+                {/* Daftar mesin */}
+                <Card className="h-fit gap-0 py-4">
+                    <CardHeader className="space-y-3 pb-3">
+                        <div className="flex flex-row items-center justify-between space-y-0">
+                            <div>
+                                <CardTitle className="text-lg">Daftar Mesin</CardTitle>
+                                <CardDescription>
+                                    Klik <span className="font-semibold">Isi Data</span> untuk
+                                    membuka form input
+                                </CardDescription>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2">
+                                {/* Pemilih cepat lintas halaman */}
+                                <div className="relative w-64">
+                                    <Search className="absolute top-2.5 left-2.5 h-4 w-4 text-muted-foreground" />
+                                    <Input
+                                        placeholder="Buka mesin (semua halaman)..."
+                                        className="h-9 pl-9"
+                                        value={pickerQuery}
+                                        onChange={(e) => {
+                                            setPickerQuery(e.target.value);
+                                            setPickerOpen(true);
+                                        }}
+                                        onFocus={() => setPickerOpen(true)}
+                                        onBlur={() =>
+                                            setTimeout(() => setPickerOpen(false), 180)
+                                        }
+                                    />
+                                    {pickerOpen && (
+                                        <div className="absolute z-50 mt-1 max-h-72 w-full overflow-auto rounded-md border bg-popover shadow-lg">
+                                            {pickerMatches.length > 0 ? (
+                                                pickerMatches.map((p) => (
+                                                    <button
+                                                        key={p.id}
+                                                        type="button"
+                                                        className="flex w-full items-center justify-between gap-2 border-b px-3 py-2 text-left last:border-0 hover:bg-accent"
+                                                        onMouseDown={(e) => {
+                                                            e.preventDefault();
+                                                            openPlan(p.id);
+                                                        }}
+                                                    >
+                                                        <span className="min-w-0">
+                                                            <span className="block truncate text-xs font-medium">
+                                                                {p.mesin_pembangkit}
+                                                            </span>
+                                                            <span className="block truncate text-[10px] text-muted-foreground">
+                                                                {p.jenis_pembangkit} ·{' '}
+                                                                {p.scope || '-'}
+                                                            </span>
+                                                        </span>
+                                                        <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold text-primary">
+                                                            {p.progress ?? 0}%
+                                                        </span>
+                                                    </button>
+                                                ))
+                                            ) : (
+                                                <div className="p-3 text-center text-xs text-muted-foreground italic">
+                                                    Tidak ada mesin yang cocok.
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="rounded-md border bg-muted px-2 py-1 text-xs font-medium whitespace-nowrap text-muted-foreground">
+                                    Total: {outagePlans?.total ?? 0}
+                                </div>
+                            </div>
+                        </div>
+
+                        <FilterBar
+                            activeCount={activeFilterCount}
+                            onReset={resetFilters}
+                        >
+                            <div className="space-y-1">
+                                <Label className="text-[10px] font-semibold text-muted-foreground uppercase">
+                                    Cari
+                                </Label>
+                                <Input
+                                    placeholder="Mesin / scope... (enter)"
+                                    className="h-8 w-[190px] text-xs"
+                                    value={searchTerm}
+                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter') {
+                                            applyFilter({ search: searchTerm });
+                                        }
+                                    }}
+                                />
+                            </div>
+                            <FilterSelect
+                                label="Tahun"
+                                value={selectValue('tahun')}
+                                onChange={(v) => applyFilter({ tahun: v })}
+                                options={opts.tahun.map((t) => ({
+                                    value: String(t),
+                                    label: String(t),
+                                }))}
+                                width="w-[110px]"
+                            />
+                            <FilterSelect
+                                label="Scope"
+                                value={selectValue('scope')}
+                                onChange={(v) => applyFilter({ scope: v })}
+                                options={opts.scope.map((s) => ({
+                                    value: s,
+                                    label: s.toUpperCase(),
+                                }))}
+                                width="w-[150px]"
+                            />
+                            <FilterSelect
+                                label="Jenis"
+                                value={selectValue('jenis')}
+                                onChange={(v) => applyFilter({ jenis: v })}
+                                options={opts.jenis.map((s) => ({ value: s, label: s }))}
+                                width="w-[110px]"
+                            />
+                            <FilterSelect
+                                label="Sistem"
+                                value={selectValue('sistem')}
+                                onChange={(v) => applyFilter({ sistem: v })}
+                                options={opts.sistem.map((s) => ({ value: s, label: s }))}
+                                width="w-[160px]"
+                            />
+                            <FilterSelect
+                                label="Status Input"
+                                value={selectValue('status')}
+                                onChange={(v) => applyFilter({ status: v })}
+                                options={[
+                                    { value: 'lengkap', label: 'Lengkap' },
+                                    { value: 'sebagian', label: 'Sesudah kosong' },
+                                    { value: 'belum', label: 'Belum diinput' },
+                                ]}
+                                width="w-[150px]"
+                            />
+                        </FilterBar>
+                    </CardHeader>
+
+                    <CardContent className="overflow-x-auto p-0">
+                        <Table className="whitespace-nowrap [&_td]:py-1.5 [&_th]:h-9">
+                            <TableHeader>
+                                <TableRow className="border-y bg-muted/30">
+                                    <TableHead className="min-w-[220px] px-4 font-bold">
+                                        Mesin
+                                    </TableHead>
+                                    <TableHead className="px-4 text-center font-bold">
+                                        Jenis
+                                    </TableHead>
+                                    <TableHead className="px-4 text-center font-bold">
+                                        Scope
+                                    </TableHead>
+                                    <TableHead className="px-4 text-center font-bold">
+                                        Progres
+                                    </TableHead>
+                                    <TableHead className="px-4 text-center font-bold">
+                                        DM (Seb &rarr; Ses)
+                                    </TableHead>
+                                    <TableHead className="px-4 text-center font-bold">
+                                        SFC (Seb &rarr; Ses)
+                                    </TableHead>
+                                    <TableHead className="px-4 text-center font-bold">
+                                        Status
+                                    </TableHead>
+                                    <TableHead className="px-4 text-center font-bold">
+                                        Aksi
+                                    </TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {rows.length > 0 ? (
+                                    rows.map((plan) => {
+                                        const kq = plan.kinerja_quality;
+                                        const isOpen = selectedPlan?.id === plan.id;
+
+                                        return (
+                                            <TableRow
+                                                key={plan.id}
+                                                className={`hover:bg-muted/30 ${isOpen ? 'bg-primary/5' : ''}`}
+                                            >
+                                                <TableCell className="px-4 text-xs font-medium">
+                                                    {plan.mesin_pembangkit}
+                                                </TableCell>
+                                                <TableCell className="px-4 text-center">
+                                                    <span className="inline-flex items-center rounded bg-secondary px-2 py-0.5 text-[10px] font-bold text-secondary-foreground uppercase">
+                                                        {plan.jenis_pembangkit || '-'}
+                                                    </span>
+                                                </TableCell>
+                                                <TableCell className="px-4 text-center text-[11px] font-semibold text-muted-foreground uppercase">
+                                                    {plan.scope || '-'}
+                                                </TableCell>
+                                                <TableCell className="px-4 text-center">
+                                                    <span
+                                                        className={`text-[11px] font-bold ${(plan.progress ?? 0) >= 100 ? 'text-emerald-600' : 'text-muted-foreground'}`}
+                                                    >
+                                                        {plan.progress ?? 0}%
+                                                    </span>
+                                                </TableCell>
+                                                <TableCell className="px-4 text-center font-mono text-[11px]">
+                                                    {kq?.dm_sebelum ?? '-'} &rarr;{' '}
+                                                    {kq?.dm_sesudah ?? '-'}
+                                                </TableCell>
+                                                <TableCell className="px-4 text-center font-mono text-[11px]">
+                                                    {kq?.sfc_sebelum ?? '-'} &rarr;{' '}
+                                                    {kq?.sfc_sesudah ?? '-'}
+                                                </TableCell>
+                                                <TableCell className="px-4 text-center">
+                                                    <StatusBadge plan={plan} />
+                                                </TableCell>
+                                                <TableCell className="px-4 text-center">
+                                                    <Button
+                                                        variant={isOpen ? 'default' : 'outline'}
+                                                        size="sm"
+                                                        className="h-7 gap-1.5 text-xs"
+                                                        onClick={() => openPlan(plan.id)}
+                                                    >
+                                                        <Pencil className="h-3 w-3" />
+                                                        Isi Data
+                                                    </Button>
+                                                </TableCell>
+                                            </TableRow>
+                                        );
+                                    })
+                                ) : (
+                                    <TableRow>
+                                        <TableCell
+                                            colSpan={8}
+                                            className="h-32 text-center text-muted-foreground"
+                                        >
+                                            <ShieldCheck className="mx-auto mb-2 h-10 w-10 opacity-20" />
+                                            <p>
+                                                {activeFilterCount > 0
+                                                    ? 'Tidak ada mesin yang cocok dengan filter.'
+                                                    : 'Belum ada data mesin.'}
+                                            </p>
+                                        </TableCell>
+                                    </TableRow>
+                                )}
+                            </TableBody>
+                        </Table>
+                    </CardContent>
+
+                    {outagePlans?.links && outagePlans.links.length > 3 && (
+                        <div className="flex flex-wrap items-center justify-center gap-1 border-t px-4 pt-3">
+                            {outagePlans.links.map((link: any, k2: number) => (
+                                <Link
+                                    key={k2}
+                                    href={link.url || '#'}
+                                    preserveState
+                                    preserveScroll
+                                    className={`rounded-md border px-3 py-1.5 text-xs transition-colors ${
+                                        link.active
+                                            ? 'border-primary bg-primary text-primary-foreground'
+                                            : 'bg-background hover:bg-muted'
+                                    } ${!link.url ? 'pointer-events-none cursor-not-allowed opacity-50' : ''}`}
+                                    dangerouslySetInnerHTML={{ __html: link.label }}
+                                />
+                            ))}
                         </div>
                     )}
-                </div>
-
-                {selectedPlan ? (
-                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-                        {/* LEFT COLUMN: INPUT FORMS */}
-                        <div className="lg:col-span-5 space-y-6">
-                            {/* FORM SEBELUM OH */}
-                            <Card className="border-blue-100 shadow-md">
-                                <CardHeader className="bg-blue-50/50 dark:bg-blue-900/10 border-b pb-4">
-                                    <CardTitle className="text-lg text-blue-700 dark:text-blue-400">Sebelum Overhaul (OH)</CardTitle>
-                                    <CardDescription>Data historis / evaluasi sebelum pekerjaan dimulai</CardDescription>
-                                </CardHeader>
-                                <CardContent className="pt-6">
-                                    <form onSubmit={submitSebelum} className="space-y-4">
-                                        <div className="grid grid-cols-2 gap-4">
-                                            <div className="space-y-2">
-                                                <Label>Daya Mampu (MW)</Label>
-                                                <Input 
-                                                    type="number" 
-                                                    step="0.01" 
-                                                    value={formSebelum.dm} 
-                                                    onChange={e => setFormSebelum('dm', e.target.value)} 
-                                                    placeholder="Contoh: 10.5" 
-                                                    required 
-                                                />
-                                            </div>
-                                            <div className="space-y-2">
-                                                <Label>SFC</Label>
-                                                <Input 
-                                                    type="number" 
-                                                    step="0.01" 
-                                                    value={formSebelum.sfc} 
-                                                    onChange={e => setFormSebelum('sfc', e.target.value)} 
-                                                    placeholder="Contoh: 0.25" 
-                                                    required 
-                                                />
-                                            </div>
-                                        </div>
-                                        <div className="space-y-2">
-                                            <Label>Eviden Dokumen (PDF/JPG)</Label>
-                                            <div className="flex items-center gap-3">
-                                                <Input 
-                                                    type="file" 
-                                                    className="flex-1"
-                                                    accept=".pdf,.jpg,.jpeg,.png"
-                                                    onChange={e => setFormSebelum('eviden', e.target.files ? e.target.files[0] : null)} 
-                                                />
-                                                {selectedPlan.kinerja_quality?.eviden_sebelum_url && (
-                                                    <a href={selectedPlan.kinerja_quality.eviden_sebelum_url} target="_blank" className="flex items-center gap-1 text-xs text-blue-600 bg-blue-50 px-2 py-2 rounded-md hover:underline border border-blue-200">
-                                                        <FileText className="h-4 w-4" /> Lihat
-                                                    </a>
-                                                )}
-                                            </div>
-                                        </div>
-                                        <Button type="submit" disabled={processingSebelum} className="w-full bg-blue-600 hover:bg-blue-700">
-                                            {processingSebelum ? 'Menyimpan...' : 'Simpan Data Sebelum OH'}
-                                        </Button>
-                                    </form>
-                                </CardContent>
-                            </Card>
-
-                            {/* FORM SESUDAH OH */}
-                            <Card className={selectedPlan.progress < 100 ? "opacity-75 border-slate-200" : "border-emerald-200 shadow-md"}>
-                                <CardHeader className={`border-b pb-4 ${selectedPlan.progress < 100 ? "bg-slate-50 dark:bg-slate-900" : "bg-emerald-50/50 dark:bg-emerald-900/10"}`}>
-                                    <div className="flex items-center justify-between">
-                                        <div>
-                                            <CardTitle className={`text-lg ${selectedPlan.progress < 100 ? "text-slate-500" : "text-emerald-700 dark:text-emerald-400"}`}>Sesudah Overhaul (OH)</CardTitle>
-                                            <CardDescription>Data aktual setelah pekerjaan selesai</CardDescription>
-                                        </div>
-                                        {selectedPlan.progress < 100 && (
-                                            <div className="flex items-center gap-1 text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded-md border border-amber-200">
-                                                <AlertCircle className="h-3 w-3" /> Progres belum 100%
-                                            </div>
-                                        )}
-                                    </div>
-                                </CardHeader>
-                                <CardContent className="pt-6 relative">
-                                    {/* Overlay if not 100% */}
-                                    {selectedPlan.progress < 100 && (
-                                        <div className="absolute inset-0 z-10 bg-white/50 dark:bg-slate-950/50 backdrop-blur-[1px] flex flex-col items-center justify-center text-center p-4">
-                                            <div className="bg-white dark:bg-slate-900 p-4 rounded-xl shadow-lg border">
-                                                <AlertCircle className="h-8 w-8 text-amber-500 mx-auto mb-2" />
-                                                <p className="font-semibold text-sm">Form Terkunci</p>
-                                                <p className="text-xs text-muted-foreground mt-1">Pekerjaan harus 100% selesai untuk mengisi hasil.</p>
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    <form onSubmit={submitSesudah} className="space-y-4">
-                                        <div className="grid grid-cols-2 gap-4">
-                                            <div className="space-y-2">
-                                                <Label>Daya Mampu (MW)</Label>
-                                                <Input 
-                                                    type="number" 
-                                                    step="0.01" 
-                                                    value={formSesudah.dm} 
-                                                    onChange={e => setFormSesudah('dm', e.target.value)} 
-                                                    placeholder="Contoh: 12.0" 
-                                                    required 
-                                                    disabled={selectedPlan.progress < 100}
-                                                />
-                                            </div>
-                                            <div className="space-y-2">
-                                                <Label>SFC</Label>
-                                                <Input 
-                                                    type="number" 
-                                                    step="0.01" 
-                                                    value={formSesudah.sfc} 
-                                                    onChange={e => setFormSesudah('sfc', e.target.value)} 
-                                                    placeholder="Contoh: 0.22" 
-                                                    required 
-                                                    disabled={selectedPlan.progress < 100}
-                                                />
-                                            </div>
-                                        </div>
-                                        <div className="space-y-2">
-                                            <Label>Eviden Dokumen (PDF/JPG)</Label>
-                                            <div className="flex items-center gap-3">
-                                                <Input 
-                                                    type="file" 
-                                                    className="flex-1"
-                                                    accept=".pdf,.jpg,.jpeg,.png"
-                                                    onChange={e => setFormSesudah('eviden', e.target.files ? e.target.files[0] : null)} 
-                                                    disabled={selectedPlan.progress < 100}
-                                                />
-                                                {selectedPlan.kinerja_quality?.eviden_sesudah_url && (
-                                                    <a href={selectedPlan.kinerja_quality.eviden_sesudah_url} target="_blank" className="flex items-center gap-1 text-xs text-emerald-600 bg-emerald-50 px-2 py-2 rounded-md hover:underline border border-emerald-200">
-                                                        <FileText className="h-4 w-4" /> Lihat
-                                                    </a>
-                                                )}
-                                            </div>
-                                        </div>
-                                        <Button type="submit" disabled={processingSesudah || selectedPlan.progress < 100} className="w-full bg-emerald-600 hover:bg-emerald-700">
-                                            {processingSesudah ? 'Menyimpan...' : 'Simpan Data Sesudah OH'}
-                                        </Button>
-                                    </form>
-                                </CardContent>
-                            </Card>
-                        </div>
-
-                        {/* RIGHT COLUMN: CHARTS */}
-                        <div className="lg:col-span-7 space-y-6">
-                            <Card className="h-full shadow-md border-slate-200 dark:border-slate-800">
-                                <CardHeader>
-                                    <CardTitle className="flex items-center gap-2">
-                                        <BarChart3 className="h-5 w-5 text-indigo-500" />
-                                        Visualisasi Perbandingan
-                                    </CardTitle>
-                                    <CardDescription>Grafik komparasi *real-time* sebelum dan sesudah OH</CardDescription>
-                                </CardHeader>
-                                <CardContent className="space-y-8 pt-4">
-                                    
-                                    {/* CHART DAYA MAMPU */}
-                                    <div className="space-y-3">
-                                        <h4 className="text-sm font-bold text-center border-b pb-2">Perbandingan Daya Mampu (MW)</h4>
-                                        <div className="h-[200px] w-full">
-                                            <ResponsiveContainer width="100%" height="100%">
-                                                <BarChart data={dmChartData} margin={{ top: 20, right: 30, left: 0, bottom: 5 }}>
-                                                    <CartesianGrid strokeDasharray="3 3" vertical={false} opacity={0.3} />
-                                                    <XAxis dataKey="name" hide />
-                                                    <YAxis fontSize={12} tickLine={false} axisLine={false} />
-                                                    <Tooltip 
-                                                        cursor={{fill: 'transparent'}}
-                                                        contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
-                                                    />
-                                                    <Legend verticalAlign="top" height={36} wrapperStyle={{ fontSize: '12px' }} />
-                                                    <Bar dataKey="Sebelum OH" fill="#3b82f6" radius={[4, 4, 0, 0]} barSize={60} label={{ position: 'top', fill: '#64748b', fontSize: 12, fontWeight: 'bold' }} />
-                                                    <Bar dataKey="Sesudah OH" fill="#10b981" radius={[4, 4, 0, 0]} barSize={60} label={{ position: 'top', fill: '#64748b', fontSize: 12, fontWeight: 'bold' }} />
-                                                </BarChart>
-                                            </ResponsiveContainer>
-                                        </div>
-                                    </div>
-
-                                    {/* CHART SFC */}
-                                    <div className="space-y-3 pt-6 border-t border-slate-100 dark:border-slate-800">
-                                        <h4 className="text-sm font-bold text-center border-b pb-2">Perbandingan SFC</h4>
-                                        <div className="h-[200px] w-full">
-                                            <ResponsiveContainer width="100%" height="100%">
-                                                <BarChart data={sfcChartData} margin={{ top: 20, right: 30, left: 0, bottom: 5 }}>
-                                                    <CartesianGrid strokeDasharray="3 3" vertical={false} opacity={0.3} />
-                                                    <XAxis dataKey="name" hide />
-                                                    <YAxis fontSize={12} tickLine={false} axisLine={false} />
-                                                    <Tooltip 
-                                                        cursor={{fill: 'transparent'}}
-                                                        contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
-                                                    />
-                                                    <Legend verticalAlign="top" height={36} wrapperStyle={{ fontSize: '12px' }} />
-                                                    <Bar dataKey="Sebelum OH" fill="#3b82f6" radius={[4, 4, 0, 0]} barSize={60} label={{ position: 'top', fill: '#64748b', fontSize: 12, fontWeight: 'bold' }} />
-                                                    <Bar dataKey="Sesudah OH" fill="#10b981" radius={[4, 4, 0, 0]} barSize={60} label={{ position: 'top', fill: '#64748b', fontSize: 12, fontWeight: 'bold' }} />
-                                                </BarChart>
-                                            </ResponsiveContainer>
-                                        </div>
-                                    </div>
-
-                                </CardContent>
-                            </Card>
-                        </div>
-                    </div>
-                ) : (
-                    <div className="flex flex-col gap-6 mt-6">
-                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                            <Card className="col-span-1 lg:col-span-2 border-slate-200 dark:border-slate-800 shadow-sm">
-                                <CardHeader className="pb-2">
-                                    <div className="flex items-center justify-between">
-                                        <div>
-                                            <CardTitle className="text-lg">Perbandingan Daya Mampu Sebelum vs Sesudah</CardTitle>
-                                            <CardDescription>Komparasi data On Quality dari {paginatedPlans.length} mesin pada halaman ini.</CardDescription>
-                                        </div>
-                                        <BarChart3 className="h-5 w-5 text-muted-foreground" />
-                                    </div>
-                                </CardHeader>
-                                <CardContent>
-                                    <div className="h-[250px] w-full mt-2">
-                                        {comparisonChartData.length > 0 ? (
-                                            <ResponsiveContainer width="100%" height="100%">
-                                                <BarChart data={comparisonChartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" opacity={0.5} />
-                                                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#64748b' }} />
-                                                    <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#64748b' }} />
-                                                    <Tooltip 
-                                                        contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
-                                                        cursor={{ fill: 'rgba(0,0,0,0.05)' }}
-                                                    />
-                                                    <Legend wrapperStyle={{ paddingTop: '10px' }} />
-                                                    <Bar dataKey="Sebelum (MW)" fill="#94a3b8" radius={[4, 4, 0, 0]} maxBarSize={40} />
-                                                    <Bar dataKey="Sesudah (MW)" fill="#3b82f6" radius={[4, 4, 0, 0]} maxBarSize={40} />
-                                                </BarChart>
-                                            </ResponsiveContainer>
-                                        ) : (
-                                            <div className="h-full w-full flex items-center justify-center text-slate-400">
-                                                Tidak ada data untuk ditampilkan
-                                            </div>
-                                        )}
-                                    </div>
-                                </CardContent>
-                            </Card>
-
-                            <div className="flex flex-col gap-4">
-                                <Card className="border-emerald-200 dark:border-emerald-900/50 shadow-sm bg-emerald-50/50 dark:bg-emerald-950/20 flex-1">
-                                    <CardContent className="p-4 flex items-center gap-4 h-full">
-                                        <div className="h-12 w-12 rounded-full bg-emerald-100 dark:bg-emerald-900/50 flex items-center justify-center text-emerald-600 dark:text-emerald-400 shrink-0">
-                                            <CheckCircle className="h-6 w-6" />
-                                        </div>
-                                        <div>
-                                            <p className="text-sm font-bold text-emerald-600/80 dark:text-emerald-400/80">Data Sebelum & Sesudah Terisi</p>
-                                            <h4 className="text-2xl font-bold text-emerald-700 dark:text-emerald-300">{stats[0].value} <span className="text-sm font-normal text-emerald-600/60">Mesin</span></h4>
-                                        </div>
-                                    </CardContent>
-                                </Card>
-
-                                <Card className="border-amber-200 dark:border-amber-900/50 shadow-sm bg-amber-50/50 dark:bg-amber-950/20 flex-1">
-                                    <CardContent className="p-4 flex items-center gap-4 h-full">
-                                        <div className="h-12 w-12 rounded-full bg-amber-100 dark:bg-amber-900/50 flex items-center justify-center text-amber-600 dark:text-amber-400 shrink-0">
-                                            <AlertCircle className="h-6 w-6" />
-                                        </div>
-                                        <div>
-                                            <p className="text-sm font-bold text-amber-600/80 dark:text-amber-400/80">Data Sesudah Belum Terisi</p>
-                                            <h4 className="text-2xl font-bold text-amber-700 dark:text-amber-300">{stats[1].value} <span className="text-sm font-normal text-amber-600/60">Mesin</span></h4>
-                                        </div>
-                                    </CardContent>
-                                </Card>
-
-                                <Card className="border-slate-200 dark:border-slate-800 shadow-sm bg-slate-50/50 dark:bg-slate-900/20 flex-1">
-                                    <CardContent className="p-4 flex items-center gap-4 h-full">
-                                        <div className="h-12 w-12 rounded-full bg-slate-200 dark:bg-slate-800 flex items-center justify-center text-slate-600 dark:text-slate-400 shrink-0">
-                                            <FileText className="h-6 w-6" />
-                                        </div>
-                                        <div>
-                                            <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Belum Diinput</p>
-                                            <h4 className="text-2xl font-bold text-slate-700 dark:text-slate-300">{stats[2].value} <span className="text-sm font-normal text-slate-500">Mesin</span></h4>
-                                        </div>
-                                    </CardContent>
-                                </Card>
-                            </div>
-                        </div>
-
-                        <Card className="border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
-                        <CardHeader className="border-b bg-slate-50/50 dark:bg-slate-900/50 pb-4">
-                            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                                <div>
-                                    <CardTitle className="text-lg flex items-center gap-2">
-                                        <ShieldCheck className="h-5 w-5 text-primary" />
-                                        Daftar Mesin Pembangkit
-                                    </CardTitle>
-                                    <CardDescription>Pilih mesin untuk mengisi data On Quality. Total {filteredPlans.length} data.</CardDescription>
-                                </div>
-                                <div className="flex flex-wrap items-center gap-2">
-                                    <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800 p-1 rounded-lg">
-                                        <button onClick={() => { setFilterStatus('all'); setCurrentPage(1); }} className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${filterStatus === 'all' ? 'bg-white dark:bg-slate-700 shadow-sm text-slate-800 dark:text-slate-100' : 'text-slate-500 hover:text-slate-700 dark:text-slate-400'}`}>Semua</button>
-                                        <button onClick={() => { setFilterStatus('lengkap'); setCurrentPage(1); }} className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all flex items-center gap-1 ${filterStatus === 'lengkap' ? 'bg-white dark:bg-slate-700 shadow-sm text-emerald-600' : 'text-slate-500 hover:text-slate-700 dark:text-slate-400'}`}><CheckCircle className="h-3 w-3" /> Sebelum & Sesudah</button>
-                                        <button onClick={() => { setFilterStatus('sebagian'); setCurrentPage(1); }} className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all flex items-center gap-1 ${filterStatus === 'sebagian' ? 'bg-white dark:bg-slate-700 shadow-sm text-amber-600' : 'text-slate-500 hover:text-slate-700 dark:text-slate-400'}`}><AlertCircle className="h-3 w-3" /> Sesudah Kosong</button>
-                                        <button onClick={() => { setFilterStatus('belum'); setCurrentPage(1); }} className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all flex items-center gap-1 ${filterStatus === 'belum' ? 'bg-white dark:bg-slate-700 shadow-sm text-slate-600' : 'text-slate-500 hover:text-slate-700 dark:text-slate-400'}`}><FileText className="h-3 w-3" /> Belum Diinput</button>
-                                    </div>
-                                </div>
-                            </div>
-                        </CardHeader>
-                        <CardContent className="p-0">
-                            {filteredPlans.length > 0 ? (
-                                <div className="overflow-x-auto">
-                                    <Table>
-                                        <TableHeader className="bg-slate-50/80 dark:bg-slate-900/80">
-                                            <TableRow>
-                                                <TableHead className="w-[300px] pl-6">Mesin Pembangkit</TableHead>
-                                                <TableHead>Jenis</TableHead>
-                                                <TableHead>Progres</TableHead>
-                                                <TableHead>Status Input</TableHead>
-                                                <TableHead className="text-right pr-6">Aksi</TableHead>
-                                            </TableRow>
-                                        </TableHeader>
-                                        <TableBody>
-                                            {paginatedPlans.map(plan => {
-                                                const isFilled = plan.kinerja_quality?.dm_sebelum && plan.kinerja_quality?.dm_sesudah;
-                                                const isPartial = plan.kinerja_quality?.dm_sebelum && !plan.kinerja_quality?.dm_sesudah;
-                                                
-                                                return (
-                                                    <TableRow key={plan.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors">
-                                                        <TableCell className="font-bold pl-6">{plan.mesin_pembangkit}</TableCell>
-                                                        <TableCell className="text-muted-foreground font-medium text-xs">{plan.jenis_pembangkit}</TableCell>
-                                                        <TableCell>
-                                                            <div className="flex items-center gap-2">
-                                                                <div className="w-16 h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-                                                                    <div className="h-full bg-primary rounded-full" style={{ width: `${plan.progress}%` }}></div>
-                                                                </div>
-                                                                <span className="text-xs font-bold">{plan.progress}%</span>
-                                                            </div>
-                                                        </TableCell>
-                                                        <TableCell>
-                                                            {isFilled ? (
-                                                                <Badge className="bg-emerald-100 hover:bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400 gap-1.5 shadow-none"><CheckCircle className="h-3 w-3" /> Sebelum & Sesudah Terisi</Badge>
-                                                            ) : isPartial ? (
-                                                                <Badge className="bg-amber-100 hover:bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-400 gap-1.5 shadow-none"><AlertCircle className="h-3 w-3" /> Sesudah Belum Terisi</Badge>
-                                                            ) : (
-                                                                <Badge className="bg-slate-100 hover:bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-400 gap-1.5 shadow-none"><FileText className="h-3 w-3" /> Belum Diinput</Badge>
-                                                            )}
-                                                        </TableCell>
-                                                        <TableCell className="text-right pr-6">
-                                                            <Button size="sm" variant="outline" className="h-8 text-xs bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 hover:bg-primary/5 hover:text-primary hover:border-primary/30 transition-all shadow-sm" onClick={() => {
-                                                                setSelectedPlanId(plan.id.toString());
-                                                                setSearchQuery(`${plan.mesin_pembangkit} - ${plan.jenis_pembangkit}`);
-                                                            }}>
-                                                                Isi Data
-                                                            </Button>
-                                                        </TableCell>
-                                                    </TableRow>
-                                                );
-                                            })}
-                                        </TableBody>
-                                    </Table>
-                                </div>
-                            ) : (
-                                <div className="flex flex-col items-center justify-center py-16 text-center">
-                                    <div className="h-16 w-16 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center justify-center mb-4">
-                                        <Filter className="h-8 w-8 text-slate-400 dark:text-slate-500" />
-                                    </div>
-                                    <h3 className="text-lg font-bold text-slate-700 dark:text-slate-300">Tidak Ada Data Ditemukan</h3>
-                                    <p className="text-sm text-muted-foreground mt-1 max-w-sm">Coba sesuaikan kata kunci pencarian atau ubah filter status Anda untuk melihat hasil.</p>
-                                    {(searchQuery || filterStatus !== 'all') && (
-                                        <Button variant="outline" size="sm" className="mt-6" onClick={() => { setSearchQuery(''); setFilterStatus('all'); }}>
-                                            Reset Semua Filter
-                                        </Button>
-                                    )}
-                                </div>
-                            )}
-                        </CardContent>
-                        
-                        {filteredPlans.length > 0 && (
-                            <div className="border-t border-slate-100 dark:border-slate-800 p-4 px-6 flex flex-col md:flex-row items-center justify-between bg-slate-50/30 dark:bg-slate-900/30 gap-4">
-                                <div className="text-xs text-muted-foreground">
-                                    Menampilkan <span className="font-bold text-foreground">{(currentPage - 1) * itemsPerPage + 1}</span> hingga <span className="font-bold text-foreground">{Math.min(currentPage * itemsPerPage, filteredPlans.length)}</span> dari total <span className="font-bold text-foreground">{filteredPlans.length}</span> data
-                                </div>
-                                <div className="flex items-center gap-1">
-                                    <Button 
-                                        variant="outline" 
-                                        size="icon" 
-                                        className="h-8 w-8 bg-white dark:bg-slate-950 shadow-sm" 
-                                        disabled={currentPage === 1}
-                                        onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                                    >
-                                        <ChevronLeft className="h-4 w-4" />
-                                    </Button>
-                                    <div className="flex items-center gap-1 mx-1">
-                                        {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                                            let pageNum = currentPage;
-                                            if (totalPages <= 5) {
-                                                pageNum = i + 1;
-                                            } else if (currentPage <= 3) {
-                                                pageNum = i + 1;
-                                            } else if (currentPage >= totalPages - 2) {
-                                                pageNum = totalPages - 4 + i;
-                                            } else {
-                                                pageNum = currentPage - 2 + i;
-                                            }
-                                            
-                                            return (
-                                                <Button 
-                                                    key={`page-${pageNum}`}
-                                                    variant={currentPage === pageNum ? "default" : "outline"}
-                                                    size="sm"
-                                                    className={`h-8 w-8 p-0 text-xs shadow-sm ${currentPage === pageNum ? '' : 'bg-white dark:bg-slate-950 text-slate-600 dark:text-slate-400'}`}
-                                                    onClick={() => setCurrentPage(pageNum)}
-                                                >
-                                                    {pageNum}
-                                                </Button>
-                                            );
-                                        })}
-                                    </div>
-                                    <Button 
-                                        variant="outline" 
-                                        size="icon" 
-                                        className="h-8 w-8 bg-white dark:bg-slate-950 shadow-sm" 
-                                        disabled={currentPage === totalPages || totalPages === 0}
-                                        onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-                                    >
-                                        <ChevronRight className="h-4 w-4" />
-                                    </Button>
-                                </div>
-                            </div>
-                        )}
-                    </Card>
-                </div>
-                )}
+                </Card>
             </div>
         </>
     );
 }
+
+OnQuality.layout = {
+    breadcrumbs: [
+        { title: 'Kinerja Outage', href: '#' },
+        { title: 'On Quality', href: '/kinerja/on-quality' },
+    ],
+};

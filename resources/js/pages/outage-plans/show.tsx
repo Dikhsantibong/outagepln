@@ -3,6 +3,7 @@ import { ArrowLeft, Calendar, Clock, Gauge, Factory, Info } from 'lucide-react';
 import {
     LineChart,
     Line,
+    LabelList,
     XAxis,
     YAxis,
     Tooltip,
@@ -46,6 +47,15 @@ type OutagePlan = {
     selesai: string | null;
     progress: number | null;
     ket: string | null;
+    rapat_r2: string | null;
+    rapat_r3: string | null;
+    rapat_p1: string | null;
+    rapat_p2: string | null;
+    rapat_p3: string | null;
+    sistem: string | null;
+    real_start: string | null;
+    real_stop: string | null;
+    ket_realisasi: string | null;
     daily_progresses: DailyProgress[];
 };
 
@@ -62,11 +72,22 @@ export default function OutagePlanShow({
 }) {
     const dailyProgresses = outagePlan.daily_progresses || [];
 
-    const chartData = dailyProgresses.map((row, idx) => ({
-        label: `D${idx + 1} (${formatDMY(row.tanggal)})`,
-        Plan: row.plan_progress,
-        Actual: row.actual_progress,
+    const chartData = dailyProgresses.map((row) => ({
+        // formatDMY gives DD-MM-YYYY; the reference chart uses DD/MM/YY.
+        label: formatDMY(row.tanggal).replace(
+            /^(\d{2})-(\d{2})-\d{2}(\d{2})$/,
+            '$1/$2/$3',
+        ),
+        RENCANA: Number(row.plan_progress),
+        REALISASI: Number(row.actual_progress),
     }));
+
+    // Indonesian decimal format, matching the reference S-curve (e.g. 78,18).
+    const fmtPct = (v: number | string) =>
+        Number(v).toLocaleString('id-ID', {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+        });
 
     return (
         <>
@@ -174,6 +195,11 @@ export default function OutagePlanShow({
                                 </p>
                                 <p className="text-sm font-bold">
                                     {totalHari ? `${totalHari} Hari` : '-'}
+                                    {outagePlan.durasi ? (
+                                        <span className="ml-1 font-normal text-muted-foreground">
+                                            (durasi {outagePlan.durasi})
+                                        </span>
+                                    ) : null}
                                 </p>
                             </div>
                         </CardContent>
@@ -205,6 +231,92 @@ export default function OutagePlanShow({
                     </Card>
                 </div>
 
+                {/* Realisasi Pelaksanaan */}
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Realisasi Pelaksanaan</CardTitle>
+                        <CardDescription>
+                            Waktu pelaksanaan aktual di lapangan dan sistem
+                            kelistrikan terkait
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                            <div className="rounded-lg border p-3">
+                                <p className="text-[10px] font-bold tracking-wider text-muted-foreground uppercase">
+                                    Sistem
+                                </p>
+                                <p className="mt-1 text-sm font-semibold">
+                                    {outagePlan.sistem || '-'}
+                                </p>
+                            </div>
+                            <div className="rounded-lg border p-3">
+                                <p className="text-[10px] font-bold tracking-wider text-muted-foreground uppercase">
+                                    Real Start
+                                </p>
+                                <p className="mt-1 font-mono text-sm font-semibold">
+                                    {outagePlan.real_start
+                                        ? formatDMY(outagePlan.real_start)
+                                        : '-'}
+                                </p>
+                            </div>
+                            <div className="rounded-lg border p-3">
+                                <p className="text-[10px] font-bold tracking-wider text-muted-foreground uppercase">
+                                    Real Stop
+                                </p>
+                                <p className="mt-1 font-mono text-sm font-semibold">
+                                    {outagePlan.real_stop
+                                        ? formatDMY(outagePlan.real_stop)
+                                        : '-'}
+                                </p>
+                            </div>
+                            <div className="rounded-lg border p-3">
+                                <p className="text-[10px] font-bold tracking-wider text-muted-foreground uppercase">
+                                    Keterangan
+                                </p>
+                                <p className="mt-1 text-sm font-semibold">
+                                    {outagePlan.ket_realisasi || '-'}
+                                </p>
+                            </div>
+                        </div>
+                    </CardContent>
+                </Card>
+
+                {/* Jadwal Rapat */}
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Jadwal Rapat</CardTitle>
+                        <CardDescription>
+                            Tahapan rapat persiapan dan pelaksanaan outage
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+                            {(
+                                [
+                                    ['R2', outagePlan.rapat_r2],
+                                    ['R3', outagePlan.rapat_r3],
+                                    ['P1', outagePlan.rapat_p1],
+                                    ['P2', outagePlan.rapat_p2],
+                                    ['P3', outagePlan.rapat_p3],
+                                ] as [string, string | null][]
+                            ).map(([label, tanggal]) => (
+                                <div
+                                    key={label}
+                                    className="rounded-lg border p-3 text-center"
+                                >
+                                    <p className="text-[10px] font-bold tracking-wider text-muted-foreground uppercase">
+                                        Rapat {label}
+                                    </p>
+                                    <p className="mt-1 font-mono text-xs font-semibold">
+                                        {tanggal ? formatDMY(tanggal) : '-'}
+                                    </p>
+                                </div>
+                            ))}
+                        </div>
+                    </CardContent>
+                </Card>
+
                 {/* Kurva S */}
                 <Card>
                     <CardHeader>
@@ -215,32 +327,65 @@ export default function OutagePlanShow({
                         </CardDescription>
                     </CardHeader>
                     <CardContent>
-                        <div className="h-[350px] w-full">
+                        <div className="mb-2 flex flex-wrap gap-x-10 gap-y-1 text-sm">
+                            <div className="flex gap-2">
+                                <span className="w-20 text-[#4472C4]">
+                                    Rencana
+                                </span>
+                                <span className="font-semibold text-[#4472C4]">
+                                    : {fmtPct(overallPlan ?? 0)} %
+                                </span>
+                            </div>
+                            <div className="flex gap-2">
+                                <span className="w-20 text-[#C00000]">
+                                    Realisasi
+                                </span>
+                                <span className="font-semibold text-[#C00000]">
+                                    : {fmtPct(overallActual ?? 0)} %
+                                </span>
+                            </div>
+                        </div>
+                        <div className="h-[520px] w-full">
                             {chartData.length > 0 ? (
                                 <ResponsiveContainer width="100%" height="100%">
                                     <LineChart
                                         data={chartData}
                                         margin={{
-                                            top: 10,
-                                            right: 20,
-                                            left: -10,
-                                            bottom: 0,
+                                            top: 28,
+                                            right: 26,
+                                            left: 4,
+                                            bottom: 68,
                                         }}
                                     >
                                         <CartesianGrid
-                                            strokeDasharray="3 3"
                                             vertical={false}
-                                            opacity={0.3}
+                                            stroke="#9BBB59"
+                                            opacity={0.55}
                                         />
                                         <XAxis
                                             dataKey="label"
+                                            angle={-90}
+                                            textAnchor="end"
+                                            interval={0}
+                                            height={60}
                                             tick={{ fontSize: 10 }}
-                                            interval="preserveStartEnd"
+                                            label={{
+                                                value: 'Tanggal',
+                                                position: 'insideBottom',
+                                                offset: -60,
+                                                fontSize: 12,
+                                            }}
                                         />
                                         <YAxis
                                             domain={[0, 100]}
+                                            ticks={[0, 20, 40, 60, 80, 100]}
                                             tick={{ fontSize: 11 }}
-                                            tickFormatter={(v) => `${v}%`}
+                                            label={{
+                                                value: 'Persentase',
+                                                angle: -90,
+                                                position: 'insideLeft',
+                                                fontSize: 12,
+                                            }}
                                         />
                                         <Tooltip
                                             contentStyle={{
@@ -249,27 +394,47 @@ export default function OutagePlanShow({
                                                 boxShadow:
                                                     '0 4px 12px rgba(0,0,0,0.1)',
                                             }}
-                                            formatter={(value) => [`${value}%`]}
+                                            formatter={(value) => [
+                                                `${fmtPct(value as number)} %`,
+                                            ]}
                                         />
                                         <Legend
-                                            wrapperStyle={{
-                                                paddingTop: '10px',
-                                            }}
+                                            verticalAlign="top"
+                                            height={30}
+                                            wrapperStyle={{ fontSize: '12px' }}
                                         />
                                         <Line
-                                            type="monotone"
-                                            dataKey="Plan"
-                                            stroke="#3b82f6"
-                                            strokeWidth={2}
-                                            dot={false}
-                                        />
+                                            type="linear"
+                                            dataKey="RENCANA"
+                                            stroke="#4472C4"
+                                            strokeWidth={2.5}
+                                            dot={{ r: 3, fill: '#4472C4' }}
+                                        >
+                                            <LabelList
+                                                dataKey="RENCANA"
+                                                position="bottom"
+                                                offset={8}
+                                                fontSize={9}
+                                                fill="#4472C4"
+                                                formatter={(v: unknown) => fmtPct(v as number)}
+                                            />
+                                        </Line>
                                         <Line
-                                            type="monotone"
-                                            dataKey="Actual"
-                                            stroke="#10b981"
-                                            strokeWidth={2}
-                                            dot={false}
-                                        />
+                                            type="linear"
+                                            dataKey="REALISASI"
+                                            stroke="#C00000"
+                                            strokeWidth={2.5}
+                                            dot={{ r: 3, fill: '#C00000' }}
+                                        >
+                                            <LabelList
+                                                dataKey="REALISASI"
+                                                position="top"
+                                                offset={8}
+                                                fontSize={9}
+                                                fill="#C00000"
+                                                formatter={(v: unknown) => fmtPct(v as number)}
+                                            />
+                                        </Line>
                                     </LineChart>
                                 </ResponsiveContainer>
                             ) : (

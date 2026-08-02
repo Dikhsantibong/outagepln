@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
+use App\Http\Controllers\Concerns\FiltersOutagePlans;
 use App\Models\OutagePlan;
 use App\Models\KinerjaCost;
 use Inertia\Inertia;
@@ -10,18 +11,76 @@ use Illuminate\Support\Facades\Storage;
 
 class KinerjaCostController extends Controller
 {
-    public function index()
+    use FiltersOutagePlans;
+
+    public function index(Request $request)
     {
-        $outagePlans = OutagePlan::with('kinerjaCost')->get()->map(function($plan) {
-            if ($plan->kinerjaCost && $plan->kinerjaCost->eviden) {
-                $plan->kinerjaCost->eviden_url = Storage::url($plan->kinerjaCost->eviden);
-            }
-            return $plan;
-        });
+        $query = OutagePlan::with('kinerjaCost');
+
+        $this->applyPlanFilters($query, $request);
+        $this->applyStatusFilter(
+            $query,
+            $request,
+            'kinerjaCost',
+            // Lengkap = both the planned and the actual budget are recorded.
+            fn ($q) => $q->whereNotNull('anggaran_rencana')->whereNotNull('anggaran_aktual'),
+            fn ($q) => $q->whereNotNull('anggaran_rencana')->whereNull('anggaran_aktual'),
+        );
+
+        $outagePlans = $query
+            ->orderBy('id')
+            ->paginate(15)
+            ->withQueryString()
+            ->through(fn ($plan) => $this->mapPlan($plan));
+
+        // The picker can select a plan from any page, so its full record is
+        // resolved server-side rather than looked up in the current page.
+        $selected = $request->filled('plan')
+            ? OutagePlan::with('kinerjaCost')->find($request->input('plan'))
+            : null;
 
         return Inertia::render('kinerja/on-cost', [
-            'outagePlans' => $outagePlans
+            'outagePlans' => $outagePlans,
+            'planOptions' => $this->planPickerList(),
+            'selectedPlan' => $selected ? $this->mapPlan($selected) : null,
+            'filters' => $request->only([...$this->kinerjaFilterKeys, 'plan']),
+            'filterOptions' => $this->planFilterOptions(),
+            'summary' => $this->summary(),
         ]);
+    }
+
+    private function mapPlan(OutagePlan $plan): array
+    {
+        $k = $plan->kinerjaCost;
+
+        return [
+            'id' => $plan->id,
+            'mesin_pembangkit' => $plan->mesin_pembangkit,
+            'jenis_pembangkit' => $plan->jenis_pembangkit,
+            'scope' => $plan->scope,
+            'sistem' => $plan->sistem,
+            'progress' => $plan->progress,
+            'kinerja_cost' => $k ? [
+                'anggaran_rencana' => $k->anggaran_rencana,
+                'anggaran_aktual' => $k->anggaran_aktual,
+                'eviden_url' => $k->eviden ? Storage::url($k->eviden) : null,
+            ] : null,
+        ];
+    }
+
+    /** Completion counts across every plan, independent of the active filters. */
+    private function summary(): array
+    {
+        $total = OutagePlan::count();
+        $lengkap = OutagePlan::whereHas('kinerjaCost', fn ($q) => $q->whereNotNull('anggaran_rencana')->whereNotNull('anggaran_aktual'))->count();
+        $sebagian = OutagePlan::whereHas('kinerjaCost', fn ($q) => $q->whereNotNull('anggaran_rencana')->whereNull('anggaran_aktual'))->count();
+
+        return [
+            'total' => $total,
+            'lengkap' => $lengkap,
+            'sebagian' => $sebagian,
+            'belum' => $total - $lengkap - $sebagian,
+        ];
     }
 
     public function store(Request $request)

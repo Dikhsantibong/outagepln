@@ -16,6 +16,12 @@ use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
 class OutagePlanController extends Controller
 {
+    /** Filter keys accepted by the listing, in the order they appear in the UI. */
+    private const FILTER_KEYS = [
+        'search', 'tahun', 'scope', 'jenis', 'sistem', 'ket',
+        'ket_realisasi', 'progres', 'dari', 'sampai',
+    ];
+
     public function index(Request $request)
     {
         $query = OutagePlan::query();
@@ -24,18 +30,76 @@ class OutagePlanController extends Controller
             $search = $request->input('search');
             $query->where(function ($q) use ($search) {
                 $q->where('mesin_pembangkit', 'like', "%{$search}%")
-                  ->orWhere('scope', 'like', "%{$search}%");
+                    ->orWhere('scope', 'like', "%{$search}%")
+                    ->orWhere('sistem', 'like', "%{$search}%")
+                    ->orWhere('jenis_pembangkit', 'like', "%{$search}%");
             });
         }
 
-        $outagePlans = $query->with('dailyProgresses')->latest()->paginate(15)->withQueryString();
+        if ($request->filled('tahun')) {
+            $query->whereYear('start_date', $request->input('tahun'));
+        }
+
+        foreach (['scope' => 'scope', 'jenis' => 'jenis_pembangkit', 'sistem' => 'sistem', 'ket' => 'ket', 'ket_realisasi' => 'ket_realisasi'] as $param => $column) {
+            if ($request->filled($param)) {
+                $query->where($column, $request->input($param));
+            }
+        }
+
+        // Date range applies to the planned start date.
+        if ($request->filled('dari')) {
+            $query->whereDate('start_date', '>=', $request->input('dari'));
+        }
+        if ($request->filled('sampai')) {
+            $query->whereDate('start_date', '<=', $request->input('sampai'));
+        }
+
+        match ($request->input('progres')) {
+            'belum' => $query->where(fn ($q) => $q->whereNull('progress')->orWhere('progress', '<=', 0)),
+            'berjalan' => $query->where('progress', '>', 0)->where('progress', '<', 100),
+            'selesai' => $query->where('progress', '>=', 100),
+            default => null,
+        };
+
+        // Ordered by id so the listing mirrors the row order of the source sheet.
+        $outagePlans = $query->with('dailyProgresses')->orderBy('id')->paginate(20)->withQueryString();
         $units = \App\Models\Unit::with('mesins')->get();
 
         return Inertia::render('outage-plans/index', [
             'outagePlans' => $outagePlans,
             'units' => $units,
-            'filters' => $request->only(['search']),
+            'filters' => $request->only(self::FILTER_KEYS),
+            'filterOptions' => $this->filterOptions(),
         ]);
+    }
+
+    /**
+     * Distinct values straight from the table, so every option is guaranteed to
+     * match something and stays in sync when new data is imported.
+     */
+    private function filterOptions(): array
+    {
+        $distinct = fn (string $column) => OutagePlan::whereNotNull($column)
+            ->where($column, '!=', '')
+            ->distinct()
+            ->orderBy($column)
+            ->pluck($column)
+            ->values();
+
+        return [
+            'tahun' => OutagePlan::query()
+                ->selectRaw('YEAR(start_date) as tahun')
+                ->whereNotNull('start_date')
+                ->distinct()
+                ->orderBy('tahun')
+                ->pluck('tahun')
+                ->values(),
+            'scope' => $distinct('scope'),
+            'jenis' => $distinct('jenis_pembangkit'),
+            'sistem' => $distinct('sistem'),
+            'ket' => $distinct('ket'),
+            'ket_realisasi' => $distinct('ket_realisasi'),
+        ];
     }
 
     public function show(OutagePlan $outagePlan)
@@ -223,6 +287,10 @@ class OutagePlanController extends Controller
             'rapat_p2' => 'nullable|string',
             'rapat_p3' => 'nullable|string',
             'ket' => 'nullable|string|max:50',
+            'sistem' => 'nullable|string|max:100',
+            'real_start' => 'nullable|date',
+            'real_stop' => 'nullable|date',
+            'ket_realisasi' => 'nullable|string|max:100',
         ]);
 
         OutagePlan::create($validated);
@@ -246,6 +314,10 @@ class OutagePlanController extends Controller
             'rapat_p2' => 'nullable|string',
             'rapat_p3' => 'nullable|string',
             'ket' => 'nullable|string|max:50',
+            'sistem' => 'nullable|string|max:100',
+            'real_start' => 'nullable|date',
+            'real_stop' => 'nullable|date',
+            'ket_realisasi' => 'nullable|string|max:100',
             'daily_progress' => 'nullable|array',
             'daily_progress.*.tanggal' => 'required_with:daily_progress|date',
             'daily_progress.*.plan_progress' => 'nullable|numeric|min:0|max:100',

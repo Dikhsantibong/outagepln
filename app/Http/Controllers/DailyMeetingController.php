@@ -20,14 +20,79 @@ use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
 class DailyMeetingController extends Controller
 {
-    public function index()
+    /** Filter keys accepted by the meeting listing. */
+    private const FILTER_KEYS = [
+        'search', 'tipe_rapat', 'status', 'tahun', 'bulan', 'dari', 'sampai', 'lokasi',
+    ];
+
+    public function index(Request $request)
     {
-        $meetings = DailyMeeting::withCount('attendees')
-            ->latest()
-            ->get();
+        $query = DailyMeeting::withCount('attendees');
+
+        if ($request->filled('search')) {
+            $search = $request->input('search');
+            $query->where(function ($q) use ($search) {
+                $q->where('judul', 'like', "%{$search}%")
+                    ->orWhere('lokasi', 'like', "%{$search}%")
+                    ->orWhere('tipe_rapat', 'like', "%{$search}%");
+            });
+        }
+
+        if ($request->filled('tipe_rapat')) {
+            $query->where('tipe_rapat', $request->input('tipe_rapat'));
+        }
+
+        if ($request->filled('lokasi')) {
+            $query->where('lokasi', $request->input('lokasi'));
+        }
+
+        // Mirrors the badges shown in the UI: a meeting scheduled for today and
+        // not yet completed is "berlangsung", anything else active is upcoming.
+        match ($request->input('status')) {
+            'berlangsung' => $query->where('status', 'active')->whereDate('tanggal', today()),
+            'akan_datang' => $query->where('status', 'active')->whereDate('tanggal', '!=', today()),
+            'selesai' => $query->where('status', 'completed'),
+            default => null,
+        };
+
+        if ($request->filled('tahun')) {
+            $query->whereYear('tanggal', $request->input('tahun'));
+        }
+
+        if ($request->filled('bulan')) {
+            $query->whereMonth('tanggal', $request->input('bulan'));
+        }
+
+        if ($request->filled('dari')) {
+            $query->whereDate('tanggal', '>=', $request->input('dari'));
+        }
+
+        if ($request->filled('sampai')) {
+            $query->whereDate('tanggal', '<=', $request->input('sampai'));
+        }
+
+        // Ongoing first, then upcoming (soonest first), then the rest (newest first).
+        $prio = "CASE WHEN status = 'active' AND DATE(tanggal) = CURDATE() THEN 1"
+            . " WHEN status = 'active' THEN 2 ELSE 3 END";
+
+        $meetings = $query
+            ->orderByRaw($prio)
+            ->orderByRaw("CASE WHEN {$prio} = 2 THEN tanggal END ASC")
+            ->orderByRaw("CASE WHEN {$prio} <> 2 THEN tanggal END DESC")
+            ->paginate(12)
+            ->withQueryString();
 
         return Inertia::render('daily-meetings/index', [
             'meetings' => $meetings,
+            'filters' => $request->only(self::FILTER_KEYS),
+            'filterOptions' => [
+                'tipe_rapat' => DailyMeeting::whereNotNull('tipe_rapat')
+                    ->distinct()->orderBy('tipe_rapat')->pluck('tipe_rapat')->values(),
+                'lokasi' => DailyMeeting::whereNotNull('lokasi')->where('lokasi', '!=', '')
+                    ->distinct()->orderBy('lokasi')->pluck('lokasi')->values(),
+                'tahun' => DailyMeeting::selectRaw('YEAR(tanggal) as tahun')
+                    ->whereNotNull('tanggal')->distinct()->orderBy('tahun')->pluck('tahun')->values(),
+            ],
         ]);
     }
 

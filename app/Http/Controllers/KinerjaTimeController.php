@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 
+use App\Http\Controllers\Concerns\FiltersOutagePlans;
 use App\Models\OutagePlan;
 use App\Models\KinerjaTime;
 use Inertia\Inertia;
@@ -11,18 +12,80 @@ use Illuminate\Support\Facades\Storage;
 
 class KinerjaTimeController extends Controller
 {
-    public function index()
+    use FiltersOutagePlans;
+
+    public function index(Request $request)
     {
-        $outagePlans = OutagePlan::with('kinerjaTime')->get()->map(function($plan) {
-            if ($plan->kinerjaTime && $plan->kinerjaTime->eviden) {
-                $plan->kinerjaTime->eviden_url = Storage::url($plan->kinerjaTime->eviden);
-            }
-            return $plan;
-        });
+        $query = OutagePlan::with('kinerjaTime');
+
+        $this->applyPlanFilters($query, $request);
+        $this->applyStatusFilter(
+            $query,
+            $request,
+            'kinerjaTime',
+            // Lengkap = the actual finish date is recorded.
+            fn ($q) => $q->whereNotNull('selesai_aktual'),
+            fn ($q) => $q->whereNotNull('start_date_aktual')->whereNull('selesai_aktual'),
+        );
+
+        $outagePlans = $query
+            ->orderBy('id')
+            ->paginate(15)
+            ->withQueryString()
+            ->through(fn ($plan) => $this->mapPlan($plan));
+
+        // The picker can select a plan from any page, so its full record is
+        // resolved server-side rather than looked up in the current page.
+        $selected = $request->filled('plan')
+            ? OutagePlan::with('kinerjaTime')->find($request->input('plan'))
+            : null;
 
         return Inertia::render('kinerja/on-time', [
-            'outagePlans' => $outagePlans
+            'outagePlans' => $outagePlans,
+            'planOptions' => $this->planPickerList(),
+            'selectedPlan' => $selected ? $this->mapPlan($selected) : null,
+            'filters' => $request->only([...$this->kinerjaFilterKeys, 'plan']),
+            'filterOptions' => $this->planFilterOptions(),
+            'summary' => $this->summary(),
         ]);
+    }
+
+    private function mapPlan(OutagePlan $plan): array
+    {
+        $k = $plan->kinerjaTime;
+
+        return [
+            'id' => $plan->id,
+            'mesin_pembangkit' => $plan->mesin_pembangkit,
+            'jenis_pembangkit' => $plan->jenis_pembangkit,
+            'scope' => $plan->scope,
+            'sistem' => $plan->sistem,
+            'progress' => $plan->progress,
+            'durasi' => $plan->durasi,
+            'start_date' => $plan->start_date,
+            'selesai' => $plan->selesai,
+            'kinerja_time' => $k ? [
+                'start_date_aktual' => $k->start_date_aktual,
+                'selesai_aktual' => $k->selesai_aktual,
+                'catatan' => $k->catatan,
+                'eviden_url' => $k->eviden ? Storage::url($k->eviden) : null,
+            ] : null,
+        ];
+    }
+
+    /** Completion counts across every plan, independent of the active filters. */
+    private function summary(): array
+    {
+        $total = OutagePlan::count();
+        $lengkap = OutagePlan::whereHas('kinerjaTime', fn ($q) => $q->whereNotNull('selesai_aktual'))->count();
+        $sebagian = OutagePlan::whereHas('kinerjaTime', fn ($q) => $q->whereNotNull('start_date_aktual')->whereNull('selesai_aktual'))->count();
+
+        return [
+            'total' => $total,
+            'lengkap' => $lengkap,
+            'sebagian' => $sebagian,
+            'belum' => $total - $lengkap - $sebagian,
+        ];
     }
 
     public function store(Request $request)

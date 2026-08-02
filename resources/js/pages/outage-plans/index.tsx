@@ -11,7 +11,6 @@ import {
     ChevronsUpDown,
     Info,
     Trash2,
-    Clock,
     Search,
     Pencil,
     Plus,
@@ -20,6 +19,8 @@ import {
     Download,
     FileText,
     FileSpreadsheet,
+    Filter,
+    X,
 } from 'lucide-react';
 import type { FormEventHandler } from 'react';
 import { useState, useMemo } from 'react';
@@ -66,20 +67,131 @@ import {
 } from '@/lib/outage-progress';
 import type { DailyProgressRow } from '@/lib/outage-progress';
 
+type FilterOptions = {
+    tahun: (string | number)[];
+    scope: string[];
+    jenis: string[];
+    sistem: string[];
+    ket: string[];
+    ket_realisasi: string[];
+};
+
+/** Sentinel for "no filter" - Radix Select does not allow an empty item value. */
+const ALL = '__all__';
+
+function FilterSelect({
+    label,
+    value,
+    onChange,
+    options,
+    width,
+}: {
+    label: string;
+    value: string;
+    onChange: (value: string) => void;
+    options: { value: string; label: string }[];
+    width: string;
+}) {
+    return (
+        <div className="space-y-1">
+            <Label className="text-[10px] font-semibold text-muted-foreground uppercase">
+                {label}
+            </Label>
+            <Select value={value} onValueChange={onChange}>
+                <SelectTrigger className={`h-8 ${width} text-xs`}>
+                    <SelectValue placeholder="Semua" />
+                </SelectTrigger>
+                <SelectContent>
+                    <SelectItem value={ALL}>Semua</SelectItem>
+                    {options.map((o) => (
+                        <SelectItem key={o.value} value={o.value}>
+                            {o.label}
+                        </SelectItem>
+                    ))}
+                </SelectContent>
+            </Select>
+        </div>
+    );
+}
+
 export default function OutagePlansIndex({
     outagePlans,
     units = [],
     filters,
+    filterOptions,
 }: {
     outagePlans: any;
     units?: any[];
     filters?: any;
+    filterOptions?: FilterOptions;
 }) {
     const { auth } = usePage<any>().props;
     const isTamu = auth?.user?.role === 'tamu';
     const [dialogOpen, setDialogOpen] = useState(false);
     const [searchTerm, setSearchTerm] = useState(filters?.search || '');
     const [editingItem, setEditingItem] = useState<any>(null);
+
+    const opts: FilterOptions = filterOptions ?? {
+        tahun: [],
+        scope: [],
+        jenis: [],
+        sistem: [],
+        ket: [],
+        ket_realisasi: [],
+    };
+
+    // Every filter except `search` is applied immediately on change; `search`
+    // waits for Enter so the user can finish typing.
+    const applyFilter = (patch: Record<string, string>) => {
+        const next: Record<string, string> = {
+            search: searchTerm,
+            tahun: filters?.tahun ?? '',
+            scope: filters?.scope ?? '',
+            jenis: filters?.jenis ?? '',
+            sistem: filters?.sistem ?? '',
+            ket: filters?.ket ?? '',
+            ket_realisasi: filters?.ket_realisasi ?? '',
+            progres: filters?.progres ?? '',
+            dari: filters?.dari ?? '',
+            sampai: filters?.sampai ?? '',
+            ...patch,
+        };
+
+        // Drop empty values so the URL stays clean and pagination links are short.
+        const clean = Object.fromEntries(
+            Object.entries(next).filter(([, v]) => v !== '' && v !== ALL),
+        );
+
+        router.get('/outage-plans', clean, {
+            preserveState: true,
+            preserveScroll: true,
+            replace: true,
+        });
+    };
+
+    const resetFilters = () => {
+        setSearchTerm('');
+        router.get(
+            '/outage-plans',
+            {},
+            { preserveState: true, preserveScroll: true, replace: true },
+        );
+    };
+
+    const activeFilterCount = [
+        'search',
+        'tahun',
+        'scope',
+        'jenis',
+        'sistem',
+        'ket',
+        'ket_realisasi',
+        'progres',
+        'dari',
+        'sampai',
+    ].filter((k) => filters?.[k]).length;
+
+    const selectValue = (key: string) => filters?.[key] || ALL;
     const { data, setData, post, put, processing, errors, reset } = useForm({
         mesin_pembangkit: '',
         scope: '',
@@ -94,6 +206,10 @@ export default function OutagePlansIndex({
         rapat_p2: '',
         rapat_p3: '',
         ket: '',
+        sistem: '',
+        real_start: '',
+        real_stop: '',
+        ket_realisasi: '',
         daily_progress: [] as DailyProgressRow[],
     });
 
@@ -201,6 +317,10 @@ export default function OutagePlansIndex({
             rapat_p2: plan.rapat_p2 || '',
             rapat_p3: plan.rapat_p3 || '',
             ket: plan.ket || '',
+            sistem: plan.sistem || '',
+            real_start: plan.real_start || '',
+            real_stop: plan.real_stop || '',
+            ket_realisasi: plan.ket_realisasi || '',
             daily_progress: buildDailyRows(
                 dateList,
                 plan.daily_progresses || [],
@@ -266,37 +386,155 @@ export default function OutagePlansIndex({
 
                 {/* Table Section - Full Width */}
                 <Card className="h-fit gap-0 py-4">
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
-                        <CardTitle className="text-lg">
-                            Data Jadwal Outage
-                        </CardTitle>
-                        <div className="flex flex-wrap items-center gap-2">
-                            <div className="relative w-48">
-                                <Search className="absolute top-2.5 left-2.5 h-4 w-4 text-muted-foreground" />
-                                <Input
-                                    placeholder="Cari... (tekan enter)"
-                                    className="h-9 pl-9"
-                                    value={searchTerm}
-                                    onChange={(e) =>
-                                        setSearchTerm(e.target.value)
-                                    }
-                                    onKeyDown={(e) => {
-                                        if (e.key === 'Enter') {
-                                            router.get(
-                                                '/outage-plans',
-                                                { search: searchTerm },
-                                                {
-                                                    preserveState: true,
-                                                    preserveScroll: true,
-                                                },
-                                            );
+                    <CardHeader className="space-y-3 pb-3">
+                        <div className="flex flex-row items-center justify-between space-y-0">
+                            <CardTitle className="text-lg">
+                                Data Jadwal Outage
+                            </CardTitle>
+                            <div className="flex flex-wrap items-center gap-2">
+                                <div className="relative w-56">
+                                    <Search className="absolute top-2.5 left-2.5 h-4 w-4 text-muted-foreground" />
+                                    <Input
+                                        placeholder="Cari mesin/scope... (enter)"
+                                        className="h-9 pl-9"
+                                        value={searchTerm}
+                                        onChange={(e) =>
+                                            setSearchTerm(e.target.value)
                                         }
-                                    }}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter') {
+                                                applyFilter({
+                                                    search: searchTerm,
+                                                });
+                                            }
+                                        }}
+                                    />
+                                </div>
+                                <div className="rounded-md border bg-muted px-2 py-1 text-xs font-medium text-muted-foreground">
+                                    Total: {outagePlans.total || 0}
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Filter bar */}
+                        <div className="flex flex-wrap items-end gap-2 rounded-lg border bg-muted/20 p-2.5">
+                            <div className="flex items-center gap-1.5 pb-1.5 text-xs font-semibold text-muted-foreground">
+                                <Filter className="h-3.5 w-3.5" />
+                                Filter
+                            </div>
+
+                            <FilterSelect
+                                label="Tahun"
+                                value={selectValue('tahun')}
+                                onChange={(v) => applyFilter({ tahun: v })}
+                                options={opts.tahun.map((t) => ({
+                                    value: String(t),
+                                    label: String(t),
+                                }))}
+                                width="w-[110px]"
+                            />
+                            <FilterSelect
+                                label="Scope"
+                                value={selectValue('scope')}
+                                onChange={(v) => applyFilter({ scope: v })}
+                                options={opts.scope.map((s) => ({
+                                    value: s,
+                                    label: s.toUpperCase(),
+                                }))}
+                                width="w-[150px]"
+                            />
+                            <FilterSelect
+                                label="Jenis"
+                                value={selectValue('jenis')}
+                                onChange={(v) => applyFilter({ jenis: v })}
+                                options={opts.jenis.map((s) => ({
+                                    value: s,
+                                    label: s,
+                                }))}
+                                width="w-[110px]"
+                            />
+                            <FilterSelect
+                                label="Sistem"
+                                value={selectValue('sistem')}
+                                onChange={(v) => applyFilter({ sistem: v })}
+                                options={opts.sistem.map((s) => ({
+                                    value: s,
+                                    label: s,
+                                }))}
+                                width="w-[160px]"
+                            />
+                            <FilterSelect
+                                label="Ket"
+                                value={selectValue('ket')}
+                                onChange={(v) => applyFilter({ ket: v })}
+                                options={opts.ket.map((s) => ({
+                                    value: s,
+                                    label: s,
+                                }))}
+                                width="w-[110px]"
+                            />
+                            <FilterSelect
+                                label="Progres"
+                                value={selectValue('progres')}
+                                onChange={(v) => applyFilter({ progres: v })}
+                                options={[
+                                    { value: 'belum', label: 'Belum mulai' },
+                                    { value: 'berjalan', label: 'Berjalan' },
+                                    { value: 'selesai', label: 'Selesai' },
+                                ]}
+                                width="w-[130px]"
+                            />
+                            <FilterSelect
+                                label="Realisasi"
+                                value={selectValue('ket_realisasi')}
+                                onChange={(v) =>
+                                    applyFilter({ ket_realisasi: v })
+                                }
+                                options={opts.ket_realisasi.map((s) => ({
+                                    value: s,
+                                    label: s,
+                                }))}
+                                width="w-[140px]"
+                            />
+
+                            <div className="space-y-1">
+                                <Label className="text-[10px] font-semibold text-muted-foreground uppercase">
+                                    Mulai dari
+                                </Label>
+                                <Input
+                                    type="date"
+                                    className="h-8 w-[150px] text-xs"
+                                    value={filters?.dari ?? ''}
+                                    onChange={(e) =>
+                                        applyFilter({ dari: e.target.value })
+                                    }
                                 />
                             </div>
-                            <div className="rounded-md border bg-muted px-2 py-1 text-xs font-medium text-muted-foreground">
-                                Total: {outagePlans.total || 0}
+                            <div className="space-y-1">
+                                <Label className="text-[10px] font-semibold text-muted-foreground uppercase">
+                                    Sampai
+                                </Label>
+                                <Input
+                                    type="date"
+                                    className="h-8 w-[150px] text-xs"
+                                    value={filters?.sampai ?? ''}
+                                    onChange={(e) =>
+                                        applyFilter({ sampai: e.target.value })
+                                    }
+                                />
                             </div>
+
+                            {activeFilterCount > 0 && (
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={resetFilters}
+                                    className="h-8 gap-1.5 text-xs text-destructive hover:bg-destructive/10"
+                                >
+                                    <X className="h-3.5 w-3.5" />
+                                    Reset ({activeFilterCount})
+                                </Button>
+                            )}
                         </div>
                     </CardHeader>
                     <CardContent className="overflow-x-auto p-0">
@@ -320,34 +558,19 @@ export default function OutagePlansIndex({
                                         Jenis
                                     </TableHead>
                                     <TableHead className="px-4 text-center font-bold">
-                                        Durasi
-                                    </TableHead>
-                                    <TableHead className="px-4 text-center font-bold">
                                         Mulai
                                     </TableHead>
                                     <TableHead className="px-4 text-center font-bold">
                                         Selesai
                                     </TableHead>
-                                    <TableHead className="w-24 px-4 text-center font-bold">
+                                    <TableHead className="w-32 px-4 text-center font-bold">
                                         Progres
                                     </TableHead>
                                     <TableHead className="px-4 text-center font-bold">
-                                        R2
-                                    </TableHead>
-                                    <TableHead className="px-4 text-center font-bold">
-                                        R3
-                                    </TableHead>
-                                    <TableHead className="px-4 text-center font-bold">
-                                        P1
-                                    </TableHead>
-                                    <TableHead className="px-4 text-center font-bold">
-                                        P2
-                                    </TableHead>
-                                    <TableHead className="px-4 text-center font-bold">
-                                        P3
-                                    </TableHead>
-                                    <TableHead className="px-4 text-center font-bold">
                                         Ket
+                                    </TableHead>
+                                    <TableHead className="px-4 text-center font-bold">
+                                        Sistem
                                     </TableHead>
                                 </TableRow>
                             </TableHeader>
@@ -452,12 +675,6 @@ export default function OutagePlansIndex({
                                                         {plan.jenis_pembangkit}
                                                     </span>
                                                 </TableCell>
-                                                <TableCell className="px-4 text-center">
-                                                    <div className="flex items-center justify-center gap-1.5 text-xs font-medium">
-                                                        <Clock className="h-3.5 w-3.5 text-muted-foreground" />
-                                                        {plan.durasi}
-                                                    </div>
-                                                </TableCell>
                                                 <TableCell className="px-4 text-center font-mono text-[11px] text-muted-foreground">
                                                     {plan.start_date || '-'}
                                                 </TableCell>
@@ -479,21 +696,6 @@ export default function OutagePlansIndex({
                                                         </span>
                                                     </div>
                                                 </TableCell>
-                                                <TableCell className="px-4 text-center font-mono text-[11px] text-muted-foreground">
-                                                    {plan.rapat_r2 || '-'}
-                                                </TableCell>
-                                                <TableCell className="px-4 text-center font-mono text-[11px] text-muted-foreground">
-                                                    {plan.rapat_r3 || '-'}
-                                                </TableCell>
-                                                <TableCell className="px-4 text-center font-mono text-[11px] text-muted-foreground">
-                                                    {plan.rapat_p1 || '-'}
-                                                </TableCell>
-                                                <TableCell className="px-4 text-center font-mono text-[11px] text-muted-foreground">
-                                                    {plan.rapat_p2 || '-'}
-                                                </TableCell>
-                                                <TableCell className="px-4 text-center font-mono text-[11px] text-muted-foreground">
-                                                    {plan.rapat_p3 || '-'}
-                                                </TableCell>
                                                 <TableCell className="px-4 text-center">
                                                     <span
                                                         className={`inline-flex items-center rounded px-2 py-0.5 text-[10px] font-bold uppercase ${plan.ket === 'CLOSE' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400'}`}
@@ -501,13 +703,16 @@ export default function OutagePlansIndex({
                                                         {plan.ket || 'OPEN'}
                                                     </span>
                                                 </TableCell>
+                                                <TableCell className="px-4 text-center text-[11px] font-semibold text-muted-foreground uppercase">
+                                                    {plan.sistem || '-'}
+                                                </TableCell>
                                             </TableRow>
                                         ),
                                     )
                                 ) : (
                                     <TableRow>
                                         <TableCell
-                                            colSpan={15}
+                                            colSpan={10}
                                             className="h-32 text-center text-muted-foreground"
                                         >
                                             <Info className="mx-auto mb-2 h-10 w-10 opacity-20" />
@@ -847,15 +1052,71 @@ export default function OutagePlansIndex({
                             </div>
                         </div>
 
-                        {/* Keterangan */}
-                        <div className="space-y-2">
-                            <Label htmlFor="ket">Keterangan</Label>
-                            <Input
-                                id="ket"
-                                type="text"
-                                value={data.ket}
-                                onChange={(e) => setData('ket', e.target.value)}
-                            />
+                        {/* Keterangan & Sistem */}
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label htmlFor="ket">Keterangan</Label>
+                                <Input
+                                    id="ket"
+                                    type="text"
+                                    value={data.ket}
+                                    onChange={(e) =>
+                                        setData('ket', e.target.value)
+                                    }
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="sistem">Sistem</Label>
+                                <Input
+                                    id="sistem"
+                                    type="text"
+                                    placeholder="cth: RAHA, BAUBAU"
+                                    value={data.sistem}
+                                    onChange={(e) =>
+                                        setData('sistem', e.target.value)
+                                    }
+                                />
+                            </div>
+                        </div>
+
+                        {/* Realisasi Pelaksanaan */}
+                        <div className="grid grid-cols-3 gap-3">
+                            <div className="space-y-2">
+                                <Label htmlFor="real_start">Real Start</Label>
+                                <Input
+                                    id="real_start"
+                                    type="date"
+                                    value={data.real_start}
+                                    onChange={(e) =>
+                                        setData('real_start', e.target.value)
+                                    }
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="real_stop">Real Stop</Label>
+                                <Input
+                                    id="real_stop"
+                                    type="date"
+                                    value={data.real_stop}
+                                    onChange={(e) =>
+                                        setData('real_stop', e.target.value)
+                                    }
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="ket_realisasi">
+                                    Ket. Realisasi
+                                </Label>
+                                <Input
+                                    id="ket_realisasi"
+                                    type="text"
+                                    placeholder="cth: Selesai"
+                                    value={data.ket_realisasi}
+                                    onChange={(e) =>
+                                        setData('ket_realisasi', e.target.value)
+                                    }
+                                />
+                            </div>
                         </div>
 
                         {/* Progress Harian */}
