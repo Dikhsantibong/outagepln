@@ -71,9 +71,10 @@ class KinerjaCostController extends Controller
     /** Completion counts across every plan, independent of the active filters. */
     private function summary(): array
     {
-        $total = OutagePlan::count();
-        $lengkap = OutagePlan::whereHas('kinerjaCost', fn ($q) => $q->whereNotNull('anggaran_rencana')->whereNotNull('anggaran_aktual'))->count();
-        $sebagian = OutagePlan::whereHas('kinerjaCost', fn ($q) => $q->whereNotNull('anggaran_rencana')->whereNull('anggaran_aktual'))->count();
+        $user = request()->user();
+        $total = OutagePlan::visibleTo($user)->count();
+        $lengkap = OutagePlan::visibleTo($user)->whereHas('kinerjaCost', fn ($q) => $q->whereNotNull('anggaran_rencana')->whereNotNull('anggaran_aktual'))->count();
+        $sebagian = OutagePlan::visibleTo($user)->whereHas('kinerjaCost', fn ($q) => $q->whereNotNull('anggaran_rencana')->whereNull('anggaran_aktual'))->count();
 
         return [
             'total' => $total,

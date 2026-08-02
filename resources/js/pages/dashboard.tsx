@@ -1,38 +1,79 @@
-import { Head } from '@inertiajs/react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { dashboard } from '@/routes';
-import { Calendar, Clock, Activity, Zap, BarChart3, ShieldCheck, DollarSign, Crosshair, HeartPulse } from 'lucide-react';
+import { Head, Link } from '@inertiajs/react';
 import {
-    BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
-    LineChart, Line, CartesianGrid, Legend
+    Activity,
+    AlertCircle,
+    BarChart3,
+    Calendar,
+    CalendarClock,
+    CheckCircle2,
+    Clock,
+    DollarSign,
+    Crosshair,
+    Factory,
+    HeartPulse,
+    Hourglass,
+    Layers,
+    ShieldCheck,
+    Users,
+} from 'lucide-react';
+import {
+    Bar,
+    BarChart,
+    CartesianGrid,
+    Cell,
+    LabelList,
+    Line,
+    LineChart,
+    ResponsiveContainer,
+    Tooltip,
+    XAxis,
+    YAxis,
 } from 'recharts';
+import {
+    Card,
+    CardContent,
+    CardDescription,
+    CardHeader,
+    CardTitle,
+} from '@/components/ui/card';
+import { dashboard } from '@/routes';
+
+type Bucket = { label: string; total: number };
+type KinerjaItem = { nilai: number; terisi: number };
 
 interface DashboardProps {
+    scope: { merek: string | null; role: string | null };
     stats: {
         total: number;
-        plantStats: Record<string, { count: number; progress: number }>;
-        scopeDistribution: { scope: string; total: number }[];
+        status: { selesai: number; berjalan: number; belum: number };
+        jenis: Bucket[];
+        sistem: Bucket[];
+        merek: Bucket[];
+        scopeDistribution: Bucket[];
+        ket: Bucket[];
         monthlyTimeline: { bulan: string; total: number }[];
         progressDistribution: { range: string; count: number }[];
         durasiByScope: { scope: string; avg_durasi: number; total: number }[];
-        eksekusi: { pltd: number; pltm: number };
-        kinerja: { onQuality: number; onTime: number; onCost: number; onScope: number; onSafety: number };
-        meetings: { active: number; total: number };
+        kinerja: Record<string, KinerjaItem>;
+        meetings: { total: number; hariIni: number; akanDatang: number; selesai: number };
     };
-    recentOutages: {
-        mesin: string;
-        scope: string;
-        jenis: string;
-        progress: number;
-        start_date: string;
-        time: string;
-    }[];
     ongoingOutages: {
+        id: number;
         mesin: string;
-        scope: string;
-        jenis: string;
+        scope: string | null;
+        jenis: string | null;
+        merek: string | null;
         progress: number;
-        start_date: string;
+        start_date: string | null;
+        selesai: string | null;
+    }[];
+    upcomingOutages: {
+        id: number;
+        mesin: string;
+        scope: string | null;
+        jenis: string | null;
+        start_date: string | null;
+        durasi: number | null;
     }[];
     outageMeetings: {
         today: { id: number; mesin: string; scope: string; jenis: string; type: string; date: string }[];
@@ -40,337 +81,565 @@ interface DashboardProps {
     };
 }
 
-const CustomTooltipStyle = {
-    borderRadius: '8px',
-    border: '1px solid #e2e8f0',
-    boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
-    fontSize: '12px',
+const TOOLTIP = {
+    borderRadius: 8,
+    border: 'none',
+    boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+    fontSize: 12,
 };
 
-export default function Dashboard({ stats, ongoingOutages, outageMeetings }: DashboardProps) {
-    const scopeBarData = stats.scopeDistribution.map(s => ({
-        name: s.scope || '-',
-        jumlah: s.total,
-    }));
+const BULAN = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
 
-    const timelineData = stats.monthlyTimeline.map(m => {
+function Kpi({
+    label,
+    value,
+    sub,
+    icon: Icon,
+    tone,
+}: {
+    label: string;
+    value: string | number;
+    sub?: string;
+    icon: typeof Activity;
+    tone: 'primary' | 'emerald' | 'amber' | 'slate' | 'blue';
+}) {
+    const tones = {
+        primary: 'bg-primary/10 text-primary',
+        emerald: 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/40 dark:text-emerald-400',
+        amber: 'bg-amber-100 text-amber-600 dark:bg-amber-900/40 dark:text-amber-400',
+        blue: 'bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-400',
+        slate: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400',
+    };
+
+    return (
+        <Card>
+            <CardContent className="flex items-center gap-3 p-4">
+                <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full ${tones[tone]}`}>
+                    <Icon className="h-5 w-5" />
+                </div>
+                <div className="min-w-0">
+                    <p className="truncate text-xs text-muted-foreground">{label}</p>
+                    <p className="text-2xl font-bold leading-tight">{value}</p>
+                    {sub && <p className="truncate text-[11px] text-muted-foreground">{sub}</p>}
+                </div>
+            </CardContent>
+        </Card>
+    );
+}
+
+function KinerjaCard({
+    label,
+    item,
+    icon: Icon,
+    color,
+}: {
+    label: string;
+    item?: KinerjaItem;
+    icon: typeof ShieldCheck;
+    color: string;
+}) {
+    const nilai = item?.nilai ?? 0;
+    const terisi = item?.terisi ?? 0;
+
+    return (
+        <Card>
+            <CardContent className="p-4 text-center">
+                <Icon className={`mx-auto mb-2 h-5 w-5 ${color}`} />
+                <p className="text-[10px] font-bold tracking-wider text-muted-foreground uppercase">
+                    {label}
+                </p>
+                {terisi > 0 ? (
+                    <>
+                        <p className={`text-2xl font-black ${color}`}>{nilai}%</p>
+                        <p className="text-[10px] text-muted-foreground">dari {terisi} data</p>
+                    </>
+                ) : (
+                    <>
+                        <p className="text-2xl font-black text-muted-foreground">–</p>
+                        <p className="text-[10px] text-muted-foreground">belum ada data</p>
+                    </>
+                )}
+            </CardContent>
+        </Card>
+    );
+}
+
+function ChartCard({
+    title,
+    description,
+    icon: Icon,
+    children,
+    empty,
+}: {
+    title: string;
+    description?: string;
+    icon: typeof BarChart3;
+    children: React.ReactNode;
+    empty: boolean;
+}) {
+    return (
+        <Card>
+            <CardHeader className="pb-2">
+                <CardTitle className="flex items-center gap-2 text-base">
+                    <Icon className="h-4 w-4 text-muted-foreground" />
+                    {title}
+                </CardTitle>
+                {description && <CardDescription>{description}</CardDescription>}
+            </CardHeader>
+            <CardContent>
+                <div className="h-[230px] w-full">
+                    {empty ? (
+                        <div className="flex h-full items-center justify-center text-xs text-muted-foreground italic">
+                            Belum ada data.
+                        </div>
+                    ) : (
+                        children
+                    )}
+                </div>
+            </CardContent>
+        </Card>
+    );
+}
+
+export default function Dashboard({
+    scope,
+    stats,
+    ongoingOutages,
+    upcomingOutages,
+    outageMeetings,
+}: DashboardProps) {
+    const s = stats;
+    const pct = (n: number) => (s.total > 0 ? Math.round((n / s.total) * 100) : 0);
+
+    const timeline = s.monthlyTimeline.map((m) => {
         const [y, mo] = m.bulan.split('-');
-        const monthNames = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
-        return {
-            name: `${monthNames[parseInt(mo) - 1]} ${y.slice(2)}`,
-            outage: m.total,
-        };
+
+        return { name: `${BULAN[parseInt(mo, 10) - 1]} ${y.slice(2)}`, outage: m.total };
     });
 
-    const progressBarData = stats.progressDistribution;
-
-    const durasiLineData = stats.durasiByScope.map(d => ({
-        name: d.scope || '-',
-        durasi: Math.round(d.avg_durasi),
+    const progresData = s.progressDistribution.map((d) => ({
+        name: d.range,
+        jumlah: d.count,
+        warna:
+            d.range === '100%' ? '#10b981' : d.range === '0%' ? '#94a3b8' : '#3b82f6',
     }));
 
-    const progressColor = (val: number) => {
-        if (val >= 75) return 'text-emerald-600';
-        if (val >= 40) return 'text-amber-600';
-        return 'text-rose-600';
-    };
+    const durasiData = s.durasiByScope.map((d) => ({
+        name: d.scope,
+        durasi: d.avg_durasi,
+    }));
+
+    const top = (arr: Bucket[], n = 8) => arr.slice(0, n).map((b) => ({ name: b.label, jumlah: b.total }));
 
     return (
         <>
             <Head title="Dashboard" />
-            <div className="flex-1 p-4 md:p-8 pt-6">
-                <div className="flex items-center justify-between mb-6">
-                    <h2 className="text-3xl font-bold tracking-tight">Dashboard</h2>
-                </div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-                    {/* LEFT COLUMN: Stats, Charts, and Activity */}
-                    <div className="lg:col-span-8 space-y-6">
-                        
-                        {/* KINERJA OUTAGE WIDGET */}
-                        <div className="mb-6">
-                            <h3 className="text-lg font-bold mb-3 flex items-center gap-2">
-                                <Activity className="h-5 w-5 text-blue-500" />
-                                Kinerja Outage
-                            </h3>
-                            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-                                <Card className="bg-emerald-50 dark:bg-emerald-950/20 border-emerald-100 dark:border-emerald-900/50 shadow-sm">
-                                    <CardContent className="p-4 flex flex-col items-center justify-center text-center">
-                                        <ShieldCheck className="h-6 w-6 text-emerald-600 mb-2" />
-                                        <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider">On Quality</p>
-                                        <h4 className="text-xl font-black text-emerald-700 dark:text-emerald-400">{stats.kinerja.onQuality}%</h4>
-                                    </CardContent>
-                                </Card>
-                                <Card className="bg-blue-50 dark:bg-blue-950/20 border-blue-100 dark:border-blue-900/50 shadow-sm">
-                                    <CardContent className="p-4 flex flex-col items-center justify-center text-center">
-                                        <Clock className="h-6 w-6 text-blue-600 mb-2" />
-                                        <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider">On Time</p>
-                                        <h4 className="text-xl font-black text-blue-700 dark:text-blue-400">{stats.kinerja.onTime}%</h4>
-                                    </CardContent>
-                                </Card>
-                                <Card className="bg-amber-50 dark:bg-amber-950/20 border-amber-100 dark:border-amber-900/50 shadow-sm">
-                                    <CardContent className="p-4 flex flex-col items-center justify-center text-center">
-                                        <DollarSign className="h-6 w-6 text-amber-600 mb-2" />
-                                        <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider">On Cost</p>
-                                        <h4 className="text-xl font-black text-amber-700 dark:text-amber-400">{stats.kinerja.onCost}%</h4>
-                                    </CardContent>
-                                </Card>
-                                <Card className="bg-indigo-50 dark:bg-indigo-950/20 border-indigo-100 dark:border-indigo-900/50 shadow-sm">
-                                    <CardContent className="p-4 flex flex-col items-center justify-center text-center">
-                                        <Crosshair className="h-6 w-6 text-indigo-600 mb-2" />
-                                        <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider">On Scope</p>
-                                        <h4 className="text-xl font-black text-indigo-700 dark:text-indigo-400">{stats.kinerja.onScope}%</h4>
-                                    </CardContent>
-                                </Card>
-                                <Card className="bg-rose-50 dark:bg-rose-950/20 border-rose-100 dark:border-rose-900/50 shadow-sm">
-                                    <CardContent className="p-4 flex flex-col items-center justify-center text-center">
-                                        <HeartPulse className="h-6 w-6 text-rose-600 mb-2" />
-                                        <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider">On Safety</p>
-                                        <h4 className="text-xl font-black text-rose-700 dark:text-rose-400">{stats.kinerja.onSafety}%</h4>
-                                    </CardContent>
-                                </Card>
+            <div className="flex flex-1 flex-col gap-4 p-4">
+                {/* Judul + konteks data yang sedang ditampilkan */}
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                        <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
+                        <p className="mt-0.5 text-sm text-muted-foreground">
+                            Ringkasan perencanaan dan pelaksanaan outage
+                        </p>
+                    </div>
+                    {scope.merek ? (
+                        <div className="flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2">
+                            <Factory className="h-4 w-4 text-primary" />
+                            <div className="text-xs">
+                                <span className="text-muted-foreground">Data mesin merek</span>{' '}
+                                <span className="font-bold text-primary">{scope.merek}</span>
                             </div>
                         </div>
-
-                        {/* Summary Cards */}
-                        <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
-                            <Card>
-                                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                                    <CardTitle className="text-sm font-medium">Total Outage Plan</CardTitle>
-                                    <Calendar className="h-4 w-4 text-muted-foreground" />
-                                </CardHeader>
-                                <CardContent>
-                                    <div className="text-2xl font-bold">{stats.total}</div>
-                                    <p className="text-xs text-muted-foreground">Seluruh rencana</p>
-                                </CardContent>
-                            </Card>
-                            <Card className="bg-primary/5 border-primary/20">
-                                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                                    <CardTitle className="text-sm font-medium text-primary">Rapat Aktif</CardTitle>
-                                    <Activity className="h-4 w-4 text-primary" />
-                                </CardHeader>
-                                <CardContent>
-                                    <div className="text-2xl font-bold text-primary">{stats.meetings.active}</div>
-                                    <p className="text-xs text-primary/80">Sedang berlangsung</p>
-                                </CardContent>
-                            </Card>
-                            <Card>
-                                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                                    <CardTitle className="text-sm font-medium">Eksekusi PLTD</CardTitle>
-                                    <Zap className="h-4 w-4 text-emerald-500" />
-                                </CardHeader>
-                                <CardContent>
-                                    <div className="text-2xl font-bold text-emerald-600">{stats.eksekusi.pltd}%</div>
-                                    <p className="text-xs text-muted-foreground">Tingkat penyelesaian</p>
-                                </CardContent>
-                            </Card>
-                            <Card>
-                                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                                    <CardTitle className="text-sm font-medium">Eksekusi PLTM</CardTitle>
-                                    <Zap className="h-4 w-4 text-blue-500" />
-                                </CardHeader>
-                                <CardContent>
-                                    <div className="text-2xl font-bold text-blue-600">{stats.eksekusi.pltm}%</div>
-                                    <p className="text-xs text-muted-foreground">Tingkat penyelesaian</p>
-                                </CardContent>
-                            </Card>
+                    ) : (
+                        <div className="flex items-center gap-2 rounded-lg border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+                            <Layers className="h-4 w-4" />
+                            Seluruh mesin (semua merek)
                         </div>
+                    )}
+                </div>
 
-                        {/* Charts Row 1 */}
-                        <div className="grid gap-4 md:grid-cols-2">
-                            <Card>
-                                <CardHeader className="pb-2">
-                                    <CardTitle className="flex items-center gap-2 text-base">
-                                        <BarChart3 className="h-4 w-4 text-indigo-500" />
-                                        Distribusi Scope
-                                    </CardTitle>
-                                </CardHeader>
-                                <CardContent className="pl-0">
-                                    <div className="h-[220px]">
-                                        {scopeBarData.length > 0 ? (
-                                            <ResponsiveContainer width="100%" height="100%">
-                                                <BarChart data={scopeBarData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                                                    <CartesianGrid strokeDasharray="3 3" vertical={false} opacity={0.3} />
-                                                    <XAxis dataKey="name" fontSize={10} tickLine={false} axisLine={false} />
-                                                    <YAxis fontSize={10} tickLine={false} axisLine={false} allowDecimals={false} />
-                                                    <Tooltip contentStyle={CustomTooltipStyle} />
-                                                    <Bar dataKey="jumlah" fill="#6366f1" radius={[4, 4, 0, 0]} barSize={24} />
-                                                </BarChart>
-                                            </ResponsiveContainer>
-                                        ) : (
-                                            <div className="h-full flex items-center justify-center text-xs text-muted-foreground italic">Belum ada data.</div>
-                                        )}
-                                    </div>
-                                </CardContent>
-                            </Card>
+                {/* KPI utama */}
+                <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+                    <Kpi
+                        label="Total Mesin"
+                        value={s.total}
+                        sub="rencana outage"
+                        icon={Layers}
+                        tone="primary"
+                    />
+                    <Kpi
+                        label="Selesai"
+                        value={s.status.selesai}
+                        sub={`${pct(s.status.selesai)}% dari total`}
+                        icon={CheckCircle2}
+                        tone="emerald"
+                    />
+                    <Kpi
+                        label="Sedang Berjalan"
+                        value={s.status.berjalan}
+                        sub={`${pct(s.status.berjalan)}% dari total`}
+                        icon={Hourglass}
+                        tone="amber"
+                    />
+                    <Kpi
+                        label="Belum Mulai"
+                        value={s.status.belum}
+                        sub={`${pct(s.status.belum)}% dari total`}
+                        icon={AlertCircle}
+                        tone="slate"
+                    />
+                    <Kpi
+                        label="Rapat"
+                        value={s.meetings.total}
+                        sub={`${s.meetings.hariIni} hari ini · ${s.meetings.akanDatang} akan datang`}
+                        icon={Users}
+                        tone="blue"
+                    />
+                </div>
 
-                            <Card>
-                                <CardHeader className="pb-2">
-                                    <CardTitle className="flex items-center gap-2 text-base">
-                                        <Activity className="h-4 w-4 text-teal-500" />
-                                        Timeline Bulanan
-                                    </CardTitle>
-                                </CardHeader>
-                                <CardContent className="pl-0">
-                                    <div className="h-[220px]">
-                                        {timelineData.length > 0 ? (
-                                            <ResponsiveContainer width="100%" height="100%">
-                                                <LineChart data={timelineData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                                                    <CartesianGrid strokeDasharray="3 3" vertical={false} opacity={0.3} />
-                                                    <XAxis dataKey="name" fontSize={10} tickLine={false} axisLine={false} />
-                                                    <YAxis fontSize={10} tickLine={false} axisLine={false} allowDecimals={false} />
-                                                    <Tooltip contentStyle={CustomTooltipStyle} />
-                                                    <Line type="monotone" dataKey="outage" stroke="#14b8a6" strokeWidth={2.5} dot={{ r: 3, fill: '#fff', strokeWidth: 2 }} activeDot={{ r: 5 }} />
-                                                </LineChart>
-                                            </ResponsiveContainer>
-                                        ) : (
-                                            <div className="h-full flex items-center justify-center text-xs text-muted-foreground italic">Belum ada data.</div>
-                                        )}
-                                    </div>
-                                </CardContent>
-                            </Card>
-                        </div>
-
-                        {/* Recent Outage Activity */}
-                        <Card className="border-t-4 border-t-amber-500 shadow-sm">
-                            <CardHeader>
-                                <CardTitle className="flex items-center gap-2">
-                                    <Activity className="h-5 w-5 text-amber-500" />
-                                    Progres Sementara Berlangsung
-                                </CardTitle>
-                                <CardDescription>Pekerjaan pemeliharaan yang saat ini sedang dikerjakan secara aktif</CardDescription>
-                            </CardHeader>
-                            <CardContent>
-                                <div className="space-y-5">
-                                    {ongoingOutages.length > 0 ? ongoingOutages.map((item, i) => (
-                                        <div key={i} className="flex items-center gap-4">
-                                            <div className="flex-1 min-w-0 space-y-1">
-                                                <p className="text-sm font-bold text-foreground leading-none truncate">{item.mesin}</p>
-                                                <p className="text-[11px] text-muted-foreground uppercase font-semibold tracking-wider">
-                                                    {item.jenis} · <span className="text-blue-500">{item.scope}</span>
-                                                </p>
-                                                <p className="text-[10px] text-slate-400">Mulai: {item.start_date || '-'}</p>
-                                            </div>
-                                            <div className="flex-1 max-w-[250px]">
-                                                <div className="flex justify-between text-xs mb-1.5 items-end">
-                                                    <span className="font-semibold text-slate-500">Progres</span>
-                                                    <span className="font-black text-lg leading-none" style={{ color: item.progress >= 75 ? '#10b981' : item.progress >= 40 ? '#f59e0b' : '#3b82f6' }}>
-                                                        {item.progress}%
-                                                    </span>
-                                                </div>
-                                                <div className="h-2.5 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden shadow-inner">
-                                                    <div 
-                                                        className="h-full rounded-full transition-all duration-1000" 
-                                                        style={{ 
-                                                            width: `${item.progress}%`,
-                                                            backgroundColor: item.progress >= 75 ? '#10b981' : item.progress >= 40 ? '#f59e0b' : '#3b82f6'
-                                                        }}
-                                                    ></div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    )) : (
-                                        <div className="flex flex-col items-center justify-center py-6">
-                                            <ShieldCheck className="h-10 w-10 text-muted-foreground opacity-20 mb-2" />
-                                            <p className="text-sm text-muted-foreground italic text-center">Tidak ada pekerjaan yang sedang berlangsung.</p>
-                                        </div>
-                                    )}
-                                </div>
-                            </CardContent>
-                        </Card>
+                {/* Kinerja Outage */}
+                <div>
+                    <h2 className="mb-2 flex items-center gap-2 text-sm font-bold">
+                        <Activity className="h-4 w-4 text-primary" />
+                        Kinerja Outage
+                    </h2>
+                    <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+                        <KinerjaCard label="On Quality" item={s.kinerja.onQuality} icon={ShieldCheck} color="text-emerald-600" />
+                        <KinerjaCard label="On Time" item={s.kinerja.onTime} icon={Clock} color="text-blue-600" />
+                        <KinerjaCard label="On Cost" item={s.kinerja.onCost} icon={DollarSign} color="text-amber-600" />
+                        <KinerjaCard label="On Scope" item={s.kinerja.onScope} icon={Crosshair} color="text-indigo-600" />
+                        <KinerjaCard label="On Safety" item={s.kinerja.onSafety} icon={HeartPulse} color="text-rose-600" />
                     </div>
+                </div>
 
-                    {/* RIGHT COLUMN: Sidebar (Jadwal Rapat) */}
-                    <div className="lg:col-span-4 space-y-6">
-                        <Card className="border-t-4 border-t-blue-500 shadow-sm overflow-hidden sticky top-6">
-                            <CardHeader className="bg-muted/20 border-b pb-4">
-                                <CardTitle className="flex items-center gap-2 text-lg">
-                                    <Calendar className="h-5 w-5 text-blue-500" />
-                                    Jadwal Rapat Outage
-                                </CardTitle>
-                                <CardDescription className="mt-1">Rapat persiapan outage hari ini dan yang akan datang</CardDescription>
+                {/* Grafik */}
+                <div className="grid gap-4 lg:grid-cols-2">
+                    <ChartCard
+                        title="Sebaran Progres"
+                        description="Berapa mesin di tiap rentang penyelesaian"
+                        icon={BarChart3}
+                        empty={progresData.length === 0}
+                    >
+                        <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={progresData} margin={{ top: 18, right: 10, left: -20, bottom: 0 }}>
+                                <CartesianGrid strokeDasharray="3 3" vertical={false} opacity={0.3} />
+                                <XAxis dataKey="name" fontSize={11} tickLine={false} axisLine={false} />
+                                <YAxis fontSize={11} tickLine={false} axisLine={false} allowDecimals={false} />
+                                <Tooltip contentStyle={TOOLTIP} cursor={{ fill: 'rgba(0,0,0,0.04)' }} />
+                                <Bar dataKey="jumlah" radius={[4, 4, 0, 0]} maxBarSize={48}>
+                                    {progresData.map((d, i) => (
+                                        <Cell key={i} fill={d.warna} />
+                                    ))}
+                                    <LabelList dataKey="jumlah" position="top" fontSize={11} fontWeight="bold" />
+                                </Bar>
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </ChartCard>
+
+                    <ChartCard
+                        title="Distribusi Scope"
+                        description="Jenis pekerjaan yang paling banyak dijadwalkan"
+                        icon={Layers}
+                        empty={s.scopeDistribution.length === 0}
+                    >
+                        <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={top(s.scopeDistribution)} margin={{ top: 18, right: 10, left: -20, bottom: 0 }}>
+                                <CartesianGrid strokeDasharray="3 3" vertical={false} opacity={0.3} />
+                                <XAxis dataKey="name" fontSize={10} tickLine={false} axisLine={false} />
+                                <YAxis fontSize={11} tickLine={false} axisLine={false} allowDecimals={false} />
+                                <Tooltip contentStyle={TOOLTIP} cursor={{ fill: 'rgba(0,0,0,0.04)' }} />
+                                <Bar dataKey="jumlah" fill="#6366f1" radius={[4, 4, 0, 0]} maxBarSize={40}>
+                                    <LabelList dataKey="jumlah" position="top" fontSize={11} fontWeight="bold" />
+                                </Bar>
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </ChartCard>
+
+                    <ChartCard
+                        title="Timeline Bulanan"
+                        description="Jumlah outage yang dimulai tiap bulan"
+                        icon={Activity}
+                        empty={timeline.length === 0}
+                    >
+                        <ResponsiveContainer width="100%" height="100%">
+                            <LineChart data={timeline} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                                <CartesianGrid strokeDasharray="3 3" vertical={false} opacity={0.3} />
+                                <XAxis dataKey="name" fontSize={10} tickLine={false} axisLine={false} interval="preserveStartEnd" />
+                                <YAxis fontSize={11} tickLine={false} axisLine={false} allowDecimals={false} />
+                                <Tooltip contentStyle={TOOLTIP} />
+                                <Line
+                                    type="monotone"
+                                    dataKey="outage"
+                                    stroke="#14b8a6"
+                                    strokeWidth={2.5}
+                                    dot={{ r: 2.5 }}
+                                    activeDot={{ r: 5 }}
+                                />
+                            </LineChart>
+                        </ResponsiveContainer>
+                    </ChartCard>
+
+                    <ChartCard
+                        title="Rata-rata Durasi per Scope"
+                        description="Dalam hari"
+                        icon={Clock}
+                        empty={durasiData.length === 0}
+                    >
+                        <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={durasiData} margin={{ top: 18, right: 10, left: -20, bottom: 0 }}>
+                                <CartesianGrid strokeDasharray="3 3" vertical={false} opacity={0.3} />
+                                <XAxis dataKey="name" fontSize={10} tickLine={false} axisLine={false} />
+                                <YAxis fontSize={11} tickLine={false} axisLine={false} />
+                                <Tooltip contentStyle={TOOLTIP} cursor={{ fill: 'rgba(0,0,0,0.04)' }} formatter={(v) => [`${v} hari`, 'Rata-rata']} />
+                                <Bar dataKey="durasi" fill="#f59e0b" radius={[4, 4, 0, 0]} maxBarSize={40}>
+                                    <LabelList dataKey="durasi" position="top" fontSize={11} fontWeight="bold" />
+                                </Bar>
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </ChartCard>
+                </div>
+
+                {/* Komposisi: jenis, sistem, merek */}
+                <div className="grid gap-4 lg:grid-cols-3">
+                    {[
+                        { judul: 'Jenis Pembangkit', data: s.jenis, warna: 'bg-blue-500' },
+                        { judul: 'Sistem Kelistrikan', data: s.sistem, warna: 'bg-teal-500' },
+                        { judul: scope.merek ? 'Status Pekerjaan' : 'Merek Mesin', data: scope.merek ? s.ket : s.merek, warna: 'bg-indigo-500' },
+                    ].map(({ judul, data, warna }) => (
+                        <Card key={judul}>
+                            <CardHeader className="pb-2">
+                                <CardTitle className="text-base">{judul}</CardTitle>
+                                <CardDescription>{data.length} kategori</CardDescription>
                             </CardHeader>
-                            <CardContent className="p-0">
-                                {outageMeetings.today.length === 0 && outageMeetings.upcoming.length === 0 ? (
-                                    <div className="text-sm text-muted-foreground p-10 text-center italic">
-                                        <div className="mx-auto w-12 h-12 rounded-full bg-muted flex items-center justify-center mb-3">
-                                            <Calendar className="h-6 w-6 opacity-30" />
-                                        </div>
-                                        Belum ada jadwal rapat terdekat.
-                                    </div>
+                            <CardContent className="space-y-2">
+                                {data.length === 0 ? (
+                                    <p className="py-6 text-center text-xs text-muted-foreground italic">
+                                        Belum ada data.
+                                    </p>
                                 ) : (
-                                    <div className="flex flex-col divide-y">
-                                        {/* Hari Ini */}
-                                        <div className="p-5">
-                                            <div className="text-[11px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-widest mb-4 flex items-center gap-2">
-                                                <div className="h-1.5 w-1.5 rounded-full bg-blue-600 animate-pulse" />
-                                                HARI INI
+                                    data.slice(0, 7).map((b) => (
+                                        <div key={b.label} className="space-y-1">
+                                            <div className="flex items-center justify-between text-xs">
+                                                <span className="truncate font-medium">{b.label}</span>
+                                                <span className="shrink-0 font-bold">
+                                                    {b.total}
+                                                    <span className="ml-1 font-normal text-muted-foreground">
+                                                        ({pct(b.total)}%)
+                                                    </span>
+                                                </span>
                                             </div>
-                                            {outageMeetings.today.length > 0 ? (
-                                                <div className="space-y-4">
-                                                    {outageMeetings.today.map((mtg, i) => (
-                                                        <div key={`t-${i}`} className="flex items-start gap-4 p-4 rounded-xl border border-blue-100 bg-gradient-to-r from-blue-50/50 to-white dark:border-blue-900/30 dark:from-blue-950/20 dark:to-background shadow-sm hover:shadow transition-all relative overflow-hidden group">
-                                                            <div className="absolute top-0 left-0 w-1 h-full bg-blue-500"></div>
-                                                            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-400 shrink-0">
-                                                                <Clock className="h-5 w-5" />
-                                                            </div>
-                                                            <div className="flex-1 min-w-0">
-                                                                <div className="flex items-center gap-2 mb-1.5">
-                                                                    <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-blue-600 text-white shadow-sm">
-                                                                        {mtg.type}
-                                                                    </span>
-                                                                </div>
-                                                                <p className="text-sm font-bold text-foreground leading-tight mb-1">{mtg.mesin}</p>
-                                                                <p className="text-xs text-muted-foreground truncate">{mtg.jenis} · {mtg.scope}</p>
-                                                            </div>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            ) : (
-                                                <div className="flex flex-col items-center justify-center py-6 text-center bg-muted/20 rounded-xl border border-dashed">
-                                                    <p className="text-sm text-muted-foreground italic">Tidak ada rapat hari ini.</p>
-                                                </div>
-                                            )}
-                                        </div>
-
-                                        {/* Mendatang */}
-                                        <div className="p-5 bg-muted/5">
-                                            <div className="text-[11px] font-bold text-amber-600 dark:text-amber-500 uppercase tracking-widest mb-4 flex items-center gap-2">
-                                                <Calendar className="h-3.5 w-3.5" />
-                                                AKAN DATANG
+                                            <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                                                <div
+                                                    className={`h-full rounded-full ${warna}`}
+                                                    style={{ width: `${pct(b.total)}%` }}
+                                                />
                                             </div>
-                                            {outageMeetings.upcoming.length > 0 ? (
-                                                <div className="space-y-4">
-                                                    {outageMeetings.upcoming.map((mtg, i) => (
-                                                        <div key={`u-${i}`} className="flex items-start gap-4 p-4 rounded-xl border bg-card hover:bg-accent/50 hover:border-accent-foreground/10 transition-all">
-                                                            <div className="flex flex-col items-center justify-center w-12 shrink-0 py-1.5 border rounded-lg bg-muted/30">
-                                                                <span className="text-[10px] font-semibold text-muted-foreground uppercase">{new Date(mtg.date).toLocaleDateString('id-ID', { month: 'short' })}</span>
-                                                                <span className="text-lg font-bold text-foreground leading-none mt-0.5">{new Date(mtg.date).getDate()}</span>
-                                                            </div>
-                                                            <div className="flex-1 min-w-0 pt-0.5">
-                                                                <div className="flex items-center gap-2 mb-1.5">
-                                                                    <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold border bg-amber-50/50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400 border-amber-200 dark:border-amber-900/50 shadow-sm">
-                                                                        {mtg.type}
-                                                                    </span>
-                                                                </div>
-                                                                <p className="text-sm font-bold text-foreground leading-tight mb-1">{mtg.mesin}</p>
-                                                                <p className="text-xs text-muted-foreground truncate">{mtg.jenis} · {mtg.scope}</p>
-                                                            </div>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            ) : (
-                                                <div className="flex flex-col items-center justify-center py-6 text-center bg-muted/20 rounded-xl border border-dashed">
-                                                    <p className="text-sm text-muted-foreground italic">Tidak ada rapat mendatang.</p>
-                                                </div>
-                                            )}
                                         </div>
-                                    </div>
+                                    ))
                                 )}
                             </CardContent>
                         </Card>
-                    </div>
+                    ))}
                 </div>
+
+                {/* Daftar pekerjaan + jadwal rapat */}
+                <div className="grid gap-4 lg:grid-cols-3">
+                    <Card className="lg:col-span-2">
+                        <CardHeader className="pb-3">
+                            <CardTitle className="flex items-center gap-2 text-base">
+                                <Hourglass className="h-4 w-4 text-amber-500" />
+                                Sedang Berjalan
+                            </CardTitle>
+                            <CardDescription>
+                                Pekerjaan dengan progres antara 1% dan 99%
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-3">
+                            {ongoingOutages.length > 0 ? (
+                                ongoingOutages.map((item) => (
+                                    <Link
+                                        key={item.id}
+                                        href={`/outage-plans/${item.id}`}
+                                        className="flex items-center gap-4 rounded-lg border p-3 transition-colors hover:bg-muted/40"
+                                    >
+                                        <div className="min-w-0 flex-1">
+                                            <p className="truncate text-sm font-semibold">{item.mesin}</p>
+                                            <p className="text-[11px] tracking-wide text-muted-foreground uppercase">
+                                                {item.jenis} · {item.scope || '-'}
+                                            </p>
+                                        </div>
+                                        <div className="w-40 shrink-0">
+                                            <div className="mb-1 flex items-end justify-between">
+                                                <span className="text-[11px] text-muted-foreground">Progres</span>
+                                                <span
+                                                    className="text-sm leading-none font-bold"
+                                                    style={{
+                                                        color:
+                                                            item.progress >= 75
+                                                                ? '#10b981'
+                                                                : item.progress >= 40
+                                                                  ? '#f59e0b'
+                                                                  : '#3b82f6',
+                                                    }}
+                                                >
+                                                    {item.progress}%
+                                                </span>
+                                            </div>
+                                            <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+                                                <div
+                                                    className="h-full rounded-full transition-all"
+                                                    style={{
+                                                        width: `${Math.min(100, item.progress)}%`,
+                                                        backgroundColor:
+                                                            item.progress >= 75
+                                                                ? '#10b981'
+                                                                : item.progress >= 40
+                                                                  ? '#f59e0b'
+                                                                  : '#3b82f6',
+                                                    }}
+                                                />
+                                            </div>
+                                        </div>
+                                    </Link>
+                                ))
+                            ) : (
+                                <div className="flex flex-col items-center justify-center py-8 text-center">
+                                    <ShieldCheck className="mb-2 h-9 w-9 opacity-20" />
+                                    <p className="text-sm text-muted-foreground italic">
+                                        Tidak ada pekerjaan yang sedang berjalan.
+                                    </p>
+                                </div>
+                            )}
+                        </CardContent>
+                    </Card>
+
+                    <Card>
+                        <CardHeader className="pb-3">
+                            <CardTitle className="flex items-center gap-2 text-base">
+                                <CalendarClock className="h-4 w-4 text-blue-500" />
+                                Outage Terdekat
+                            </CardTitle>
+                            <CardDescription>Belum mulai, paling dekat jadwalnya</CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-2">
+                            {upcomingOutages.length > 0 ? (
+                                upcomingOutages.map((o) => (
+                                    <Link
+                                        key={o.id}
+                                        href={`/outage-plans/${o.id}`}
+                                        className="flex items-start gap-3 rounded-lg border p-2.5 transition-colors hover:bg-muted/40"
+                                    >
+                                        <div className="flex w-12 shrink-0 flex-col items-center rounded-md border bg-muted/30 py-1">
+                                            <span className="text-[10px] font-semibold text-muted-foreground uppercase">
+                                                {o.start_date
+                                                    ? new Date(o.start_date).toLocaleDateString('id-ID', { month: 'short' })
+                                                    : '-'}
+                                            </span>
+                                            <span className="text-base leading-none font-bold">
+                                                {o.start_date ? new Date(o.start_date).getDate() : '-'}
+                                            </span>
+                                        </div>
+                                        <div className="min-w-0 flex-1">
+                                            <p className="truncate text-xs font-semibold">{o.mesin}</p>
+                                            <p className="truncate text-[10px] text-muted-foreground">
+                                                {o.scope || '-'} · {o.durasi ?? '-'} hari
+                                            </p>
+                                        </div>
+                                    </Link>
+                                ))
+                            ) : (
+                                <p className="py-6 text-center text-xs text-muted-foreground italic">
+                                    Tidak ada outage terdekat.
+                                </p>
+                            )}
+                        </CardContent>
+                    </Card>
+                </div>
+
+                {/* Jadwal rapat */}
+                <Card>
+                    <CardHeader className="pb-3">
+                        <CardTitle className="flex items-center gap-2 text-base">
+                            <Calendar className="h-4 w-4 text-blue-500" />
+                            Jadwal Rapat Outage
+                        </CardTitle>
+                        <CardDescription>Rapat hari ini dan yang akan datang</CardDescription>
+                    </CardHeader>
+                    <CardContent className="grid gap-4 md:grid-cols-2">
+                        <div>
+                            <div className="mb-3 flex items-center gap-2 text-[11px] font-bold tracking-widest text-blue-600 uppercase dark:text-blue-400">
+                                <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-blue-600" />
+                                Hari Ini ({outageMeetings.today.length})
+                            </div>
+                            {outageMeetings.today.length > 0 ? (
+                                <div className="space-y-2">
+                                    {outageMeetings.today.map((m) => (
+                                        <Link
+                                            key={m.id}
+                                            href={`/daily-meetings/${m.id}`}
+                                            className="flex items-center gap-3 rounded-lg border border-blue-200 bg-blue-50/50 p-2.5 transition-colors hover:bg-blue-50 dark:border-blue-900/40 dark:bg-blue-950/20"
+                                        >
+                                            <span className="shrink-0 rounded bg-blue-600 px-2 py-0.5 text-[10px] font-bold text-white">
+                                                {m.type}
+                                            </span>
+                                            <div className="min-w-0">
+                                                <p className="truncate text-xs font-semibold">{m.mesin}</p>
+                                                <p className="truncate text-[10px] text-muted-foreground">
+                                                    {m.jenis} · {m.scope}
+                                                </p>
+                                            </div>
+                                        </Link>
+                                    ))}
+                                </div>
+                            ) : (
+                                <p className="rounded-lg border border-dashed py-6 text-center text-xs text-muted-foreground italic">
+                                    Tidak ada rapat hari ini.
+                                </p>
+                            )}
+                        </div>
+
+                        <div>
+                            <div className="mb-3 flex items-center gap-2 text-[11px] font-bold tracking-widest text-amber-600 uppercase dark:text-amber-500">
+                                <Calendar className="h-3.5 w-3.5" />
+                                Akan Datang ({outageMeetings.upcoming.length})
+                            </div>
+                            {outageMeetings.upcoming.length > 0 ? (
+                                <div className="space-y-2">
+                                    {outageMeetings.upcoming.map((m) => (
+                                        <Link
+                                            key={m.id}
+                                            href={`/daily-meetings/${m.id}`}
+                                            className="flex items-center gap-3 rounded-lg border p-2.5 transition-colors hover:bg-muted/40"
+                                        >
+                                            <div className="flex w-11 shrink-0 flex-col items-center rounded-md border bg-muted/30 py-1">
+                                                <span className="text-[9px] font-semibold text-muted-foreground uppercase">
+                                                    {new Date(m.date).toLocaleDateString('id-ID', { month: 'short' })}
+                                                </span>
+                                                <span className="text-sm leading-none font-bold">
+                                                    {new Date(m.date).getDate()}
+                                                </span>
+                                            </div>
+                                            <div className="min-w-0 flex-1">
+                                                <div className="mb-0.5">
+                                                    <span className="rounded border border-amber-200 bg-amber-50/60 px-1.5 py-0.5 text-[9px] font-bold text-amber-700 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-400">
+                                                        {m.type}
+                                                    </span>
+                                                </div>
+                                                <p className="truncate text-xs font-semibold">{m.mesin}</p>
+                                            </div>
+                                        </Link>
+                                    ))}
+                                </div>
+                            ) : (
+                                <p className="rounded-lg border border-dashed py-6 text-center text-xs text-muted-foreground italic">
+                                    Tidak ada rapat mendatang.
+                                </p>
+                            )}
+                        </div>
+                    </CardContent>
+                </Card>
             </div>
         </>
     );

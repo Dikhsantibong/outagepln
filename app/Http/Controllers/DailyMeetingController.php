@@ -29,6 +29,13 @@ class DailyMeetingController extends Controller
     {
         $query = DailyMeeting::withCount('attendees');
 
+        // Meetings follow the machine they belong to: an account only sees the
+        // meetings of the brand it manages.
+        $user = $request->user();
+        if ($user && filled($user->merek)) {
+            $query->whereHas('outagePlan', fn ($q) => $q->where('merek', $user->merek));
+        }
+
         if ($request->filled('search')) {
             $search = $request->input('search');
             $query->where(function ($q) use ($search) {

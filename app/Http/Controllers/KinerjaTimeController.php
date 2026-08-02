@@ -76,9 +76,10 @@ class KinerjaTimeController extends Controller
     /** Completion counts across every plan, independent of the active filters. */
     private function summary(): array
     {
-        $total = OutagePlan::count();
-        $lengkap = OutagePlan::whereHas('kinerjaTime', fn ($q) => $q->whereNotNull('selesai_aktual'))->count();
-        $sebagian = OutagePlan::whereHas('kinerjaTime', fn ($q) => $q->whereNotNull('start_date_aktual')->whereNull('selesai_aktual'))->count();
+        $user = request()->user();
+        $total = OutagePlan::visibleTo($user)->count();
+        $lengkap = OutagePlan::visibleTo($user)->whereHas('kinerjaTime', fn ($q) => $q->whereNotNull('selesai_aktual'))->count();
+        $sebagian = OutagePlan::visibleTo($user)->whereHas('kinerjaTime', fn ($q) => $q->whereNotNull('start_date_aktual')->whereNull('selesai_aktual'))->count();
 
         return [
             'total' => $total,

@@ -74,9 +74,10 @@ class KinerjaQualityController extends Controller
     /** Completion counts across every plan, independent of the active filters. */
     private function summary(): array
     {
-        $total = OutagePlan::count();
-        $lengkap = OutagePlan::whereHas('kinerjaQuality', fn ($q) => $q->whereNotNull('dm_sebelum')->whereNotNull('dm_sesudah'))->count();
-        $sebagian = OutagePlan::whereHas('kinerjaQuality', fn ($q) => $q->whereNotNull('dm_sebelum')->whereNull('dm_sesudah'))->count();
+        $user = request()->user();
+        $total = OutagePlan::visibleTo($user)->count();
+        $lengkap = OutagePlan::visibleTo($user)->whereHas('kinerjaQuality', fn ($q) => $q->whereNotNull('dm_sebelum')->whereNotNull('dm_sesudah'))->count();
+        $sebagian = OutagePlan::visibleTo($user)->whereHas('kinerjaQuality', fn ($q) => $q->whereNotNull('dm_sebelum')->whereNull('dm_sesudah'))->count();
 
         return [
             'total' => $total,

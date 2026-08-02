@@ -19,6 +19,9 @@ trait FiltersOutagePlans
 
     protected function applyPlanFilters(Builder $query, Request $request): Builder
     {
+        // Each account manages one engine brand; admin/tamu see everything.
+        $query->visibleTo($request->user());
+
         if ($request->filled('search')) {
             $search = $request->input('search');
             $query->where(function ($q) use ($search) {
@@ -67,7 +70,12 @@ trait FiltersOutagePlans
 
     protected function planFilterOptions(): array
     {
-        $distinct = fn (string $column) => OutagePlan::whereNotNull($column)
+        // Options are scoped too, so an account never sees choices that would
+        // return nothing for it.
+        $user = request()->user();
+
+        $distinct = fn (string $column) => OutagePlan::visibleTo($user)
+            ->whereNotNull($column)
             ->where($column, '!=', '')
             ->distinct()
             ->orderBy($column)
@@ -75,7 +83,7 @@ trait FiltersOutagePlans
             ->values();
 
         return [
-            'tahun' => OutagePlan::query()
+            'tahun' => OutagePlan::visibleTo($user)
                 ->selectRaw('YEAR(start_date) as tahun')
                 ->whereNotNull('start_date')
                 ->distinct()
@@ -94,7 +102,7 @@ trait FiltersOutagePlans
      */
     protected function planPickerList(): \Illuminate\Support\Collection
     {
-        return OutagePlan::query()
+        return OutagePlan::visibleTo(request()->user())
             ->orderBy('mesin_pembangkit')
             ->get(['id', 'mesin_pembangkit', 'jenis_pembangkit', 'scope', 'sistem', 'progress', 'start_date', 'selesai'])
             ->map(fn ($p) => [

@@ -2,215 +2,236 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\OutagePlan;
 use App\Models\DailyMeeting;
+use App\Models\KinerjaCost;
+use App\Models\KinerjaQuality;
+use App\Models\KinerjaTime;
+use App\Models\OutagePlan;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 
 class DashboardController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
-        // Total outage plans
-        $totalOutage = OutagePlan::count();
+        $user = $request->user();
+        // Every figure below is scoped: a pengelola only ever sees its own
+        // brand, while admin/tamu (merek = null) still see everything.
+        $plans = fn () => OutagePlan::visibleTo($user);
+        $planIds = $plans()->pluck('id');
 
-        // Count by jenis pembangkit
-        $countByJenis = OutagePlan::select('jenis_pembangkit', DB::raw('COUNT(*) as total'))
-            ->groupBy('jenis_pembangkit')
-            ->get()
-            ->keyBy('jenis_pembangkit');
+        return Inertia::render('dashboard', [
+            'scope' => [
+                'merek' => $user?->merek,
+                'role' => $user?->role,
+            ],
+            'stats' => [
+                'total' => $plans()->count(),
+                'status' => $this->statusCounts($plans),
+                'jenis' => $this->groupCount($plans, 'jenis_pembangkit'),
+                'sistem' => $this->groupCount($plans, 'sistem'),
+                'merek' => $this->groupCount($plans, 'merek'),
+                'scopeDistribution' => $this->groupCount($plans, 'scope'),
+                'ket' => $this->groupCount($plans, 'ket'),
+                'monthlyTimeline' => $this->monthlyTimeline($plans),
+                'progressDistribution' => $this->progressDistribution($plans),
+                'durasiByScope' => $this->durasiByScope($plans),
+                'kinerja' => $this->kinerja($planIds),
+                'meetings' => $this->meetings($planIds),
+            ],
+            'ongoingOutages' => $this->ongoing($plans),
+            'upcomingOutages' => $this->upcoming($plans),
+            'outageMeetings' => $this->outageMeetings($plans),
+        ]);
+    }
 
-        // Average progress by jenis pembangkit
-        $progressByType = OutagePlan::select('jenis_pembangkit', DB::raw('AVG(progress) as avg_progress'))
-            ->groupBy('jenis_pembangkit')
-            ->get()
-            ->keyBy('jenis_pembangkit');
+    /** Belum mulai / berjalan / selesai, derived from the cumulative progress. */
+    private function statusCounts(callable $plans): array
+    {
+        $selesai = $plans()->where('progress', '>=', 100)->count();
+        $berjalan = $plans()->where('progress', '>', 0)->where('progress', '<', 100)->count();
+        $total = $plans()->count();
 
-        $plantStats = [];
-        foreach (['PLTD', 'PLTM', 'PLTMG'] as $jenis) {
-            $plantStats[$jenis] = [
-                'count' => $countByJenis->get($jenis)?->total ?? 0,
-                'progress' => round($progressByType->get($jenis)?->avg_progress ?? 0, 1),
-            ];
-        }
+        return [
+            'selesai' => $selesai,
+            'berjalan' => $berjalan,
+            'belum' => $total - $selesai - $berjalan,
+        ];
+    }
 
-        // Scope distribution for bar chart
-        $scopeDistribution = OutagePlan::select('scope', DB::raw('COUNT(*) as total'))
-            ->whereNotNull('scope')
-            ->where('scope', '!=', '')
-            ->groupBy('scope')
+    /** @return array<int, array{label: string, total: int}> */
+    private function groupCount(callable $plans, string $column): array
+    {
+        return $plans()
+            ->select($column . ' as label', DB::raw('COUNT(*) as total'))
+            ->whereNotNull($column)
+            ->where($column, '!=', '')
+            ->groupBy($column)
             ->orderByDesc('total')
-            ->get();
+            ->get()
+            ->map(fn ($r) => ['label' => (string) $r->label, 'total' => (int) $r->total])
+            ->all();
+    }
 
-        // Monthly outage timeline (how many outages start per month)
-        $monthlyTimeline = OutagePlan::select(
-                DB::raw("DATE_FORMAT(start_date, '%Y-%m') as bulan"),
-                DB::raw('COUNT(*) as total')
-            )
+    private function monthlyTimeline(callable $plans): array
+    {
+        return $plans()
+            ->select(DB::raw("DATE_FORMAT(start_date, '%Y-%m') as bulan"), DB::raw('COUNT(*) as total'))
             ->whereNotNull('start_date')
             ->groupBy('bulan')
             ->orderBy('bulan')
-            ->get();
+            ->get()
+            ->map(fn ($r) => ['bulan' => $r->bulan, 'total' => (int) $r->total])
+            ->all();
+    }
 
-        // Progress distribution (group into ranges: 0%, 1-25%, 26-50%, 51-75%, 76-99%, 100%)
-        $progressDistribution = [
-            ['range' => '0%', 'count' => OutagePlan::where('progress', 0)->count()],
-            ['range' => '1-25%', 'count' => OutagePlan::whereBetween('progress', [1, 25])->count()],
-            ['range' => '26-50%', 'count' => OutagePlan::whereBetween('progress', [26, 50])->count()],
-            ['range' => '51-75%', 'count' => OutagePlan::whereBetween('progress', [51, 75])->count()],
-            ['range' => '76-99%', 'count' => OutagePlan::whereBetween('progress', [76, 99])->count()],
-            ['range' => '100%', 'count' => OutagePlan::where('progress', 100)->count()],
+    private function progressDistribution(callable $plans): array
+    {
+        $buckets = [
+            '0%' => fn ($q) => $q->where(fn ($w) => $w->whereNull('progress')->orWhere('progress', '<=', 0)),
+            '1-25%' => fn ($q) => $q->whereBetween('progress', [0.01, 25]),
+            '26-50%' => fn ($q) => $q->whereBetween('progress', [25.01, 50]),
+            '51-75%' => fn ($q) => $q->whereBetween('progress', [50.01, 75]),
+            '76-99%' => fn ($q) => $q->whereBetween('progress', [75.01, 99.99]),
+            '100%' => fn ($q) => $q->where('progress', '>=', 100),
         ];
 
-        // Durasi average by scope
-        $durasiByScope = OutagePlan::select('scope', DB::raw('AVG(durasi) as avg_durasi'), DB::raw('COUNT(*) as total'))
-            ->whereNotNull('scope')
-            ->where('scope', '!=', '')
+        $out = [];
+        foreach ($buckets as $range => $filter) {
+            $out[] = ['range' => $range, 'count' => $filter($plans())->count()];
+        }
+
+        return $out;
+    }
+
+    private function durasiByScope(callable $plans): array
+    {
+        return $plans()
+            ->select('scope', DB::raw('AVG(durasi) as avg_durasi'), DB::raw('COUNT(*) as total'))
+            ->whereNotNull('scope')->where('scope', '!=', '')
             ->whereNotNull('durasi')
             ->groupBy('scope')
             ->orderByDesc('avg_durasi')
-            ->get();
+            ->get()
+            ->map(fn ($r) => [
+                'scope' => (string) $r->scope,
+                'avg_durasi' => round((float) $r->avg_durasi, 1),
+                'total' => (int) $r->total,
+            ])
+            ->all();
+    }
 
-        // Meeting stats
-        $activeMeetings = DailyMeeting::where('status', 'active')->count();
-        $totalMeetings  = DailyMeeting::count();
+    /**
+     * Share of machines whose performance data has been recorded and meets the
+     * target, limited to the plans this account can see.
+     */
+    private function kinerja($planIds): array
+    {
+        $pct = fn (int $good, int $of) => $of > 0 ? round(($good / $of) * 100, 1) : 0;
 
-        // Recent outage activity
-        $recentOutages = OutagePlan::latest()->take(5)->get()->map(fn($item) => [
-            'mesin' => $item->mesin_pembangkit,
-            'scope' => $item->scope,
-            'jenis' => $item->jenis_pembangkit,
-            'progress' => $item->progress ?? 0,
-            'start_date' => $item->start_date,
-            'time' => $item->created_at ? $item->created_at->diffForHumans() : '-',
-        ]);
+        $qTotal = KinerjaQuality::whereIn('outage_plan_id', $planIds)->whereNotNull('dm_sesudah')->count();
+        $qGood = KinerjaQuality::whereIn('outage_plan_id', $planIds)
+            ->whereNotNull('dm_sesudah')->whereColumn('dm_sesudah', '>=', 'dm_sebelum')->count();
 
-        // Calculate Meetings from Outage Plans
-        $todayDate = date('Y-m-d');
-        $allWithMeetings = OutagePlan::where(function($q) {
-                $q->whereNotNull('rapat_r2')
-                  ->orWhereNotNull('rapat_r3')
-                  ->orWhereNotNull('rapat_p1')
-                  ->orWhereNotNull('rapat_p2')
-                  ->orWhereNotNull('rapat_p3');
-            })->get();
-
-        $meetingsList = [];
-        foreach ($allWithMeetings as $plan) {
-            $types = [
-                'R2' => $plan->rapat_r2,
-                'R3' => $plan->rapat_r3,
-                'P1' => $plan->rapat_p1,
-                'P2' => $plan->rapat_p2,
-                'P3' => $plan->rapat_p3,
-            ];
-            foreach ($types as $type => $date) {
-                if ($date) {
-                    $meetingsList[] = [
-                        'id' => $plan->id,
-                        'mesin' => $plan->mesin_pembangkit,
-                        'scope' => $plan->scope,
-                        'jenis' => $plan->jenis_pembangkit,
-                        'type' => $type,
-                        'date' => $date,
-                    ];
-                }
-            }
-        }
-
-        usort($meetingsList, function($a, $b) {
-            return strtotime($a['date']) - strtotime($b['date']);
-        });
-
-        $todayMeetings = array_values(array_filter($meetingsList, function($m) use ($todayDate) {
-            return $m['date'] === $todayDate;
-        }));
-
-        $upcomingMeetings = array_values(array_filter($meetingsList, function($m) use ($todayDate) {
-            return $m['date'] > $todayDate;
-        }));
-
-        $upcomingMeetings = array_slice($upcomingMeetings, 0, 8);
-
-        // 1. Persentase Eksekusi OH PLTD dan PLTM
-        $pltdTotal = OutagePlan::where('jenis_pembangkit', 'PLTD')->count();
-        $pltdSelesai = OutagePlan::where('jenis_pembangkit', 'PLTD')->where('progress', 100)->count();
-        $pltmTotal = OutagePlan::where('jenis_pembangkit', 'PLTM')->count();
-        $pltmSelesai = OutagePlan::where('jenis_pembangkit', 'PLTM')->where('progress', 100)->count();
-
-        $eksekusiPLTD = $pltdTotal > 0 ? round(($pltdSelesai / $pltdTotal) * 100, 1) : 0;
-        $eksekusiPLTM = $pltmTotal > 0 ? round(($pltmSelesai / $pltmTotal) * 100, 1) : 0;
-
-        // 2. Progres Sementara Berlangsung (Ongoing Outages)
-        $ongoingOutages = OutagePlan::where('progress', '>', 0)
-            ->where('progress', '<', 100)
-            ->orderByDesc('progress')
-            ->take(10)
-            ->get()->map(fn($item) => [
-                'mesin' => $item->mesin_pembangkit,
-                'scope' => $item->scope,
-                'jenis' => $item->jenis_pembangkit,
-                'progress' => $item->progress ?? 0,
-                'start_date' => $item->start_date,
-            ]);
-
-        // 3. Menghitung Data Aktual dari Kinerja Outage
-        // onQuality
-        $totalQuality = \App\Models\KinerjaQuality::whereNotNull('dm_sesudah')->count();
-        $goodQuality = \App\Models\KinerjaQuality::whereNotNull('dm_sesudah')
-            ->whereRaw('dm_sesudah >= dm_sebelum')
-            ->count();
-        $onQuality = $totalQuality > 0 ? round(($goodQuality / $totalQuality) * 100, 1) : 0;
-
-        // onTime
-        $totalTime = \App\Models\KinerjaTime::whereNotNull('selesai_aktual')->count();
-        $goodTime = \App\Models\KinerjaTime::join('outage_plans', 'kinerja_times.outage_plan_id', '=', 'outage_plans.id')
+        $tTotal = KinerjaTime::whereIn('outage_plan_id', $planIds)->whereNotNull('selesai_aktual')->count();
+        $tGood = KinerjaTime::whereIn('outage_plan_id', $planIds)
+            ->join('outage_plans', 'kinerja_times.outage_plan_id', '=', 'outage_plans.id')
             ->whereNotNull('kinerja_times.selesai_aktual')
             ->whereNotNull('outage_plans.selesai')
-            ->whereRaw('kinerja_times.selesai_aktual <= outage_plans.selesai')
+            ->whereColumn('kinerja_times.selesai_aktual', '<=', 'outage_plans.selesai')
             ->count();
-        $onTime = $totalTime > 0 ? round(($goodTime / $totalTime) * 100, 1) : 0;
 
-        // onCost
-        $totalCost = \App\Models\KinerjaCost::whereNotNull('anggaran_aktual')->count();
-        $goodCost = \App\Models\KinerjaCost::whereNotNull('anggaran_aktual')
-            ->whereNotNull('anggaran_rencana')
-            ->whereRaw('anggaran_aktual <= anggaran_rencana')
-            ->count();
-        $onCost = $totalCost > 0 ? round(($goodCost / $totalCost) * 100, 1) : 0;
+        $cTotal = KinerjaCost::whereIn('outage_plan_id', $planIds)->whereNotNull('anggaran_aktual')->count();
+        $cGood = KinerjaCost::whereIn('outage_plan_id', $planIds)
+            ->whereNotNull('anggaran_aktual')->whereNotNull('anggaran_rencana')
+            ->whereColumn('anggaran_aktual', '<=', 'anggaran_rencana')->count();
 
-        $kinerjaStats = [
-            'onQuality' => $onQuality,
-            'onTime' => $onTime,
-            'onCost' => $onCost,
-            'onScope' => 0, // Belum ada modul terkait
-            'onSafety' => 0, // Belum ada modul terkait
+        return [
+            // `terisi` lets the UI say "0% of 0 recorded" instead of implying failure.
+            'onQuality' => ['nilai' => $pct($qGood, $qTotal), 'terisi' => $qTotal],
+            'onTime' => ['nilai' => $pct($tGood, $tTotal), 'terisi' => $tTotal],
+            'onCost' => ['nilai' => $pct($cGood, $cTotal), 'terisi' => $cTotal],
+            'onScope' => ['nilai' => 0, 'terisi' => 0],   // modul belum tersedia
+            'onSafety' => ['nilai' => 0, 'terisi' => 0],  // modul belum tersedia
         ];
+    }
 
-        return Inertia::render('dashboard', [
-            'stats' => [
-                'total' => $totalOutage,
-                'plantStats' => $plantStats,
-                'scopeDistribution' => $scopeDistribution,
-                'monthlyTimeline' => $monthlyTimeline,
-                'progressDistribution' => $progressDistribution,
-                'durasiByScope' => $durasiByScope,
-                'eksekusi' => [
-                    'pltd' => $eksekusiPLTD,
-                    'pltm' => $eksekusiPLTM,
-                ],
-                'kinerja' => $kinerjaStats,
-                'meetings' => [
-                    'active' => $activeMeetings,
-                    'total' => $totalMeetings,
-                ],
-            ],
-            'recentOutages' => $recentOutages,
-            'ongoingOutages' => $ongoingOutages,
-            'outageMeetings' => [
-                'today' => $todayMeetings,
-                'upcoming' => $upcomingMeetings,
-            ],
-        ]);
+    private function meetings($planIds): array
+    {
+        $base = fn () => DailyMeeting::whereIn('outage_plan_id', $planIds);
+
+        return [
+            'total' => $base()->count(),
+            'hariIni' => $base()->where('status', 'active')->whereDate('tanggal', today())->count(),
+            'akanDatang' => $base()->where('status', 'active')->whereDate('tanggal', '>', today())->count(),
+            'selesai' => $base()->where('status', 'completed')->count(),
+        ];
+    }
+
+    private function ongoing(callable $plans): array
+    {
+        return $plans()
+            ->where('progress', '>', 0)->where('progress', '<', 100)
+            ->orderByDesc('progress')
+            ->take(8)
+            ->get()
+            ->map(fn ($p) => [
+                'id' => $p->id,
+                'mesin' => $p->mesin_pembangkit,
+                'scope' => $p->scope,
+                'jenis' => $p->jenis_pembangkit,
+                'merek' => $p->merek,
+                'progress' => (float) ($p->progress ?? 0),
+                'start_date' => $p->start_date,
+                'selesai' => $p->selesai,
+            ])
+            ->all();
+    }
+
+    /** Work that has not started yet and is closest on the calendar. */
+    private function upcoming(callable $plans): array
+    {
+        return $plans()
+            ->whereNotNull('start_date')
+            ->whereDate('start_date', '>=', today())
+            ->where(fn ($q) => $q->whereNull('progress')->orWhere('progress', '<=', 0))
+            ->orderBy('start_date')
+            ->take(6)
+            ->get()
+            ->map(fn ($p) => [
+                'id' => $p->id,
+                'mesin' => $p->mesin_pembangkit,
+                'scope' => $p->scope,
+                'jenis' => $p->jenis_pembangkit,
+                'start_date' => $p->start_date,
+                'durasi' => $p->durasi,
+            ])
+            ->all();
+    }
+
+    private function outageMeetings(callable $plans): array
+    {
+        $today = today()->toDateString();
+
+        $rows = DailyMeeting::query()
+            ->whereIn('outage_plan_id', $plans()->pluck('id'))
+            ->whereNotNull('tanggal')
+            ->with('outagePlan:id,mesin_pembangkit,scope,jenis_pembangkit')
+            ->orderBy('tanggal')
+            ->get()
+            ->map(fn ($m) => [
+                'id' => $m->id,
+                'mesin' => $m->outagePlan->mesin_pembangkit ?? $m->judul,
+                'scope' => $m->outagePlan->scope ?? '-',
+                'jenis' => $m->outagePlan->jenis_pembangkit ?? '-',
+                'type' => $m->tipe_rapat ?? 'RAPAT',
+                'date' => $m->tanggal->toDateString(),
+            ]);
+
+        return [
+            'today' => $rows->where('date', $today)->values()->all(),
+            'upcoming' => $rows->where('date', '>', $today)->take(8)->values()->all(),
+        ];
     }
 }

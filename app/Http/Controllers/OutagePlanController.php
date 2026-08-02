@@ -24,7 +24,8 @@ class OutagePlanController extends Controller
 
     public function index(Request $request)
     {
-        $query = OutagePlan::query();
+        // Each account manages one engine brand; admin/tamu see everything.
+        $query = OutagePlan::visibleTo($request->user());
 
         if ($request->filled('search')) {
             $search = $request->input('search');
@@ -79,7 +80,12 @@ class OutagePlanController extends Controller
      */
     private function filterOptions(): array
     {
-        $distinct = fn (string $column) => OutagePlan::whereNotNull($column)
+        // Options are scoped to what this account manages, so it never sees a
+        // choice that would return nothing.
+        $user = request()->user();
+
+        $distinct = fn (string $column) => OutagePlan::visibleTo($user)
+            ->whereNotNull($column)
             ->where($column, '!=', '')
             ->distinct()
             ->orderBy($column)
@@ -87,7 +93,7 @@ class OutagePlanController extends Controller
             ->values();
 
         return [
-            'tahun' => OutagePlan::query()
+            'tahun' => OutagePlan::visibleTo($user)
                 ->selectRaw('YEAR(start_date) as tahun')
                 ->whereNotNull('start_date')
                 ->distinct()
