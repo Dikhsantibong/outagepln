@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use Inertia\Inertia;
 use App\Models\OutagePlan;
 use App\Support\SCurveChartRenderer;
+use App\Support\TahunFilter;
 use Barryvdh\DomPDF\Facade\Pdf;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
@@ -37,8 +38,11 @@ class OutagePlanController extends Controller
             });
         }
 
-        if ($request->filled('tahun')) {
-            $query->whereYear('start_date', $request->input('tahun'));
+        // Tanpa parameter, listing terbuka di tahun berjalan — bukan seluruh tahun.
+        $tahun = TahunFilter::resolve($request->input('tahun'), $this->tahunOptions());
+
+        if ($tahun !== null) {
+            $query->whereYear('start_date', $tahun);
         }
 
         foreach (['scope' => 'scope', 'jenis' => 'jenis_pembangkit', 'sistem' => 'sistem', 'ket' => 'ket', 'ket_realisasi' => 'ket_realisasi'] as $param => $column) {
@@ -69,9 +73,18 @@ class OutagePlanController extends Controller
         return Inertia::render('outage-plans/index', [
             'outagePlans' => $outagePlans,
             'units' => $units,
-            'filters' => $request->only(self::FILTER_KEYS),
+            'filters' => array_merge(
+                $request->only(self::FILTER_KEYS),
+                ['tahun' => TahunFilter::label($tahun)],
+            ),
             'filterOptions' => $this->filterOptions(),
         ]);
+    }
+
+    /** @return array<int, string> */
+    private function tahunOptions(): array
+    {
+        return TahunFilter::options(OutagePlan::visibleTo(request()->user()), 'start_date');
     }
 
     /**
@@ -93,13 +106,7 @@ class OutagePlanController extends Controller
             ->values();
 
         return [
-            'tahun' => OutagePlan::visibleTo($user)
-                ->selectRaw('YEAR(start_date) as tahun')
-                ->whereNotNull('start_date')
-                ->distinct()
-                ->orderBy('tahun')
-                ->pluck('tahun')
-                ->values(),
+            'tahun' => $this->tahunOptions(),
             'scope' => $distinct('scope'),
             'jenis' => $distinct('jenis_pembangkit'),
             'sistem' => $distinct('sistem'),
@@ -116,6 +123,50 @@ class OutagePlanController extends Controller
         return Inertia::render('outage-plans/show', [
             'outagePlan' => $outagePlan,
             ...$summary,
+        ]);
+    }
+
+    /**
+     * Halaman edit tersendiri.
+     *
+     * Sebelumnya edit dilakukan di dalam modal, dan tabel progress harian yang
+     * bisa puluhan baris membuat pengguna harus menggulir dua lapis — isi modal
+     * dan isi tabel — hanya untuk mengisi satu angka.
+     */
+    public function edit(Request $request, OutagePlan $outagePlan)
+    {
+        abort_unless(
+            OutagePlan::visibleTo($request->user())->whereKey($outagePlan->id)->exists(),
+            403,
+        );
+
+        $outagePlan->load('dailyProgresses');
+
+        return Inertia::render('outage-plans/edit', [
+            'outagePlan' => $outagePlan,
+            'units' => \App\Models\Unit::with('mesins')->get(),
+        ]);
+    }
+
+    /**
+     * Detail satu pekerjaan sebagai JSON, untuk Quick Access di dashboard.
+     *
+     * Isinya sama persis dengan halaman detail, hanya tanpa render Inertia,
+     * supaya dialog di dashboard memakai sumber angka yang sama.
+     */
+    public function detailJson(Request $request, OutagePlan $outagePlan)
+    {
+        // Akun pengelola hanya boleh membuka mesin merek yang dikelolanya.
+        abort_unless(
+            OutagePlan::visibleTo($request->user())->whereKey($outagePlan->id)->exists(),
+            403,
+        );
+
+        $outagePlan->load('dailyProgresses');
+
+        return response()->json([
+            'outagePlan' => $outagePlan,
+            ...$this->summarize($outagePlan),
         ]);
     }
 
@@ -241,8 +292,9 @@ class OutagePlanController extends Controller
         foreach ($outagePlan->dailyProgresses as $idx => $dp) {
             $sheet->setCellValue("A{$row}", 'Day ' . ($idx + 1));
             $sheet->setCellValue("B{$row}", \Carbon\Carbon::parse($dp->tanggal)->format('d-m-Y'));
-            $sheet->setCellValue("C{$row}", (float) $dp->plan_progress);
-            $sheet->setCellValue("D{$row}", (float) $dp->actual_progress);
+            // Hari yang belum diisi dibiarkan kosong, bukan ditulis 0.
+            $sheet->setCellValue("C{$row}", $dp->plan_progress === null ? '' : (float) $dp->plan_progress);
+            $sheet->setCellValue("D{$row}", $dp->actual_progress === null ? '' : (float) $dp->actual_progress);
             $sheet->setCellValue("E{$row}", $dp->status);
             $sheet->setCellValue("F{$row}", $dp->keterangan ?: '-');
             $sheet->getStyle("A{$row}:E{$row}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
@@ -344,8 +396,11 @@ class OutagePlanController extends Controller
                 $outagePlan->dailyProgresses()->updateOrCreate(
                     ['tanggal' => $row['tanggal']],
                     [
-                        'plan_progress' => $row['plan_progress'] ?? 0,
-                        'actual_progress' => $row['actual_progress'] ?? 0,
+                        // Blank stays NULL ("belum diisi"). Coercing it to 0 made
+                        // the row look like a drop from the previous day, and the
+                        // cumulative-progress rule then blocked every later save.
+                        'plan_progress' => $row['plan_progress'] ?? null,
+                        'actual_progress' => $row['actual_progress'] ?? null,
                         'keterangan' => $row['keterangan'] ?? null,
                     ]
                 );

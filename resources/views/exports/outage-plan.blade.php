@@ -71,7 +71,9 @@
         table.data td { text-align: center; }
         table.data td.left { text-align: left; }
         .status-leading { color: #047857; font-weight: bold; }
+        .status-onprogres { color: #1d4ed8; font-weight: bold; }
         .status-lagging { color: #b91c1c; font-weight: bold; }
+        .status-kosong { color: #94a3b8; }
 
         .footer { margin-top: 8px; font-size: 8.5px; color: #94a3b8; text-align: center; }
     </style>
@@ -165,9 +167,17 @@
                 <tr>
                     <td>Day {{ $idx + 1 }}</td>
                     <td>{{ \Carbon\Carbon::parse($dp->tanggal)->format('d-m-Y') }}</td>
-                    <td>{{ number_format($dp->plan_progress, 2) }}%</td>
-                    <td>{{ number_format($dp->actual_progress, 2) }}%</td>
-                    <td class="{{ $dp->status === 'Leading' ? 'status-leading' : 'status-lagging' }}">{{ $dp->status }}</td>
+                    <td>{{ $dp->plan_progress === null ? '-' : number_format((float) $dp->plan_progress, 2) . '%' }}</td>
+                    <td>{{ $dp->actual_progress === null ? '-' : number_format((float) $dp->actual_progress, 2) . '%' }}</td>
+                    @php
+                        $statusClass = match ($dp->status) {
+                            'Leading' => 'status-leading',
+                            'On Progres' => 'status-onprogres',
+                            'Lagging' => 'status-lagging',
+                            default => 'status-kosong',
+                        };
+                    @endphp
+                    <td class="{{ $statusClass }}">{{ $dp->status }}</td>
                     <td class="left">{{ $dp->keterangan ?: '-' }}</td>
                 </tr>
             @empty

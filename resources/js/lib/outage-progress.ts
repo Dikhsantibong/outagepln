@@ -8,8 +8,9 @@ export type DailyProgressRow = {
 export type DailyProgressRecord = {
     id?: number;
     tanggal: string;
-    plan_progress: number | string;
-    actual_progress: number | string;
+    /** null = hari tersebut belum diisi. */
+    plan_progress: number | string | null;
+    actual_progress: number | string | null;
     keterangan: string | null;
     status?: string;
 };
@@ -54,6 +55,84 @@ export function generateDateRange(start: string, end: string): string[] {
     return dates;
 }
 
+/** Generates `count` consecutive ISO dates starting at `start`. */
+export function generateDateRangeByCount(start: string, count: number): string[] {
+    const startDate = parseDateOnly(start);
+
+    if (!startDate || count <= 0) {
+        return [];
+    }
+
+    const dates: string[] = [];
+    const cursor = new Date(startDate);
+
+    for (let i = 0; i < count; i++) {
+        dates.push(toDateOnlyString(cursor));
+        cursor.setDate(cursor.getDate() + 1);
+    }
+
+    return dates;
+}
+
+/** A row counts as filled once either value has been entered. */
+function hasData(row: DailyProgressRecord): boolean {
+    const filled = (v: number | string | null | undefined) =>
+        v !== null && v !== undefined && v !== '';
+
+    return filled(row.plan_progress) || filled(row.actual_progress);
+}
+
+export type ProgressDateOptions = {
+    /** Tanggal mulai sebenarnya di lapangan; jadi acuan utama. */
+    realStart: string;
+    /** Rencana mulai, dipakai bila real start belum diisi. */
+    startDate: string;
+    /** Rencana selesai, dipakai bila durasi belum diisi. */
+    selesai: string;
+    durasi: number;
+    /** Hari tambahan yang diminta pengguna saat aktual melewati rencana. */
+    extraDays: number;
+    existing: DailyProgressRecord[];
+};
+
+/**
+ * Menentukan hari-hari yang muncul di tabel progress harian.
+ *
+ * Barisnya dihitung dari Real Start sebanyak Durasi hari — begitu Real Start
+ * diisi, seluruh harinya langsung terbentuk dan rencananya bisa diisi di muka.
+ * Real Start yang masih kosong memakai Waktu Mulai sebagai acuan sementara,
+ * sehingga data lama yang dibuat sebelum aturan ini tetap tampil.
+ *
+ * Hari yang sudah terisi tetap dipertahankan walau jatuh di luar rentang —
+ * mengubah Real Start tidak boleh menghapus aktual yang sudah dicatat.
+ */
+export function buildProgressDates(opts: ProgressDateOptions): string[] {
+    const anchor = opts.realStart || opts.startDate;
+    const count = opts.durasi > 0
+        ? opts.durasi
+        : generateDateRange(opts.startDate, opts.selesai).length;
+
+    const generated = generateDateRangeByCount(anchor, count + Math.max(0, opts.extraDays));
+    const terisi = opts.existing.filter(hasData).map((row) => row.tanggal);
+
+    return [...new Set([...generated, ...terisi])].sort();
+}
+
+/**
+ * Berapa hari yang sudah tercatat melewati rentang rencana — dipakai untuk
+ * memulihkan jumlah "hari tambahan" saat form dibuka kembali.
+ */
+export function countExtraDays(
+    opts: Omit<ProgressDateOptions, 'extraDays'>,
+): number {
+    const withoutExtra = buildProgressDates({ ...opts, extraDays: 0 });
+    const planned = opts.durasi > 0
+        ? opts.durasi
+        : generateDateRange(opts.startDate, opts.selesai).length;
+
+    return Math.max(0, withoutExtra.length - planned);
+}
+
 /** Formats an ISO (YYYY-MM-DD) date string as DD-MM-YYYY. */
 export function formatDMY(dateStr: string): string {
     const date = parseDateOnly(dateStr);
@@ -68,15 +147,43 @@ export function formatDMY(dateStr: string): string {
     return `${d}-${m}-${date.getFullYear()}`;
 }
 
-/** Status is Leading whenever actual >= plan (equal counts as Leading), otherwise Lagging. */
+export type ProgressStatus = 'Leading' | 'On Progres' | 'Lagging' | '-';
+
+/**
+ * Leading bila aktual melampaui rencana, On Progres bila keduanya sama persis,
+ * Lagging bila aktual tertinggal. Hari yang belum diisi sama sekali tidak
+ * berstatus apa pun.
+ */
 export function computeStatus(
     plan: number | string,
     actual: number | string,
-): 'Leading' | 'Lagging' {
+): ProgressStatus {
+    if (plan === '' && actual === '') {
+        return '-';
+    }
+
     const planNum = Number(plan) || 0;
     const actualNum = Number(actual) || 0;
 
-    return actualNum >= planNum ? 'Leading' : 'Lagging';
+    if (actualNum === planNum) {
+        return 'On Progres';
+    }
+
+    return actualNum > planNum ? 'Leading' : 'Lagging';
+}
+
+/** Kelas badge per status, dipakai di form edit maupun halaman detail. */
+export function statusBadgeClass(status: ProgressStatus): string {
+    switch (status) {
+        case 'Leading':
+            return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400';
+        case 'On Progres':
+            return 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400';
+        case 'Lagging':
+            return 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400';
+        default:
+            return 'bg-muted text-muted-foreground';
+    }
 }
 
 export function buildDailyRows(

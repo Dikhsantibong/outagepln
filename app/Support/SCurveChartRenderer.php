@@ -108,8 +108,13 @@ class SCurveChartRenderer
         $everyLabel = (int) ceil($n / 45); // keep date labels readable on long outages
         foreach ($rows as $i => $dp) {
             $px = (int) round($x($i));
-            $top = (int) round(min($y((float) $dp->plan_progress), $y((float) $dp->actual_progress)));
-            imageline($im, $px, $top, $px, $padT + $plotH, $cDrop);
+            if ($dp->plan_progress !== null || $dp->actual_progress !== null) {
+                $top = (int) round(min(
+                    $y((float) ($dp->plan_progress ?? $dp->actual_progress)),
+                    $y((float) ($dp->actual_progress ?? $dp->plan_progress)),
+                ));
+                imageline($im, $px, $top, $px, $padT + $plotH, $cDrop);
+            }
 
             if ($i % $everyLabel === 0 || $i === $n - 1) {
                 $label = \Carbon\Carbon::parse($dp->tanggal)->format('d/m/y');
@@ -142,8 +147,14 @@ class SCurveChartRenderer
         $prevX = null;
         $prevY = null;
 
+        // Hari yang belum diisi (null) dilewati: garis berhenti di titik terakhir
+        // yang punya data, bukan terjun ke 0.
         imagesetthickness($im, 5);
         foreach ($rows as $i => $dp) {
+            if ($dp->$field === null) {
+                continue;
+            }
+
             $px = $x($i);
             $py = $y((float) $dp->$field);
 
@@ -157,6 +168,10 @@ class SCurveChartRenderer
 
         imagesetthickness($im, 1);
         foreach ($rows as $i => $dp) {
+            if ($dp->$field === null) {
+                continue;
+            }
+
             $px = (int) round($x($i));
             $py = (int) round($y((float) $dp->$field));
             self::marker($im, $px, $py, $color);

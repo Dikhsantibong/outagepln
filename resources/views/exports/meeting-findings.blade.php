@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Material Temuan Overhaul - {{ $info['unit'] }}</title>
+    <title>Material Temuan Overhaul - {{ $info['judul_rapat'] }}</title>
     <style>
         /*
          * NOTE: never reset margins via `*` or `html` here.
@@ -20,10 +20,10 @@
         table.doc-head .meta-label { width: 12%; font-weight: bold; }
         table.doc-head .meta-value { width: 12%; }
 
-        table.info { border-collapse: collapse; margin-bottom: 8px; }
-        table.info td { padding: 2px 4px; font-size: 9.5px; }
+        table.info { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
+        table.info td { padding: 2px 4px; font-size: 9.5px; vertical-align: top; }
         table.info .lbl { font-weight: bold; width: 110px; }
-        table.info .val { color: #c00000; }
+        table.info .val { color: #c00000; width: 290px; }
 
         table.data { width: 100%; border-collapse: collapse; }
         table.data th, table.data td { border: 1px solid #000; padding: 4px 5px; vertical-align: middle; }
@@ -73,12 +73,22 @@
 
     <table class="info">
         <tr>
+            <td class="lbl">JUDUL RAPAT</td>
+            <td class="val">: {{ $info['judul_rapat'] }}</td>
             <td class="lbl">UNIT</td>
             <td class="val">: {{ $info['unit'] }}</td>
         </tr>
         <tr>
+            <td class="lbl">JENIS RAPAT</td>
+            <td class="val">: {{ $info['tipe_rapat'] }}</td>
             <td class="lbl">JENIS INSPEKSI</td>
             <td class="val">: {{ $info['jenis_inspeksi'] }}</td>
+        </tr>
+        <tr>
+            <td class="lbl">TANGGAL RAPAT</td>
+            <td class="val">: {{ $info['tanggal_rapat'] }}</td>
+            <td class="lbl">JUMLAH TEMUAN</td>
+            <td class="val">: {{ count($findings) }} item</td>
         </tr>
     </table>
 

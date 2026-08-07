@@ -1,3 +1,4 @@
+import { Link } from '@inertiajs/react';
 import type { ComponentPropsWithoutRef } from 'react';
 import {
     SidebarGroup,
@@ -9,7 +10,6 @@ import {
 import { toUrl } from '@/lib/utils';
 import type { NavItem } from '@/types';
 
-import { Link } from '@inertiajs/react';
 
 export function NavFooter({
     items,

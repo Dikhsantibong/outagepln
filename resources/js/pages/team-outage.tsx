@@ -1,7 +1,7 @@
 import { Head } from '@inertiajs/react';
-import { Card, CardContent } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { User, ShieldCheck, Zap, Award, ChevronDown } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { Card, CardContent } from '@/components/ui/card';
 
 interface TeamMember {
     name: string;

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Concerns;
 
 use App\Models\OutagePlan;
+use App\Support\TahunFilter;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 
@@ -31,8 +32,11 @@ trait FiltersOutagePlans
             });
         }
 
-        if ($request->filled('tahun')) {
-            $query->whereYear('start_date', $request->input('tahun'));
+        // Tanpa parameter, listing terbuka di tahun berjalan — bukan seluruh tahun.
+        $tahun = $this->tahunAktif($request);
+
+        if ($tahun !== null) {
+            $query->whereYear('start_date', $tahun);
         }
 
         foreach (['scope' => 'scope', 'jenis' => 'jenis_pembangkit', 'sistem' => 'sistem'] as $param => $column) {
@@ -68,6 +72,30 @@ trait FiltersOutagePlans
         };
     }
 
+    /** Tahun yang sedang ditampilkan, atau null bila pengguna memilih semua tahun. */
+    protected function tahunAktif(Request $request): ?int
+    {
+        return TahunFilter::resolve($request->input('tahun'), $this->tahunOptions());
+    }
+
+    /**
+     * Nilai filter yang dikirim balik ke frontend, dengan tahun yang sudah
+     * diselesaikan supaya dropdown menampilkan pilihan yang benar-benar dipakai.
+     */
+    protected function filterState(Request $request, array $extraKeys = []): array
+    {
+        return array_merge(
+            $request->only([...$this->kinerjaFilterKeys, ...$extraKeys]),
+            ['tahun' => TahunFilter::label($this->tahunAktif($request))],
+        );
+    }
+
+    /** @return array<int, string> */
+    protected function tahunOptions(): array
+    {
+        return TahunFilter::options(OutagePlan::visibleTo(request()->user()), 'start_date');
+    }
+
     protected function planFilterOptions(): array
     {
         // Options are scoped too, so an account never sees choices that would
@@ -83,13 +111,7 @@ trait FiltersOutagePlans
             ->values();
 
         return [
-            'tahun' => OutagePlan::visibleTo($user)
-                ->selectRaw('YEAR(start_date) as tahun')
-                ->whereNotNull('start_date')
-                ->distinct()
-                ->orderBy('tahun')
-                ->pluck('tahun')
-                ->values(),
+            'tahun' => $this->tahunOptions(),
             'scope' => $distinct('scope'),
             'jenis' => $distinct('jenis_pembangkit'),
             'sistem' => $distinct('sistem'),

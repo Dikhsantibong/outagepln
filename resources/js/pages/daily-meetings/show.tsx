@@ -106,6 +106,9 @@ type Finding = {
 };
 
 type FindingInfo = {
+    judul_rapat: string;
+    tipe_rapat: string;
+    tanggal_rapat: string;
     unit: string;
     jenis_inspeksi: string;
 };
@@ -873,18 +876,27 @@ return '-';
                                 <div>
                                     <CardTitle>Notulen Temuan</CardTitle>
                                     <CardDescription>Daftar material temuan overhaul beserta tindak lanjutnya</CardDescription>
+                                    {/* Identitas rapat + mesin, sama dengan kepala berkas PDF/Excel */}
                                     {findingInfo && (
-                                        <div className="mt-3 flex flex-wrap gap-x-8 gap-y-1 text-xs">
-                                            <div>
-                                                <span className="font-semibold text-muted-foreground">UNIT</span>
-                                                <span className="mx-2 text-muted-foreground">:</span>
-                                                <span className="font-medium text-red-600 dark:text-red-400">{findingInfo.unit}</span>
-                                            </div>
-                                            <div>
-                                                <span className="font-semibold text-muted-foreground">JENIS INSPEKSI</span>
-                                                <span className="mx-2 text-muted-foreground">:</span>
-                                                <span className="font-medium text-red-600 dark:text-red-400">{findingInfo.jenis_inspeksi}</span>
-                                            </div>
+                                        <div className="mt-3 grid gap-x-8 gap-y-1 text-xs sm:grid-cols-2">
+                                            {[
+                                                ['JUDUL RAPAT', findingInfo.judul_rapat],
+                                                ['UNIT', findingInfo.unit],
+                                                ['JENIS RAPAT', findingInfo.tipe_rapat],
+                                                ['JENIS INSPEKSI', findingInfo.jenis_inspeksi],
+                                                ['TANGGAL RAPAT', findingInfo.tanggal_rapat],
+                                                ['JUMLAH TEMUAN', `${findings.length} item`],
+                                            ].map(([label, value]) => (
+                                                <div key={label} className="flex gap-2">
+                                                    <span className="w-[110px] shrink-0 font-semibold text-muted-foreground">
+                                                        {label}
+                                                    </span>
+                                                    <span className="text-muted-foreground">:</span>
+                                                    <span className="font-medium text-red-600 dark:text-red-400">
+                                                        {value}
+                                                    </span>
+                                                </div>
+                                            ))}
                                         </div>
                                     )}
                                 </div>

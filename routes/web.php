@@ -16,7 +16,8 @@ Route::get('/', [WelcomeController::class, 'index'])->name('home');
 
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('dashboard', [DashboardController::class, 'index'])->name('dashboard');
-    Route::resource('outage-plans', OutagePlanController::class)->only(['index', 'show', 'store', 'update', 'destroy']);
+    Route::resource('outage-plans', OutagePlanController::class)->only(['index', 'show', 'edit', 'store', 'update', 'destroy']);
+    Route::get('outage-plans/{outage_plan}/detail-json', [OutagePlanController::class, 'detailJson'])->name('outage-plans.detail-json');
     Route::get('outage-plans/{outage_plan}/export-pdf', [OutagePlanController::class, 'exportPdf'])->name('outage-plans.export-pdf');
     Route::get('outage-plans/{outage_plan}/export-excel', [OutagePlanController::class, 'exportExcel'])->name('outage-plans.export-excel');
     Route::get('team-outage', function() {

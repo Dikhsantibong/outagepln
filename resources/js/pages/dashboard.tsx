@@ -1,4 +1,4 @@
-import { Head, Link } from '@inertiajs/react';
+import { Head, Link, router } from '@inertiajs/react';
 import {
     Activity,
     AlertCircle,
@@ -29,6 +29,9 @@ import {
     XAxis,
     YAxis,
 } from 'recharts';
+import { FilterTahun, TAHUN_SEMUA } from '@/components/data-filter-bar';
+import { OutageQuickAccess } from '@/components/outage-quick-access';
+import type { QuickAccessPlan } from '@/components/outage-quick-access';
 import {
     Card,
     CardContent,
@@ -39,10 +42,14 @@ import {
 import { dashboard } from '@/routes';
 
 type Bucket = { label: string; total: number };
-type KinerjaItem = { nilai: number; terisi: number };
+type KinerjaDetail = { label: string; value: string; baik?: boolean };
+type KinerjaItem = { nilai: number; terisi: number; detail?: KinerjaDetail[] };
 
 interface DashboardProps {
     scope: { merek: string | null; role: string | null };
+    /** `tahun` selalu terisi: tahun yang dipakai, atau 'semua'. */
+    filters: { tahun: string };
+    tahunOptions: string[];
     stats: {
         total: number;
         status: { selesai: number; berjalan: number; belum: number };
@@ -57,6 +64,7 @@ interface DashboardProps {
         kinerja: Record<string, KinerjaItem>;
         meetings: { total: number; hariIni: number; akanDatang: number; selesai: number };
     };
+    quickAccessPlans: QuickAccessPlan[];
     ongoingOutages: {
         id: number;
         mesin: string;
@@ -152,6 +160,31 @@ function KinerjaCard({
                     <>
                         <p className={`text-2xl font-black ${color}`}>{nilai}%</p>
                         <p className="text-[10px] text-muted-foreground">dari {terisi} data</p>
+
+                        {/* Parameter pembentuk nilai, supaya angka di atas bisa ditelusuri. */}
+                        {item?.detail && item.detail.length > 0 && (
+                            <div className="mt-2.5 space-y-1 border-t pt-2 text-left">
+                                {item.detail.map((d) => (
+                                    <div
+                                        key={d.label}
+                                        className="flex items-baseline justify-between gap-2 text-[10px]"
+                                    >
+                                        <span className="truncate text-muted-foreground">{d.label}</span>
+                                        <span
+                                            className={`shrink-0 font-bold ${
+                                                d.baik === undefined
+                                                    ? ''
+                                                    : d.baik
+                                                      ? 'text-emerald-600 dark:text-emerald-400'
+                                                      : 'text-red-600 dark:text-red-400'
+                                            }`}
+                                        >
+                                            {d.value}
+                                        </span>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
                     </>
                 ) : (
                     <>
@@ -203,12 +236,25 @@ function ChartCard({
 
 export default function Dashboard({
     scope,
+    filters,
+    tahunOptions,
     stats,
+    quickAccessPlans,
     ongoingOutages,
     upcomingOutages,
     outageMeetings,
 }: DashboardProps) {
     const s = stats;
+
+    // Tanpa parameter, server memilih tahun berjalan — jadi nilainya selalu
+    // dikirim eksplisit, termasuk "semua".
+    const setTahun = (value: string) => {
+        router.get(
+            dashboard.url(),
+            { tahun: value },
+            { preserveScroll: true, preserveState: true, replace: true },
+        );
+    };
     const pct = (n: number) => (s.total > 0 ? Math.round((n / s.total) * 100) : 0);
 
     const timeline = s.monthlyTimeline.map((m) => {
@@ -242,22 +288,34 @@ export default function Dashboard({
                         <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
                         <p className="mt-0.5 text-sm text-muted-foreground">
                             Ringkasan perencanaan dan pelaksanaan outage
+                            {filters.tahun === TAHUN_SEMUA
+                                ? ' semua tahun'
+                                : ` tahun ${filters.tahun}`}
                         </p>
                     </div>
-                    {scope.merek ? (
-                        <div className="flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2">
-                            <Factory className="h-4 w-4 text-primary" />
-                            <div className="text-xs">
-                                <span className="text-muted-foreground">Data mesin merek</span>{' '}
-                                <span className="font-bold text-primary">{scope.merek}</span>
+
+                    <div className="flex flex-wrap items-end gap-3">
+                        <FilterTahun
+                            value={filters.tahun}
+                            onChange={setTahun}
+                            options={tahunOptions}
+                        />
+
+                        {scope.merek ? (
+                            <div className="flex h-8 items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3">
+                                <Factory className="h-4 w-4 text-primary" />
+                                <div className="text-xs">
+                                    <span className="text-muted-foreground">Data mesin merek</span>{' '}
+                                    <span className="font-bold text-primary">{scope.merek}</span>
+                                </div>
                             </div>
-                        </div>
-                    ) : (
-                        <div className="flex items-center gap-2 rounded-lg border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-                            <Layers className="h-4 w-4" />
-                            Seluruh mesin (semua merek)
-                        </div>
-                    )}
+                        ) : (
+                            <div className="flex h-8 items-center gap-2 rounded-lg border bg-muted/30 px-3 text-xs text-muted-foreground">
+                                <Layers className="h-4 w-4" />
+                                Seluruh mesin (semua merek)
+                            </div>
+                        )}
+                    </div>
                 </div>
 
                 {/* KPI utama */}
@@ -299,13 +357,19 @@ export default function Dashboard({
                     />
                 </div>
 
+                {/* Quick Access - buka detail satu pekerjaan tanpa pindah halaman */}
+                <OutageQuickAccess plans={quickAccessPlans} />
+
                 {/* Kinerja Outage */}
                 <div>
                     <h2 className="mb-2 flex items-center gap-2 text-sm font-bold">
                         <Activity className="h-4 w-4 text-primary" />
                         Kinerja Outage
+                        <span className="font-normal text-muted-foreground">
+                            &middot; On Quality tercapai bila daya mampu naik dan SFC turun
+                        </span>
                     </h2>
-                    <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+                    <div className="grid grid-cols-2 items-start gap-3 md:grid-cols-5">
                         <KinerjaCard label="On Quality" item={s.kinerja.onQuality} icon={ShieldCheck} color="text-emerald-600" />
                         <KinerjaCard label="On Time" item={s.kinerja.onTime} icon={Clock} color="text-blue-600" />
                         <KinerjaCard label="On Cost" item={s.kinerja.onCost} icon={DollarSign} color="text-amber-600" />

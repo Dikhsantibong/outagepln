@@ -1,4 +1,4 @@
-import { Head, Link, router, useForm } from '@inertiajs/react';
+﻿import { Head, Link, router, useForm } from '@inertiajs/react';
 import {
     ShieldCheck,
     FileText,
@@ -31,9 +31,11 @@ import {
     ALL,
     FilterBar,
     FilterSelect,
+    FilterTahun,
     buildFilterQuery,
     countActiveFilters,
 } from '@/components/data-filter-bar';
+import { EvidenInput } from '@/components/eviden-input';
 import { Button } from '@/components/ui/button';
 import {
     Card,
@@ -60,6 +62,14 @@ type Kinerja = {
     dm_sesudah: number | null;
     sfc_sesudah: number | null;
     eviden_sesudah_url: string | null;
+    /** Kenaikan daya mampu dalam persen; positif = naik. */
+    dm_naik_persen: number | null;
+    /** Penurunan SFC dalam persen; positif = turun (arah yang diinginkan). */
+    sfc_turun_persen: number | null;
+    dm_tercapai: boolean | null;
+    sfc_tercapai: boolean | null;
+    /** Tercapai hanya bila daya mampu naik DAN SFC turun. */
+    tercapai: boolean | null;
 } | null;
 
 type Plan = {
@@ -79,6 +89,21 @@ type PlanOption = {
     scope: string | null;
     sistem: string | null;
     progress: number | null;
+};
+
+type Penilaian = {
+    /** Jumlah mesin yang datanya sudah lengkap dan bisa dinilai. */
+    terisi: number;
+    /** Penyebut penilaian: mesin yang overhaulnya sudah selesai. */
+    wajib: number;
+    tercapai: number;
+    tidakTercapai: number;
+    dmTercapai: number;
+    sfcTercapai: number;
+    dmNaikRata: number;
+    sfcTurunRata: number;
+    nilai: number;
+    kelengkapan: number;
 };
 
 type Options = {
@@ -162,8 +187,129 @@ function Delta({
         <span className={`inline-flex items-center gap-1 text-xs font-bold ${cls}`}>
             <Icon className="h-3.5 w-3.5" />
             {diff > 0 ? '+' : ''}
-            {Number(diff.toFixed(2))}
+            {angka(diff)}
             {suffix}
+        </span>
+    );
+}
+
+/** Angka apa adanya: maksimal 4 desimal, tanpa nol berekor. */
+function angka(v: number | null | undefined): string {
+    if (v == null) {
+        return '-';
+    }
+
+    return Number(Number(v).toFixed(4)).toLocaleString('id-ID', {
+        maximumFractionDigits: 4,
+    });
+}
+
+function persen(v: number | null | undefined): string {
+    if (v == null) {
+        return '-';
+    }
+
+    return `${v > 0 ? '+' : ''}${Number(v.toFixed(2)).toLocaleString('id-ID', { maximumFractionDigits: 2 })}%`;
+}
+
+/** Satu parameter penilaian: nilai sebelum/sesudah, persentase, dan verdict. */
+function ParameterRow({
+    label,
+    before,
+    after,
+    persen: nilaiPersen,
+    tercapai,
+    syarat,
+    satuan = '',
+    lowerIsBetter = false,
+}: {
+    label: string;
+    before: number | null | undefined;
+    after: number | null | undefined;
+    persen: number | null | undefined;
+    tercapai: boolean | null | undefined;
+    syarat: string;
+    satuan?: string;
+    lowerIsBetter?: boolean;
+}) {
+    return (
+        <div className="space-y-1.5 rounded-md border bg-background p-3">
+            <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-semibold">
+                    {label}{' '}
+                    <span className="font-normal text-muted-foreground">({syarat})</span>
+                </span>
+                {tercapai == null ? (
+                    <span className="rounded bg-muted px-1.5 py-0.5 text-[9px] font-bold text-muted-foreground uppercase">
+                        Belum lengkap
+                    </span>
+                ) : (
+                    <span
+                        className={`rounded px-1.5 py-0.5 text-[9px] font-bold uppercase ${
+                            tercapai
+                                ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400'
+                                : 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400'
+                        }`}
+                    >
+                        {tercapai ? 'Tercapai' : 'Tidak tercapai'}
+                    </span>
+                )}
+            </div>
+            <div className="flex items-center justify-between gap-2">
+                <span className="font-mono text-sm">
+                    {angka(before)} &rarr; {angka(after)}
+                    {satuan}
+                </span>
+                <Delta
+                    before={before}
+                    after={after}
+                    lowerIsBetter={lowerIsBetter}
+                    suffix={satuan}
+                />
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+                {lowerIsBetter ? 'Turun' : 'Naik'}{' '}
+                <span
+                    className={`font-bold ${
+                        nilaiPersen == null
+                            ? ''
+                            : nilaiPersen > 0
+                              ? 'text-emerald-600 dark:text-emerald-400'
+                              : 'text-red-600 dark:text-red-400'
+                    }`}
+                >
+                    {persen(nilaiPersen)}
+                </span>{' '}
+                dari kondisi sebelum overhaul
+            </p>
+        </div>
+    );
+}
+
+function HasilBadge({ tercapai }: { tercapai: boolean | null | undefined }) {
+    if (tercapai == null) {
+        return (
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-muted px-3 py-1 text-xs font-bold text-muted-foreground">
+                <Minus className="h-3.5 w-3.5" />
+                Belum dapat dinilai
+            </span>
+        );
+    }
+
+    return (
+        <span
+            className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold ${
+                tercapai
+                    ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400'
+                    : 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400'
+            }`}
+        >
+            {tercapai ? (
+                <TrendingUp className="h-3.5 w-3.5" />
+            ) : (
+                <TrendingDown className="h-3.5 w-3.5" />
+            )}
+            On Quality {tercapai ? 'Tercapai' : 'Tidak Tercapai'}
         </span>
     );
 }
@@ -223,7 +369,13 @@ export default function OnQuality({
     selectedPlan?: Plan | null;
     filters?: any;
     filterOptions?: Options;
-    summary?: { total: number; lengkap: number; sebagian: number; belum: number };
+    summary?: {
+        total: number;
+        lengkap: number;
+        sebagian: number;
+        belum: number;
+        penilaian: Penilaian;
+    };
 }) {
     const [searchTerm, setSearchTerm] = useState(filters?.search || '');
     const [pickerOpen, setPickerOpen] = useState(false);
@@ -235,7 +387,25 @@ export default function OnQuality({
         jenis: [],
         sistem: [],
     };
-    const sum = summary ?? { total: 0, lengkap: 0, sebagian: 0, belum: 0 };
+    const sum = summary ?? {
+        total: 0,
+        lengkap: 0,
+        sebagian: 0,
+        belum: 0,
+        penilaian: {
+            terisi: 0,
+            wajib: 0,
+            tercapai: 0,
+            tidakTercapai: 0,
+            dmTercapai: 0,
+            sfcTercapai: 0,
+            dmNaikRata: 0,
+            sfcTurunRata: 0,
+            nilai: 0,
+            kelengkapan: 0,
+        },
+    };
+    const nilai = sum.penilaian;
     const rows: Plan[] = useMemo(
         () => outagePlans?.data ?? [],
         [outagePlans?.data],
@@ -366,7 +536,7 @@ export default function OnQuality({
                 .map((p) => ({
                     name:
                         p.mesin_pembangkit.length > 18
-                            ? p.mesin_pembangkit.slice(0, 18) + '…'
+                            ? p.mesin_pembangkit.slice(0, 18) + 'â€¦'
                             : p.mesin_pembangkit,
                     Sebelum: Number(p.kinerja_quality?.dm_sebelum ?? 0),
                     Sesudah: Number(p.kinerja_quality?.dm_sesudah ?? 0),
@@ -445,6 +615,72 @@ export default function OnQuality({
                     />
                 </div>
 
+                {/* Rekap penilaian — angka yang sama dipakai kartu On Quality di dashboard */}
+                <Card>
+                    <CardContent className="flex flex-wrap items-center gap-x-8 gap-y-3 p-4">
+                        <div>
+                            <p className="text-[10px] font-bold tracking-wider text-muted-foreground uppercase">
+                                On Quality Tercapai
+                            </p>
+                            <p className="text-2xl font-black text-emerald-600 dark:text-emerald-400">
+                                {nilai.terisi > 0 ? `${nilai.nilai}%` : '–'}
+                            </p>
+                            <p className="text-[11px] text-muted-foreground">
+                                {nilai.tercapai} dari {nilai.wajib} mesin selesai overhaul
+                            </p>
+                        </div>
+
+                        <div>
+                            <p className="text-[10px] font-bold tracking-wider text-muted-foreground uppercase">
+                                Kelengkapan Data
+                            </p>
+                            <p className="text-2xl font-black">
+                                {nilai.wajib > 0 ? `${nilai.kelengkapan}%` : '–'}
+                            </p>
+                            <p className="text-[11px] text-muted-foreground">
+                                {nilai.terisi} dari {nilai.wajib} mesin sudah diukur
+                            </p>
+                        </div>
+
+                        <div className="h-10 w-px bg-border" />
+
+                        <div>
+                            <p className="text-[10px] font-bold tracking-wider text-muted-foreground uppercase">
+                                Rata-rata Daya Mampu
+                            </p>
+                            <p
+                                className={`text-xl font-black ${nilai.dmNaikRata > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}
+                            >
+                                {nilai.terisi > 0 ? persen(nilai.dmNaikRata) : '–'}
+                            </p>
+                            <p className="text-[11px] text-muted-foreground">
+                                naik pada {nilai.dmTercapai} mesin
+                            </p>
+                        </div>
+
+                        <div>
+                            <p className="text-[10px] font-bold tracking-wider text-muted-foreground uppercase">
+                                Rata-rata SFC
+                            </p>
+                            <p
+                                className={`text-xl font-black ${nilai.sfcTurunRata > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}
+                            >
+                                {nilai.terisi > 0 ? persen(nilai.sfcTurunRata) : '–'}
+                            </p>
+                            <p className="text-[11px] text-muted-foreground">
+                                turun pada {nilai.sfcTercapai} mesin
+                            </p>
+                        </div>
+
+                        <p className="ml-auto max-w-[280px] text-[11px] text-muted-foreground">
+                            Tercapai bila daya mampu <strong>naik</strong> dan SFC{' '}
+                            <strong>turun</strong> sesudah overhaul. Penyebutnya seluruh
+                            mesin yang overhaulnya sudah selesai, bukan hanya yang sudah
+                            diinput.
+                        </p>
+                    </CardContent>
+                </Card>
+
                 {/* Panel input - hanya muncul saat sebuah mesin dibuka */}
                 {selectedPlan && (
                     <Card className="border-primary/40 shadow-sm">
@@ -503,7 +739,7 @@ export default function OnQuality({
                                         <Input
                                             id="dm_seb"
                                             type="number"
-                                            step="0.01"
+                                            step="any"
                                             placeholder="10.50"
                                             value={formSebelum.data.dm}
                                             onChange={(e) =>
@@ -517,7 +753,7 @@ export default function OnQuality({
                                         <Input
                                             id="sfc_seb"
                                             type="number"
-                                            step="0.01"
+                                            step="any"
                                             placeholder="0.25"
                                             value={formSebelum.data.sfc}
                                             onChange={(e) =>
@@ -527,20 +763,10 @@ export default function OnQuality({
                                         />
                                     </div>
                                 </div>
-                                <div className="space-y-1.5">
-                                    <Label htmlFor="ev_seb">Eviden (PDF/JPG/PNG)</Label>
-                                    <Input
-                                        id="ev_seb"
-                                        type="file"
-                                        accept=".pdf,.jpg,.jpeg,.png"
-                                        onChange={(e) =>
-                                            formSebelum.setData(
-                                                'eviden',
-                                                e.target.files?.[0] ?? null,
-                                            )
-                                        }
-                                    />
-                                </div>
+                                <EvidenInput
+                                    id="ev_seb"
+                                    onChange={(file) => formSebelum.setData('eviden', file)}
+                                />
                                 <Button
                                     type="submit"
                                     disabled={formSebelum.processing}
@@ -592,7 +818,7 @@ export default function OnQuality({
                                         <Input
                                             id="dm_ses"
                                             type="number"
-                                            step="0.01"
+                                            step="any"
                                             placeholder="12.00"
                                             value={formSesudah.data.dm}
                                             onChange={(e) =>
@@ -607,7 +833,7 @@ export default function OnQuality({
                                         <Input
                                             id="sfc_ses"
                                             type="number"
-                                            step="0.01"
+                                            step="any"
                                             placeholder="0.22"
                                             value={formSesudah.data.sfc}
                                             onChange={(e) =>
@@ -618,21 +844,11 @@ export default function OnQuality({
                                         />
                                     </div>
                                 </div>
-                                <div className="space-y-1.5">
-                                    <Label htmlFor="ev_ses">Eviden (PDF/JPG/PNG)</Label>
-                                    <Input
-                                        id="ev_ses"
-                                        type="file"
-                                        accept=".pdf,.jpg,.jpeg,.png"
-                                        disabled={locked}
-                                        onChange={(e) =>
-                                            formSesudah.setData(
-                                                'eviden',
-                                                e.target.files?.[0] ?? null,
-                                            )
-                                        }
-                                    />
-                                </div>
+                                <EvidenInput
+                                    id="ev_ses"
+                                    disabled={locked}
+                                    onChange={(file) => formSesudah.setData('eviden', file)}
+                                />
                                 <Button
                                     type="submit"
                                     disabled={formSesudah.processing || locked}
@@ -647,42 +863,33 @@ export default function OnQuality({
                             {/* Ringkasan hasil */}
                             <div className="lg:col-span-2">
                                 <div className="grid gap-3 rounded-lg border bg-muted/20 p-4 sm:grid-cols-2">
-                                    <div className="flex items-center justify-between">
-                                        <span className="text-xs text-muted-foreground">
-                                            Perubahan Daya Mampu
-                                        </span>
-                                        <div className="flex items-center gap-2 text-sm">
-                                            <span className="font-mono">
-                                                {k?.dm_sebelum ?? '-'} &rarr;{' '}
-                                                {k?.dm_sesudah ?? '-'}
-                                            </span>
-                                            <Delta
-                                                before={k?.dm_sebelum}
-                                                after={k?.dm_sesudah}
-                                                suffix=" MW"
-                                            />
-                                        </div>
-                                    </div>
-                                    <div className="flex items-center justify-between">
-                                        <span className="text-xs text-muted-foreground">
-                                            Perubahan SFC
-                                        </span>
-                                        <div className="flex items-center gap-2 text-sm">
-                                            <span className="font-mono">
-                                                {k?.sfc_sebelum ?? '-'} &rarr;{' '}
-                                                {k?.sfc_sesudah ?? '-'}
-                                            </span>
-                                            <Delta
-                                                before={k?.sfc_sebelum}
-                                                after={k?.sfc_sesudah}
-                                                lowerIsBetter
-                                            />
-                                        </div>
-                                    </div>
+                                    <ParameterRow
+                                        label="Daya Mampu"
+                                        before={k?.dm_sebelum}
+                                        after={k?.dm_sesudah}
+                                        persen={k?.dm_naik_persen}
+                                        tercapai={k?.dm_tercapai}
+                                        syarat="harus naik"
+                                        satuan=" MW"
+                                    />
+                                    <ParameterRow
+                                        label="SFC"
+                                        before={k?.sfc_sebelum}
+                                        after={k?.sfc_sesudah}
+                                        persen={k?.sfc_turun_persen}
+                                        tercapai={k?.sfc_tercapai}
+                                        syarat="harus turun"
+                                        lowerIsBetter
+                                    />
                                 </div>
-                                <p className="mt-2 text-xs text-muted-foreground">
-                                    Daya Mampu naik dan SFC turun berarti membaik.
-                                </p>
+
+                                <div className="mt-2 flex flex-wrap items-center gap-2">
+                                    <HasilBadge tercapai={k?.tercapai} />
+                                    <p className="text-xs text-muted-foreground">
+                                        On Quality tercapai bila daya mampu naik{' '}
+                                        <strong>dan</strong> SFC turun sesudah overhaul.
+                                    </p>
+                                </div>
                             </div>
 
                             {/* Grafik perbandingan sebelum vs sesudah */}
@@ -903,7 +1110,7 @@ export default function OnQuality({
                                                                 {p.mesin_pembangkit}
                                                             </span>
                                                             <span className="block truncate text-[10px] text-muted-foreground">
-                                                                {p.jenis_pembangkit} ·{' '}
+                                                                {p.jenis_pembangkit} Â·{' '}
                                                                 {p.scope || '-'}
                                                             </span>
                                                         </span>
@@ -946,15 +1153,10 @@ export default function OnQuality({
                                     }}
                                 />
                             </div>
-                            <FilterSelect
-                                label="Tahun"
-                                value={selectValue('tahun')}
+                            <FilterTahun
+                                value={filters?.tahun}
                                 onChange={(v) => applyFilter({ tahun: v })}
-                                options={opts.tahun.map((t) => ({
-                                    value: String(t),
-                                    label: String(t),
-                                }))}
-                                width="w-[110px]"
+                                options={opts.tahun}
                             />
                             <FilterSelect
                                 label="Scope"
@@ -1017,6 +1219,9 @@ export default function OnQuality({
                                         SFC (Seb &rarr; Ses)
                                     </TableHead>
                                     <TableHead className="px-4 text-center font-bold">
+                                        Hasil
+                                    </TableHead>
+                                    <TableHead className="px-4 text-center font-bold">
                                         Status
                                     </TableHead>
                                     <TableHead className="px-4 text-center font-bold">
@@ -1054,12 +1259,45 @@ export default function OnQuality({
                                                     </span>
                                                 </TableCell>
                                                 <TableCell className="px-4 text-center font-mono text-[11px]">
-                                                    {kq?.dm_sebelum ?? '-'} &rarr;{' '}
-                                                    {kq?.dm_sesudah ?? '-'}
+                                                    {angka(kq?.dm_sebelum)} &rarr;{' '}
+                                                    {angka(kq?.dm_sesudah)}
+                                                    <span
+                                                        className={`ml-1.5 font-sans font-bold ${kq?.dm_tercapai ? 'text-emerald-600' : 'text-red-600'}`}
+                                                    >
+                                                        {kq?.dm_naik_persen == null
+                                                            ? ''
+                                                            : persen(kq.dm_naik_persen)}
+                                                    </span>
                                                 </TableCell>
                                                 <TableCell className="px-4 text-center font-mono text-[11px]">
-                                                    {kq?.sfc_sebelum ?? '-'} &rarr;{' '}
-                                                    {kq?.sfc_sesudah ?? '-'}
+                                                    {angka(kq?.sfc_sebelum)} &rarr;{' '}
+                                                    {angka(kq?.sfc_sesudah)}
+                                                    <span
+                                                        className={`ml-1.5 font-sans font-bold ${kq?.sfc_tercapai ? 'text-emerald-600' : 'text-red-600'}`}
+                                                    >
+                                                        {kq?.sfc_turun_persen == null
+                                                            ? ''
+                                                            : persen(kq.sfc_turun_persen)}
+                                                    </span>
+                                                </TableCell>
+                                                <TableCell className="px-4 text-center">
+                                                    {kq?.tercapai == null ? (
+                                                        <span className="text-[11px] text-muted-foreground">
+                                                            -
+                                                        </span>
+                                                    ) : (
+                                                        <span
+                                                            className={`inline-flex items-center rounded px-2 py-0.5 text-[10px] font-bold uppercase ${
+                                                                kq.tercapai
+                                                                    ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400'
+                                                                    : 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400'
+                                                            }`}
+                                                        >
+                                                            {kq.tercapai
+                                                                ? 'Tercapai'
+                                                                : 'Tidak tercapai'}
+                                                        </span>
+                                                    )}
                                                 </TableCell>
                                                 <TableCell className="px-4 text-center">
                                                     <StatusBadge plan={plan} />
@@ -1081,7 +1319,7 @@ export default function OnQuality({
                                 ) : (
                                     <TableRow>
                                         <TableCell
-                                            colSpan={8}
+                                            colSpan={9}
                                             className="h-32 text-center text-muted-foreground"
                                         >
                                             <ShieldCheck className="mx-auto mb-2 h-10 w-10 opacity-20" />

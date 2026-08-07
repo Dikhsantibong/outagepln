@@ -8,6 +8,7 @@ use App\Models\MeetingFinding;
 use App\Models\MeetingKickoff;
 use App\Models\MeetingKickoffPhoto;
 use App\Models\MeetingMinute;
+use App\Support\TahunFilter;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -62,8 +63,12 @@ class DailyMeetingController extends Controller
             default => null,
         };
 
-        if ($request->filled('tahun')) {
-            $query->whereYear('tanggal', $request->input('tahun'));
+        // Tanpa parameter, listing terbuka di tahun berjalan — bukan seluruh tahun.
+        $tahunOptions = $this->tahunOptions($user);
+        $tahun = TahunFilter::resolve($request->input('tahun'), $tahunOptions);
+
+        if ($tahun !== null) {
+            $query->whereYear('tanggal', $tahun);
         }
 
         if ($request->filled('bulan')) {
@@ -79,7 +84,10 @@ class DailyMeetingController extends Controller
         }
 
         // Ongoing first, then upcoming (soonest first), then the rest (newest first).
-        $prio = "CASE WHEN status = 'active' AND DATE(tanggal) = CURDATE() THEN 1"
+        // Tanggal hari ini ditulis dari PHP, bukan CURDATE(): fungsi itu hanya ada
+        // di MySQL sehingga query ini gagal di SQLite yang dipakai test.
+        $hariIni = today()->toDateString();
+        $prio = "CASE WHEN status = 'active' AND DATE(tanggal) = '{$hariIni}' THEN 1"
             . " WHEN status = 'active' THEN 2 ELSE 3 END";
 
         $meetings = $query
@@ -91,16 +99,34 @@ class DailyMeetingController extends Controller
 
         return Inertia::render('daily-meetings/index', [
             'meetings' => $meetings,
-            'filters' => $request->only(self::FILTER_KEYS),
+            'filters' => array_merge(
+                $request->only(self::FILTER_KEYS),
+                ['tahun' => TahunFilter::label($tahun)],
+            ),
             'filterOptions' => [
                 'tipe_rapat' => DailyMeeting::whereNotNull('tipe_rapat')
                     ->distinct()->orderBy('tipe_rapat')->pluck('tipe_rapat')->values(),
                 'lokasi' => DailyMeeting::whereNotNull('lokasi')->where('lokasi', '!=', '')
                     ->distinct()->orderBy('lokasi')->pluck('lokasi')->values(),
-                'tahun' => DailyMeeting::selectRaw('YEAR(tanggal) as tahun')
-                    ->whereNotNull('tanggal')->distinct()->orderBy('tahun')->pluck('tahun')->values(),
+                'tahun' => $tahunOptions,
             ],
         ]);
+    }
+
+    /**
+     * Tahun rapat yang boleh dilihat akun ini.
+     *
+     * @return array<int, string>
+     */
+    private function tahunOptions($user): array
+    {
+        $query = DailyMeeting::query();
+
+        if ($user && filled($user->merek)) {
+            $query->whereHas('outagePlan', fn ($q) => $q->where('merek', $user->merek));
+        }
+
+        return TahunFilter::options($query, 'tanggal');
     }
 
     public function store(Request $request)
@@ -244,14 +270,22 @@ class DailyMeetingController extends Controller
     }
 
     /**
-     * Header context for the "Material Temuan" form: the unit and inspection
-     * type are inherited from the outage plan this meeting belongs to.
+     * Header context for the "Material Temuan" form.
+     *
+     * Unit dan jenis inspeksi diwarisi dari outage plan yang menaungi rapat ini,
+     * sedangkan judul, jenis, dan tanggal rapat diambil dari rapatnya sendiri —
+     * tanpa itu lembar temuan tidak menyebutkan rapat mana yang menghasilkannya.
      */
     private function findingInfo(DailyMeeting $dailyMeeting): array
     {
         $plan = $dailyMeeting->outagePlan;
 
         return [
+            'judul_rapat' => $dailyMeeting->judul ?: '-',
+            'tipe_rapat' => $dailyMeeting->tipe_rapat ?: '-',
+            'tanggal_rapat' => $dailyMeeting->tanggal
+                ? \Carbon\Carbon::parse($dailyMeeting->tanggal)->translatedFormat('d F Y')
+                : '-',
             'unit' => $plan->mesin_pembangkit ?? '-',
             'jenis_inspeksi' => $plan->scope ?? '-',
         ];
@@ -489,16 +523,34 @@ class DailyMeetingController extends Controller
         }
         $sheet->getStyle('A1:J4')->getBorders()->getAllBorders()->applyFromArray($thin);
 
-        // --- Unit / inspection block -------------------------------------
-        $sheet->setCellValue('B6', 'UNIT');
-        $sheet->setCellValue('D6', ': ' . $info['unit']);
-        $sheet->setCellValue('B7', 'JENIS INSPEKSI');
-        $sheet->setCellValue('D7', ': ' . $info['jenis_inspeksi']);
-        $sheet->getStyle('B6:B7')->getFont()->setBold(true);
-        $sheet->getStyle('D6:D7')->getFont()->getColor()->setRGB('C00000');
+        // --- Meeting / unit block ------------------------------------------
+        // Dua kolom: identitas rapat di kiri, identitas mesin di kanan.
+        $kiri = [
+            ['JUDUL RAPAT', $info['judul_rapat']],
+            ['JENIS RAPAT', $info['tipe_rapat']],
+            ['TANGGAL RAPAT', $info['tanggal_rapat']],
+        ];
+        $kanan = [
+            ['UNIT', $info['unit']],
+            ['JENIS INSPEKSI', $info['jenis_inspeksi']],
+            ['JUMLAH TEMUAN', count($dailyMeeting->findings) . ' item'],
+        ];
+
+        foreach ($kiri as $i => [$label, $value]) {
+            $r = 6 + $i;
+            $sheet->setCellValue("A{$r}", $label);
+            $sheet->setCellValue("C{$r}", ': ' . $value);
+            $sheet->setCellValue("G{$r}", $kanan[$i][0]);
+            $sheet->setCellValue("H{$r}", ': ' . $kanan[$i][1]);
+        }
+
+        $sheet->getStyle('A6:A8')->getFont()->setBold(true);
+        $sheet->getStyle('G6:G8')->getFont()->setBold(true);
+        $sheet->getStyle('C6:C8')->getFont()->getColor()->setRGB('C00000');
+        $sheet->getStyle('H6:H8')->getFont()->getColor()->setRGB('C00000');
 
         // --- Table ---------------------------------------------------------
-        $headRow = 9;
+        $headRow = 10;
         $headers = ['NO', 'TGL', 'URAIAN', 'P/N', 'QTY', 'SATUAN', 'FOTO', 'KETERANGAN', 'TINDAK LANJUT', 'TARGET'];
         foreach ($headers as $i => $label) {
             $col = chr(65 + $i);
@@ -577,8 +629,11 @@ class DailyMeetingController extends Controller
     private function findingFilename(DailyMeeting $dailyMeeting, string $ext): string
     {
         $slug = \Illuminate\Support\Str::slug($dailyMeeting->outagePlan->mesin_pembangkit ?? $dailyMeeting->judul);
+        // Jenis rapat ikut di nama berkas supaya beberapa rapat pada satu mesin
+        // tidak menghasilkan berkas yang tampak sama.
+        $tipe = \Illuminate\Support\Str::slug($dailyMeeting->tipe_rapat ?? '');
 
-        return "Material-Temuan-{$slug}-{$dailyMeeting->id}.{$ext}";
+        return trim("Material-Temuan-{$slug}-{$tipe}", '-') . "-{$dailyMeeting->id}.{$ext}";
     }
 
     public function complete(DailyMeeting $dailyMeeting)

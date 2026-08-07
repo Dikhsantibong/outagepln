@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Http\Controllers\Concerns\FiltersOutagePlans;
 use App\Models\OutagePlan;
 use App\Models\KinerjaQuality;
+use App\Support\UploadLimit;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\Storage;
@@ -43,9 +44,9 @@ class KinerjaQualityController extends Controller
             'outagePlans' => $outagePlans,
             'planOptions' => $this->planPickerList(),
             'selectedPlan' => $selected ? $this->mapPlan($selected) : null,
-            'filters' => $request->only([...$this->kinerjaFilterKeys, 'plan']),
+            'filters' => $this->filterState($request, ['plan']),
             'filterOptions' => $this->planFilterOptions(),
-            'summary' => $this->summary(),
+            'summary' => $this->summary($request),
         ]);
     }
 
@@ -67,23 +68,50 @@ class KinerjaQualityController extends Controller
                 'dm_sesudah' => $k->dm_sesudah,
                 'sfc_sesudah' => $k->sfc_sesudah,
                 'eviden_sesudah_url' => $k->eviden_sesudah ? Storage::url($k->eviden_sesudah) : null,
+                // Penilaian dihitung di model supaya rumusnya sama persis
+                // dengan yang dipakai dashboard.
+                'dm_naik_persen' => $k->dm_naik_persen,
+                'sfc_turun_persen' => $k->sfc_turun_persen,
+                'dm_tercapai' => $k->dm_tercapai,
+                'sfc_tercapai' => $k->sfc_tercapai,
+                'tercapai' => $k->tercapai,
             ] : null,
         ];
     }
 
-    /** Completion counts across every plan, independent of the active filters. */
-    private function summary(): array
+    /**
+     * Hitungan kelengkapan untuk kartu ringkasan. Tidak terpengaruh filter
+     * scope/jenis/status — tapi tetap mengikuti tahun aktif, supaya "Total Mesin"
+     * konsisten dengan tabel di bawahnya.
+     */
+    private function summary(Request $request): array
     {
-        $user = request()->user();
-        $total = OutagePlan::visibleTo($user)->count();
-        $lengkap = OutagePlan::visibleTo($user)->whereHas('kinerjaQuality', fn ($q) => $q->whereNotNull('dm_sebelum')->whereNotNull('dm_sesudah'))->count();
-        $sebagian = OutagePlan::visibleTo($user)->whereHas('kinerjaQuality', fn ($q) => $q->whereNotNull('dm_sebelum')->whereNull('dm_sesudah'))->count();
+        $user = $request->user();
+        $tahun = $this->tahunAktif($request);
+
+        $base = function () use ($user, $tahun) {
+            $query = OutagePlan::visibleTo($user);
+
+            return $tahun ? $query->whereYear('start_date', $tahun) : $query;
+        };
+
+        $total = $base()->count();
+        $lengkap = $base()->whereHas('kinerjaQuality', fn ($q) => $q->whereNotNull('dm_sebelum')->whereNotNull('dm_sesudah'))->count();
+        $sebagian = $base()->whereHas('kinerjaQuality', fn ($q) => $q->whereNotNull('dm_sebelum')->whereNull('dm_sesudah'))->count();
+
+        $penilaian = KinerjaQuality::ringkasan(
+            KinerjaQuality::whereIn('outage_plan_id', $base()->select('id'))->get(),
+            // Penyebutnya mesin yang overhaulnya sudah selesai, bukan jumlah
+            // data yang kebetulan sudah diisi.
+            $base()->where('progress', '>=', 100)->count(),
+        );
 
         return [
             'total' => $total,
             'lengkap' => $lengkap,
             'sebagian' => $sebagian,
             'belum' => $total - $lengkap - $sebagian,
+            'penilaian' => $penilaian,
         ];
     }
 
@@ -94,7 +122,7 @@ class KinerjaQualityController extends Controller
             'tipe' => 'required|in:sebelum,sesudah',
             'dm' => 'required|numeric',
             'sfc' => 'required|numeric',
-            'eviden' => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:5120', // 5MB max
+            'eviden' => UploadLimit::evidenRules(),
         ]);
 
         $kinerja = KinerjaQuality::firstOrNew(['outage_plan_id' => $request->outage_plan_id]);

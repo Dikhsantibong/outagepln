@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use App\Http\Controllers\Concerns\FiltersOutagePlans;
 use App\Models\OutagePlan;
 use App\Models\KinerjaTime;
+use App\Support\UploadLimit;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\Storage;
 
@@ -44,7 +45,7 @@ class KinerjaTimeController extends Controller
             'outagePlans' => $outagePlans,
             'planOptions' => $this->planPickerList(),
             'selectedPlan' => $selected ? $this->mapPlan($selected) : null,
-            'filters' => $request->only([...$this->kinerjaFilterKeys, 'plan']),
+            'filters' => $this->filterState($request, ['plan']),
             'filterOptions' => $this->planFilterOptions(),
             'summary' => $this->summary(),
         ]);
@@ -96,7 +97,7 @@ class KinerjaTimeController extends Controller
             'start_date_aktual' => 'nullable|date',
             'selesai_aktual' => 'nullable|date',
             'catatan' => 'nullable|string',
-            'eviden' => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:5120', // 5MB max
+            'eviden' => UploadLimit::evidenRules(),
         ]);
 
         $kinerja = KinerjaTime::firstOrNew(['outage_plan_id' => $request->outage_plan_id]);

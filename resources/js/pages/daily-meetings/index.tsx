@@ -1,6 +1,7 @@
 import { Head, router, usePage, Link } from '@inertiajs/react';
 import { Calendar, Users, Eye, QrCode, Trash2, CheckCircle2, Video, Filter, X, Search } from 'lucide-react';
 import { useState } from 'react';
+import { FilterTahun } from '@/components/data-filter-bar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardTitle, CardDescription } from '@/components/ui/card';
@@ -133,8 +134,10 @@ export default function DailyMeetingsIndex({
         });
     };
 
+    // `tahun` sengaja tidak dihitung: sejak listing terbuka di tahun berjalan,
+    // filter tahun selalu terisi sehingga menghitungnya tidak memberi informasi.
     const activeFilterCount = [
-        'search', 'tipe_rapat', 'status', 'tahun', 'bulan', 'lokasi', 'dari', 'sampai',
+        'search', 'tipe_rapat', 'status', 'bulan', 'lokasi', 'dari', 'sampai',
     ].filter((k) => filters?.[k]).length;
 
     const selectValue = (key: string) => filters?.[key] || ALL;
@@ -229,12 +232,10 @@ export default function DailyMeetingsIndex({
                         ]}
                         width="w-[140px]"
                     />
-                    <FilterSelect
-                        label="Tahun"
-                        value={selectValue('tahun')}
+                    <FilterTahun
+                        value={filters?.tahun}
                         onChange={(v) => applyFilter({ tahun: v })}
-                        options={opts.tahun.map((t) => ({ value: String(t), label: String(t) }))}
-                        width="w-[110px]"
+                        options={opts.tahun}
                     />
                     <FilterSelect
                         label="Bulan"

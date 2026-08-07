@@ -88,7 +88,9 @@ class WelcomeController extends Controller
     private function monthlyTimeline(): array
     {
         return OutagePlan::query()
-            ->select(DB::raw("DATE_FORMAT(start_date, '%Y-%m') as bulan"), DB::raw('COUNT(*) as total'))
+            // substr, bukan DATE_FORMAT(): kolom DATE selalu terbaca 'YYYY-MM-DD'
+            // sehingga query ini jalan di MySQL maupun SQLite (dipakai di test).
+            ->select(DB::raw('substr(start_date, 1, 7) as bulan'), DB::raw('COUNT(*) as total'))
             ->whereNotNull('start_date')
             ->groupBy('bulan')
             ->orderBy('bulan')

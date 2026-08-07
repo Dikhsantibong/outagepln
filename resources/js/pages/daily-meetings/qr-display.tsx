@@ -1,7 +1,7 @@
 import { Head, usePage } from '@inertiajs/react';
+import { Users, Calendar, MapPin, Clock } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { useEffect, useState } from 'react';
-import { Users, Calendar, MapPin, Clock } from 'lucide-react';
 
 type Meeting = {
     id: number;
@@ -35,12 +35,14 @@ export default function QrDisplay({
                 setCount(data.count);
             } catch { /* ignore */ }
         }, 3000);
+
         return () => clearInterval(interval);
     }, [meeting.id]);
 
     // Live clock
     useEffect(() => {
         const timer = setInterval(() => setTime(new Date()), 1000);
+
         return () => clearInterval(timer);
     }, []);
 

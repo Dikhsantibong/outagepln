@@ -28,9 +28,11 @@ import {
     ALL,
     FilterBar,
     FilterSelect,
+    FilterTahun,
     buildFilterQuery,
     countActiveFilters,
 } from '@/components/data-filter-bar';
+import { EvidenInput } from '@/components/eviden-input';
 import { Button } from '@/components/ui/button';
 import {
     Card,
@@ -496,17 +498,10 @@ export default function OnTime({
                                         onChange={(e) => form.setData('catatan', e.target.value)}
                                     />
                                 </div>
-                                <div className="space-y-1.5">
-                                    <Label htmlFor="ev_time">Eviden (PDF/JPG/PNG)</Label>
-                                    <Input
-                                        id="ev_time"
-                                        type="file"
-                                        accept=".pdf,.jpg,.jpeg,.png"
-                                        onChange={(e) =>
-                                            form.setData('eviden', e.target.files?.[0] ?? null)
-                                        }
-                                    />
-                                </div>
+                                <EvidenInput
+                                    id="ev_time"
+                                    onChange={(file) => form.setData('eviden', file)}
+                                />
                                 <Button
                                     type="submit"
                                     disabled={form.processing}
@@ -761,15 +756,10 @@ export default function OnTime({
                                     }}
                                 />
                             </div>
-                            <FilterSelect
-                                label="Tahun"
-                                value={selectValue('tahun')}
+                            <FilterTahun
+                                value={filters?.tahun}
                                 onChange={(v) => applyFilter({ tahun: v })}
-                                options={opts.tahun.map((t) => ({
-                                    value: String(t),
-                                    label: String(t),
-                                }))}
-                                width="w-[110px]"
+                                options={opts.tahun}
                             />
                             <FilterSelect
                                 label="Scope"

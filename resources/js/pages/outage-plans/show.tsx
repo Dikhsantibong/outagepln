@@ -1,16 +1,10 @@
 import { Head, Link } from '@inertiajs/react';
-import { ArrowLeft, Calendar, Clock, Gauge, Factory, Info } from 'lucide-react';
+import { ArrowLeft, Calendar, Clock, Gauge, Factory } from 'lucide-react';
 import {
-    LineChart,
-    Line,
-    LabelList,
-    XAxis,
-    YAxis,
-    Tooltip,
-    ResponsiveContainer,
-    CartesianGrid,
-    Legend,
-} from 'recharts';
+    OutageDailyTable,
+    OutageSCurve,
+} from '@/components/outage-detail';
+import type { DailyProgress } from '@/components/outage-detail';
 import {
     Card,
     CardContent,
@@ -18,24 +12,7 @@ import {
     CardTitle,
     CardDescription,
 } from '@/components/ui/card';
-import {
-    Table,
-    TableBody,
-    TableCell,
-    TableHead,
-    TableHeader,
-    TableRow,
-} from '@/components/ui/table';
 import { formatDMY } from '@/lib/outage-progress';
-
-type DailyProgress = {
-    id: number;
-    tanggal: string;
-    plan_progress: number;
-    actual_progress: number;
-    keterangan: string | null;
-    status: 'Leading' | 'Lagging';
-};
 
 type OutagePlan = {
     id: number;
@@ -71,23 +48,6 @@ export default function OutagePlanShow({
     overallActual: number | null;
 }) {
     const dailyProgresses = outagePlan.daily_progresses || [];
-
-    const chartData = dailyProgresses.map((row) => ({
-        // formatDMY gives DD-MM-YYYY; the reference chart uses DD/MM/YY.
-        label: formatDMY(row.tanggal).replace(
-            /^(\d{2})-(\d{2})-\d{2}(\d{2})$/,
-            '$1/$2/$3',
-        ),
-        RENCANA: Number(row.plan_progress),
-        REALISASI: Number(row.actual_progress),
-    }));
-
-    // Indonesian decimal format, matching the reference S-curve (e.g. 78,18).
-    const fmtPct = (v: number | string) =>
-        Number(v).toLocaleString('id-ID', {
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2,
-        });
 
     return (
         <>
@@ -323,216 +283,20 @@ export default function OutagePlanShow({
                         <CardTitle>Kurva S - Plan vs Actual</CardTitle>
                         <CardDescription>
                             Perbandingan progress kumulatif rencana dan aktual
-                            per hari
+                            per hari, lengkap dengan status tiap harinya
                         </CardDescription>
                     </CardHeader>
                     <CardContent>
-                        <div className="mb-2 flex flex-wrap gap-x-10 gap-y-1 text-sm">
-                            <div className="flex gap-2">
-                                <span className="w-20 text-[#4472C4]">
-                                    Rencana
-                                </span>
-                                <span className="font-semibold text-[#4472C4]">
-                                    : {fmtPct(overallPlan ?? 0)} %
-                                </span>
-                            </div>
-                            <div className="flex gap-2">
-                                <span className="w-20 text-[#C00000]">
-                                    Realisasi
-                                </span>
-                                <span className="font-semibold text-[#C00000]">
-                                    : {fmtPct(overallActual ?? 0)} %
-                                </span>
-                            </div>
-                        </div>
-                        <div className="h-[520px] w-full">
-                            {chartData.length > 0 ? (
-                                <ResponsiveContainer width="100%" height="100%">
-                                    <LineChart
-                                        data={chartData}
-                                        margin={{
-                                            top: 28,
-                                            right: 26,
-                                            left: 4,
-                                            bottom: 68,
-                                        }}
-                                    >
-                                        <CartesianGrid
-                                            vertical={false}
-                                            stroke="#9BBB59"
-                                            opacity={0.55}
-                                        />
-                                        <XAxis
-                                            dataKey="label"
-                                            angle={-90}
-                                            textAnchor="end"
-                                            interval={0}
-                                            height={60}
-                                            tick={{ fontSize: 10 }}
-                                            label={{
-                                                value: 'Tanggal',
-                                                position: 'insideBottom',
-                                                offset: -60,
-                                                fontSize: 12,
-                                            }}
-                                        />
-                                        <YAxis
-                                            domain={[0, 100]}
-                                            ticks={[0, 20, 40, 60, 80, 100]}
-                                            tick={{ fontSize: 11 }}
-                                            label={{
-                                                value: 'Persentase',
-                                                angle: -90,
-                                                position: 'insideLeft',
-                                                fontSize: 12,
-                                            }}
-                                        />
-                                        <Tooltip
-                                            contentStyle={{
-                                                borderRadius: '8px',
-                                                border: 'none',
-                                                boxShadow:
-                                                    '0 4px 12px rgba(0,0,0,0.1)',
-                                            }}
-                                            formatter={(value) => [
-                                                `${fmtPct(value as number)} %`,
-                                            ]}
-                                        />
-                                        <Legend
-                                            verticalAlign="top"
-                                            height={30}
-                                            wrapperStyle={{ fontSize: '12px' }}
-                                        />
-                                        <Line
-                                            type="linear"
-                                            dataKey="RENCANA"
-                                            stroke="#4472C4"
-                                            strokeWidth={2.5}
-                                            dot={{ r: 3, fill: '#4472C4' }}
-                                        >
-                                            <LabelList
-                                                dataKey="RENCANA"
-                                                position="bottom"
-                                                offset={8}
-                                                fontSize={9}
-                                                fill="#4472C4"
-                                                formatter={(v: unknown) => fmtPct(v as number)}
-                                            />
-                                        </Line>
-                                        <Line
-                                            type="linear"
-                                            dataKey="REALISASI"
-                                            stroke="#C00000"
-                                            strokeWidth={2.5}
-                                            dot={{ r: 3, fill: '#C00000' }}
-                                        >
-                                            <LabelList
-                                                dataKey="REALISASI"
-                                                position="top"
-                                                offset={8}
-                                                fontSize={9}
-                                                fill="#C00000"
-                                                formatter={(v: unknown) => fmtPct(v as number)}
-                                            />
-                                        </Line>
-                                    </LineChart>
-                                </ResponsiveContainer>
-                            ) : (
-                                <div className="flex h-full w-full flex-col items-center justify-center text-muted-foreground">
-                                    <Info className="mb-2 h-10 w-10 opacity-20" />
-                                    <p>Belum ada data progress harian.</p>
-                                </div>
-                            )}
-                        </div>
+                        <OutageSCurve
+                            rows={dailyProgresses}
+                            overallPlan={overallPlan}
+                            overallActual={overallActual}
+                        />
                     </CardContent>
                 </Card>
 
-                {/* Riwayat Progress Harian */}
-                <Card>
-                    <CardHeader>
-                        <CardTitle>Riwayat Progress Harian</CardTitle>
-                        <CardDescription>
-                            Seluruh catatan progress harian yang telah diinput
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent className="overflow-x-auto p-0">
-                        <Table className="whitespace-nowrap">
-                            <TableHeader>
-                                <TableRow className="border-y bg-muted/30">
-                                    <TableHead className="w-16 px-4 text-center font-bold">
-                                        Day
-                                    </TableHead>
-                                    <TableHead className="px-4 text-center font-bold">
-                                        Tanggal
-                                    </TableHead>
-                                    <TableHead className="px-4 text-center font-bold">
-                                        Plan (%)
-                                    </TableHead>
-                                    <TableHead className="px-4 text-center font-bold">
-                                        Actual (%)
-                                    </TableHead>
-                                    <TableHead className="px-4 text-center font-bold">
-                                        Status
-                                    </TableHead>
-                                    <TableHead className="min-w-[200px] px-4 font-bold">
-                                        Catatan
-                                    </TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {dailyProgresses.length > 0 ? (
-                                    dailyProgresses.map((row, idx) => (
-                                        <TableRow
-                                            key={row.id}
-                                            className="hover:bg-muted/30"
-                                        >
-                                            <TableCell className="px-4 text-center font-mono text-xs text-muted-foreground">
-                                                Day {idx + 1}
-                                            </TableCell>
-                                            <TableCell className="px-4 text-center font-mono text-[11px] text-muted-foreground">
-                                                {formatDMY(row.tanggal)}
-                                            </TableCell>
-                                            <TableCell className="px-4 text-center text-xs font-semibold">
-                                                {row.plan_progress}%
-                                            </TableCell>
-                                            <TableCell className="px-4 text-center text-xs font-semibold">
-                                                {row.actual_progress}%
-                                            </TableCell>
-                                            <TableCell className="px-4 text-center">
-                                                <span
-                                                    className={`inline-flex items-center rounded px-2 py-0.5 text-[10px] font-bold uppercase ${
-                                                        row.status === 'Leading'
-                                                            ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400'
-                                                            : 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400'
-                                                    }`}
-                                                >
-                                                    {row.status}
-                                                </span>
-                                            </TableCell>
-                                            <TableCell className="px-4 text-xs text-muted-foreground">
-                                                {row.keterangan || '-'}
-                                            </TableCell>
-                                        </TableRow>
-                                    ))
-                                ) : (
-                                    <TableRow>
-                                        <TableCell
-                                            colSpan={6}
-                                            className="h-32 text-center text-muted-foreground"
-                                        >
-                                            <Info className="mx-auto mb-2 h-10 w-10 opacity-20" />
-                                            <p>
-                                                Belum ada progress harian yang
-                                                diinput. Silakan input melalui
-                                                form Edit.
-                                            </p>
-                                        </TableCell>
-                                    </TableRow>
-                                )}
-                            </TableBody>
-                        </Table>
-                    </CardContent>
-                </Card>
+                {/* Riwayat Progress Harian - tertutup secara default */}
+                <OutageDailyTable rows={dailyProgresses} />
             </div>
         </>
     );

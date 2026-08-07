@@ -1,9 +1,9 @@
-import { Breadcrumbs } from '@/components/breadcrumbs';
-import { SidebarTrigger } from '@/components/ui/sidebar';
 import { Search, Bell, Clock, ShieldCheck } from 'lucide-react';
-import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
 import { useEffect, useState } from 'react';
+import { Breadcrumbs } from '@/components/breadcrumbs';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { SidebarTrigger } from '@/components/ui/sidebar';
 import type { BreadcrumbItem as BreadcrumbItemType } from '@/types';
 
 export function AppSidebarHeader({
@@ -17,6 +17,7 @@ export function AppSidebarHeader({
     useEffect(() => {
         setMounted(true);
         const timer = setInterval(() => setTime(new Date()), 1000);
+
         return () => clearInterval(timer);
     }, []);
 

@@ -7,6 +7,7 @@ use App\Models\KinerjaCost;
 use App\Models\KinerjaQuality;
 use App\Models\KinerjaTime;
 use App\Models\OutagePlan;
+use App\Support\TahunFilter;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
@@ -16,9 +17,16 @@ class DashboardController extends Controller
     public function index(Request $request)
     {
         $user = $request->user();
+        $tahunOptions = TahunFilter::options(OutagePlan::visibleTo($user), 'start_date');
+        $tahun = TahunFilter::resolve($request->query('tahun'), $tahunOptions);
+
         // Every figure below is scoped: a pengelola only ever sees its own
         // brand, while admin/tamu (merek = null) still see everything.
-        $plans = fn () => OutagePlan::visibleTo($user);
+        $plans = function () use ($user, $tahun) {
+            $query = OutagePlan::visibleTo($user);
+
+            return $tahun ? $query->whereYear('start_date', $tahun) : $query;
+        };
         $planIds = $plans()->pluck('id');
 
         return Inertia::render('dashboard', [
@@ -26,6 +34,10 @@ class DashboardController extends Controller
                 'merek' => $user?->merek,
                 'role' => $user?->role,
             ],
+            'filters' => [
+                'tahun' => TahunFilter::label($tahun),
+            ],
+            'tahunOptions' => $tahunOptions,
             'stats' => [
                 'total' => $plans()->count(),
                 'status' => $this->statusCounts($plans),
@@ -37,9 +49,10 @@ class DashboardController extends Controller
                 'monthlyTimeline' => $this->monthlyTimeline($plans),
                 'progressDistribution' => $this->progressDistribution($plans),
                 'durasiByScope' => $this->durasiByScope($plans),
-                'kinerja' => $this->kinerja($planIds),
+                'kinerja' => $this->kinerja($plans, $planIds),
                 'meetings' => $this->meetings($planIds),
             ],
+            'quickAccessPlans' => $this->quickAccessPlans($plans),
             'ongoingOutages' => $this->ongoing($plans),
             'upcomingOutages' => $this->upcoming($plans),
             'outageMeetings' => $this->outageMeetings($plans),
@@ -77,7 +90,7 @@ class DashboardController extends Controller
     private function monthlyTimeline(callable $plans): array
     {
         return $plans()
-            ->select(DB::raw("DATE_FORMAT(start_date, '%Y-%m') as bulan"), DB::raw('COUNT(*) as total'))
+            ->select(DB::raw('substr(start_date, 1, 7) as bulan'), DB::raw('COUNT(*) as total'))
             ->whereNotNull('start_date')
             ->groupBy('bulan')
             ->orderBy('bulan')
@@ -126,13 +139,9 @@ class DashboardController extends Controller
      * Share of machines whose performance data has been recorded and meets the
      * target, limited to the plans this account can see.
      */
-    private function kinerja($planIds): array
+    private function kinerja(callable $plans, $planIds): array
     {
         $pct = fn (int $good, int $of) => $of > 0 ? round(($good / $of) * 100, 1) : 0;
-
-        $qTotal = KinerjaQuality::whereIn('outage_plan_id', $planIds)->whereNotNull('dm_sesudah')->count();
-        $qGood = KinerjaQuality::whereIn('outage_plan_id', $planIds)
-            ->whereNotNull('dm_sesudah')->whereColumn('dm_sesudah', '>=', 'dm_sebelum')->count();
 
         $tTotal = KinerjaTime::whereIn('outage_plan_id', $planIds)->whereNotNull('selesai_aktual')->count();
         $tGood = KinerjaTime::whereIn('outage_plan_id', $planIds)
@@ -149,11 +158,48 @@ class DashboardController extends Controller
 
         return [
             // `terisi` lets the UI say "0% of 0 recorded" instead of implying failure.
-            'onQuality' => ['nilai' => $pct($qGood, $qTotal), 'terisi' => $qTotal],
+            'onQuality' => $this->onQuality($plans, $planIds),
             'onTime' => ['nilai' => $pct($tGood, $tTotal), 'terisi' => $tTotal],
             'onCost' => ['nilai' => $pct($cGood, $cTotal), 'terisi' => $cTotal],
             'onScope' => ['nilai' => 0, 'terisi' => 0],   // modul belum tersedia
             'onSafety' => ['nilai' => 0, 'terisi' => 0],  // modul belum tersedia
+        ];
+    }
+
+    /**
+     * On Quality dinilai dari dua parameter sekaligus: daya mampu harus naik DAN
+     * SFC harus turun sesudah overhaul. Naik/turunnya dihitung sebagai persentase
+     * terhadap kondisi sebelum overhaul, sehingga mesin besar dan mesin kecil
+     * bisa dibandingkan setara.
+     *
+     * Perhitungannya dilakukan di PHP, bukan SQL, agar rumus yang dipakai
+     * dashboard persis sama dengan yang dipakai halaman On Quality — keduanya
+     * membaca accessor di KinerjaQuality.
+     */
+    private function onQuality(callable $plans, $planIds): array
+    {
+        $r = KinerjaQuality::ringkasan(
+            KinerjaQuality::whereIn('outage_plan_id', $planIds)->get(),
+            // Penyebutnya mesin yang overhaulnya sudah selesai — mesin itulah
+            // yang wajib punya pengukuran sesudah overhaul.
+            $plans()->where('progress', '>=', 100)->count(),
+        );
+
+        if ($r['terisi'] === 0) {
+            return ['nilai' => 0, 'terisi' => 0, 'detail' => []];
+        }
+
+        $sign = fn (float $v) => ($v > 0 ? '+' : '') . number_format($v, 2, ',', '.') . '%';
+
+        return [
+            'nilai' => $r['nilai'],
+            'terisi' => $r['terisi'],
+            'detail' => [
+                ['label' => 'Tercapai', 'value' => "{$r['tercapai']}/{$r['wajib']} mesin"],
+                ['label' => 'Sudah dinilai', 'value' => "{$r['terisi']}/{$r['wajib']} mesin"],
+                ['label' => 'Daya mampu naik', 'value' => $sign($r['dmNaikRata']), 'baik' => $r['dmNaikRata'] > 0],
+                ['label' => 'SFC turun', 'value' => $sign($r['sfcTurunRata']), 'baik' => $r['sfcTurunRata'] > 0],
+            ],
         ];
     }
 
@@ -167,6 +213,30 @@ class DashboardController extends Controller
             'akanDatang' => $base()->where('status', 'active')->whereDate('tanggal', '>', today())->count(),
             'selesai' => $base()->where('status', 'completed')->count(),
         ];
+    }
+
+    /**
+     * Daftar ringkas untuk Quick Access. Sengaja hanya kolom yang dipakai kartu
+     * pencarian — detail lengkapnya diambil per pekerjaan saat dialog dibuka,
+     * supaya dashboard tidak mengirim ratusan riwayat harian sekaligus.
+     */
+    private function quickAccessPlans(callable $plans): array
+    {
+        return $plans()
+            ->orderByDesc('progress')
+            ->orderBy('mesin_pembangkit')
+            ->get(['id', 'mesin_pembangkit', 'scope', 'jenis_pembangkit', 'sistem', 'progress', 'start_date', 'selesai'])
+            ->map(fn ($p) => [
+                'id' => $p->id,
+                'mesin' => $p->mesin_pembangkit,
+                'scope' => $p->scope,
+                'jenis' => $p->jenis_pembangkit,
+                'sistem' => $p->sistem,
+                'progress' => (float) ($p->progress ?? 0),
+                'start_date' => $p->start_date,
+                'selesai' => $p->selesai,
+            ])
+            ->all();
     }
 
     private function ongoing(callable $plans): array

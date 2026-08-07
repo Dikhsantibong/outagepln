@@ -15,7 +15,6 @@ import {
     Pencil,
     Plus,
     Eye,
-    AlertTriangle,
     Download,
     FileText,
     FileSpreadsheet,
@@ -24,6 +23,7 @@ import {
 } from 'lucide-react';
 import type { FormEventHandler } from 'react';
 import { useState, useMemo } from 'react';
+import { FilterTahun } from '@/components/data-filter-bar';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -57,15 +57,6 @@ import {
     TableHeader,
     TableRow,
 } from '@/components/ui/table';
-import {
-    generateDateRange,
-    formatDMY,
-    computeStatus,
-    buildDailyRows,
-    validateDailyProgress,
-    getLatestActualProgress,
-} from '@/lib/outage-progress';
-import type { DailyProgressRow } from '@/lib/outage-progress';
 
 type FilterOptions = {
     tahun: (string | number)[];
@@ -127,9 +118,10 @@ export default function OutagePlansIndex({
 }) {
     const { auth } = usePage<any>().props;
     const isTamu = auth?.user?.role === 'tamu';
+    // Modal ini khusus menambah jadwal baru; pengubahan punya halaman sendiri
+    // di /outage-plans/{id}/edit karena progress harian butuh ruang penuh.
     const [dialogOpen, setDialogOpen] = useState(false);
     const [searchTerm, setSearchTerm] = useState(filters?.search || '');
-    const [editingItem, setEditingItem] = useState<any>(null);
 
     const opts: FilterOptions = filterOptions ?? {
         tahun: [],
@@ -178,9 +170,10 @@ export default function OutagePlansIndex({
         );
     };
 
+    // `tahun` sengaja tidak dihitung: sejak listing terbuka di tahun berjalan,
+    // filter tahun selalu terisi sehingga menghitungnya tidak memberi informasi.
     const activeFilterCount = [
         'search',
-        'tahun',
         'scope',
         'jenis',
         'sistem',
@@ -192,14 +185,13 @@ export default function OutagePlansIndex({
     ].filter((k) => filters?.[k]).length;
 
     const selectValue = (key: string) => filters?.[key] || ALL;
-    const { data, setData, post, put, processing, errors, reset } = useForm({
+    const { data, setData, post, processing, errors, reset } = useForm({
         mesin_pembangkit: '',
         scope: '',
         jenis_pembangkit: '',
         durasi: '',
         start_date: '',
         selesai: '',
-        progress: '',
         rapat_r2: '',
         rapat_r3: '',
         rapat_p1: '',
@@ -210,52 +202,9 @@ export default function OutagePlansIndex({
         real_start: '',
         real_stop: '',
         ket_realisasi: '',
-        daily_progress: [] as DailyProgressRow[],
     });
 
     const [query, setQuery] = useState('');
-
-    const dateList = useMemo(
-        () => generateDateRange(data.start_date, data.selesai),
-        [data.start_date, data.selesai],
-    );
-
-    const dailyRows = useMemo(
-        () => buildDailyRows(dateList, data.daily_progress as any),
-        [dateList, data.daily_progress],
-    );
-
-    const dailyProgressErrors = useMemo(
-        () => (editingItem ? validateDailyProgress(dailyRows) : []),
-        [editingItem, dailyRows],
-    );
-
-    const overallActualProgress = useMemo(
-        () => getLatestActualProgress(dailyRows),
-        [dailyRows],
-    );
-
-    const updateDailyRow = (
-        tanggal: string,
-        field: 'plan_progress' | 'actual_progress' | 'keterangan',
-        value: string,
-    ) => {
-        const next = dateList.map((date) => {
-            const existing = (data.daily_progress as DailyProgressRow[]).find(
-                (d) => d.tanggal === date,
-            ) || {
-                tanggal: date,
-                plan_progress: '',
-                actual_progress: '',
-                keterangan: '',
-            };
-
-            return date === tanggal
-                ? { ...existing, [field]: value }
-                : existing;
-        });
-        setData('daily_progress', next);
-    };
 
     const allMesins = useMemo(() => {
         const list: any[] = [];
@@ -289,50 +238,13 @@ export default function OutagePlansIndex({
     const filteredOutagePlans = outagePlans.data || [];
 
     const openAddDialog = () => {
-        setEditingItem(null);
         reset();
-        setQuery('');
-        setDialogOpen(true);
-    };
-
-    const openEditDialog = (plan: any) => {
-        setEditingItem(plan);
-        const dateList = generateDateRange(
-            plan.start_date || '',
-            plan.selesai || '',
-        );
-        setData({
-            mesin_pembangkit: plan.mesin_pembangkit || '',
-            scope: plan.scope ? plan.scope.toUpperCase() : '',
-            jenis_pembangkit: plan.jenis_pembangkit
-                ? plan.jenis_pembangkit.toUpperCase()
-                : '',
-            durasi: plan.durasi?.toString() || '',
-            start_date: plan.start_date || '',
-            selesai: plan.selesai || '',
-            progress: plan.progress?.toString() || '',
-            rapat_r2: plan.rapat_r2 || '',
-            rapat_r3: plan.rapat_r3 || '',
-            rapat_p1: plan.rapat_p1 || '',
-            rapat_p2: plan.rapat_p2 || '',
-            rapat_p3: plan.rapat_p3 || '',
-            ket: plan.ket || '',
-            sistem: plan.sistem || '',
-            real_start: plan.real_start || '',
-            real_stop: plan.real_stop || '',
-            ket_realisasi: plan.ket_realisasi || '',
-            daily_progress: buildDailyRows(
-                dateList,
-                plan.daily_progresses || [],
-            ),
-        });
         setQuery('');
         setDialogOpen(true);
     };
 
     const closeDialog = () => {
         setDialogOpen(false);
-        setEditingItem(null);
         reset();
         setQuery('');
     };
@@ -340,19 +252,7 @@ export default function OutagePlansIndex({
     const submit: FormEventHandler = (e) => {
         e.preventDefault();
 
-        if (editingItem) {
-            if (dailyProgressErrors.length > 0) {
-                return;
-            }
-
-            put(`/outage-plans/${editingItem.id}`, {
-                onSuccess: () => closeDialog(),
-            });
-        } else {
-            post('/outage-plans', {
-                onSuccess: () => closeDialog(),
-            });
-        }
+        post('/outage-plans', { onSuccess: () => closeDialog() });
     };
 
     const handleDelete = (id: number) => {
@@ -423,15 +323,10 @@ export default function OutagePlansIndex({
                                 Filter
                             </div>
 
-                            <FilterSelect
-                                label="Tahun"
-                                value={selectValue('tahun')}
+                            <FilterTahun
+                                value={filters?.tahun}
                                 onChange={(v) => applyFilter({ tahun: v })}
-                                options={opts.tahun.map((t) => ({
-                                    value: String(t),
-                                    label: String(t),
-                                }))}
-                                width="w-[110px]"
+                                options={opts.tahun}
                             />
                             <FilterSelect
                                 label="Scope"
@@ -636,18 +531,19 @@ export default function OutagePlansIndex({
                                                         </DropdownMenu>
                                                         {!isTamu && (
                                                             <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-                                                                <Button
-                                                                    variant="ghost"
-                                                                    size="icon"
-                                                                    className="h-7 w-7 text-primary hover:bg-primary/10"
-                                                                    onClick={() =>
-                                                                        openEditDialog(
-                                                                            plan,
-                                                                        )
-                                                                    }
+                                                                {/* Edit punya halaman sendiri: progress harian
+                                                                    tidak muat diisi di dalam modal. */}
+                                                                <Link
+                                                                    href={`/outage-plans/${plan.id}/edit`}
                                                                 >
-                                                                    <Pencil className="h-3.5 w-3.5" />
-                                                                </Button>
+                                                                    <Button
+                                                                        variant="ghost"
+                                                                        size="icon"
+                                                                        className="h-7 w-7 text-primary hover:bg-primary/10"
+                                                                    >
+                                                                        <Pencil className="h-3.5 w-3.5" />
+                                                                    </Button>
+                                                                </Link>
                                                                 <Button
                                                                     variant="ghost"
                                                                     size="icon"
@@ -759,19 +655,12 @@ export default function OutagePlansIndex({
                     }
                 }}
             >
-                <DialogContent
-                    className={`${editingItem ? 'sm:max-w-4xl' : 'sm:max-w-2xl'} max-h-[90vh] overflow-y-auto`}
-                >
+                <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
                     <DialogHeader>
-                        <DialogTitle>
-                            {editingItem
-                                ? 'Edit Jadwal Outage'
-                                : 'Tambah Jadwal Outage'}
-                        </DialogTitle>
+                        <DialogTitle>Tambah Jadwal Outage</DialogTitle>
                         <DialogDescription>
-                            {editingItem
-                                ? 'Perbarui data perencanaan outage yang sudah ada.'
-                                : 'Input data perencanaan outage baru.'}
+                            Input data perencanaan outage baru. Progress harian diisi
+                            setelahnya lewat halaman Edit.
                         </DialogDescription>
                     </DialogHeader>
                     <form onSubmit={submit} className="space-y-4">
@@ -934,7 +823,7 @@ export default function OutagePlansIndex({
                             </div>
                         </div>
 
-                        {/* Durasi & Progres */}
+                        {/* Durasi */}
                         <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-2">
                                 <Label htmlFor="durasi">Durasi (Hari)</Label>
@@ -946,19 +835,8 @@ export default function OutagePlansIndex({
                                         setData('durasi', e.target.value)
                                     }
                                 />
-                            </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="progress">Progres</Label>
-                                <Input
-                                    id="progress"
-                                    type="text"
-                                    value={`${Number(overallActualProgress.toFixed(2))}%`}
-                                    disabled
-                                    readOnly
-                                    className="bg-muted font-semibold"
-                                />
                                 <p className="text-xs text-muted-foreground">
-                                    Otomatis dari Actual Progress terakhir pada Progress Harian.
+                                    Menentukan jumlah hari progress harian.
                                 </p>
                             </div>
                         </div>
@@ -1119,212 +997,6 @@ export default function OutagePlansIndex({
                             </div>
                         </div>
 
-                        {/* Progress Harian */}
-                        {editingItem && (
-                            <div className="space-y-2 border-t pt-4">
-                                <div className="flex items-center justify-between">
-                                    <Label>Progress Harian</Label>
-                                    <span className="text-xs text-muted-foreground">
-                                        {dateList.length} hari
-                                    </span>
-                                </div>
-                                {dateList.length === 0 ? (
-                                    <p className="text-xs text-muted-foreground italic">
-                                        Isi Waktu Mulai dan Waktu Selesai
-                                        Perencanaan untuk membuat daftar progres
-                                        harian.
-                                    </p>
-                                ) : (
-                                    <>
-                                        <div className="max-h-80 overflow-y-auto rounded-md border">
-                                            <Table className="whitespace-nowrap">
-                                                <TableHeader className="sticky top-0 z-10 bg-background">
-                                                    <TableRow className="bg-muted/40">
-                                                        <TableHead className="w-16 px-2 text-center font-bold">
-                                                            Day
-                                                        </TableHead>
-                                                        <TableHead className="px-2 text-center font-bold">
-                                                            Tanggal
-                                                        </TableHead>
-                                                        <TableHead className="w-28 px-2 text-center font-bold">
-                                                            Plan (%)
-                                                        </TableHead>
-                                                        <TableHead className="w-28 px-2 text-center font-bold">
-                                                            Actual (%)
-                                                        </TableHead>
-                                                        <TableHead className="w-24 px-2 text-center font-bold">
-                                                            Status
-                                                        </TableHead>
-                                                        <TableHead className="min-w-[160px] px-2 font-bold">
-                                                            Keterangan
-                                                        </TableHead>
-                                                    </TableRow>
-                                                </TableHeader>
-                                                <TableBody>
-                                                    {dailyRows.map(
-                                                        (
-                                                            row: DailyProgressRow,
-                                                            idx: number,
-                                                        ) => {
-                                                            const status =
-                                                                computeStatus(
-                                                                    row.plan_progress,
-                                                                    row.actual_progress,
-                                                                );
-                                                            const rowHasError =
-                                                                dailyProgressErrors.some(
-                                                                    (err) =>
-                                                                        err.tanggal ===
-                                                                        row.tanggal,
-                                                                );
-
-                                                            return (
-                                                                <TableRow
-                                                                    key={
-                                                                        row.tanggal
-                                                                    }
-                                                                    className={
-                                                                        rowHasError
-                                                                            ? 'bg-destructive/5'
-                                                                            : ''
-                                                                    }
-                                                                >
-                                                                    <TableCell className="px-2 text-center font-mono text-xs">
-                                                                        Day{' '}
-                                                                        {idx +
-                                                                            1}
-                                                                    </TableCell>
-                                                                    <TableCell className="px-2 text-center font-mono text-xs">
-                                                                        {formatDMY(
-                                                                            row.tanggal,
-                                                                        )}
-                                                                    </TableCell>
-                                                                    <TableCell className="px-2">
-                                                                        <Input
-                                                                            type="number"
-                                                                            min={
-                                                                                0
-                                                                            }
-                                                                            max={
-                                                                                100
-                                                                            }
-                                                                            step="0.01"
-                                                                            className="h-8 text-center text-xs"
-                                                                            value={
-                                                                                row.plan_progress
-                                                                            }
-                                                                            onChange={(
-                                                                                e,
-                                                                            ) =>
-                                                                                updateDailyRow(
-                                                                                    row.tanggal,
-                                                                                    'plan_progress',
-                                                                                    e
-                                                                                        .target
-                                                                                        .value,
-                                                                                )
-                                                                            }
-                                                                        />
-                                                                    </TableCell>
-                                                                    <TableCell className="px-2">
-                                                                        <Input
-                                                                            type="number"
-                                                                            min={
-                                                                                0
-                                                                            }
-                                                                            max={
-                                                                                100
-                                                                            }
-                                                                            step="0.01"
-                                                                            className="h-8 text-center text-xs"
-                                                                            value={
-                                                                                row.actual_progress
-                                                                            }
-                                                                            onChange={(
-                                                                                e,
-                                                                            ) =>
-                                                                                updateDailyRow(
-                                                                                    row.tanggal,
-                                                                                    'actual_progress',
-                                                                                    e
-                                                                                        .target
-                                                                                        .value,
-                                                                                )
-                                                                            }
-                                                                        />
-                                                                    </TableCell>
-                                                                    <TableCell className="px-2 text-center">
-                                                                        <span
-                                                                            className={`inline-flex items-center rounded px-2 py-0.5 text-[10px] font-bold uppercase ${
-                                                                                status ===
-                                                                                'Leading'
-                                                                                    ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400'
-                                                                                    : 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400'
-                                                                            }`}
-                                                                        >
-                                                                            {
-                                                                                status
-                                                                            }
-                                                                        </span>
-                                                                    </TableCell>
-                                                                    <TableCell className="px-2">
-                                                                        <Input
-                                                                            type="text"
-                                                                            className="h-8 text-xs"
-                                                                            placeholder="Catatan..."
-                                                                            value={
-                                                                                row.keterangan
-                                                                            }
-                                                                            onChange={(
-                                                                                e,
-                                                                            ) =>
-                                                                                updateDailyRow(
-                                                                                    row.tanggal,
-                                                                                    'keterangan',
-                                                                                    e
-                                                                                        .target
-                                                                                        .value,
-                                                                                )
-                                                                            }
-                                                                        />
-                                                                    </TableCell>
-                                                                </TableRow>
-                                                            );
-                                                        },
-                                                    )}
-                                                </TableBody>
-                                            </Table>
-                                        </div>
-                                        {dailyProgressErrors.length > 0 && (
-                                            <div className="flex flex-col gap-1 rounded-md border border-destructive/20 bg-destructive/5 p-2 text-xs text-destructive">
-                                                <div className="flex items-center gap-1.5 font-semibold">
-                                                    <AlertTriangle className="h-3.5 w-3.5" />
-                                                    Perbaiki input progress
-                                                    harian:
-                                                </div>
-                                                {dailyProgressErrors
-                                                    .slice(0, 5)
-                                                    .map((err, i) => (
-                                                        <span key={i}>
-                                                            {err.message}
-                                                        </span>
-                                                    ))}
-                                                {dailyProgressErrors.length >
-                                                    5 && (
-                                                    <span>
-                                                        +
-                                                        {dailyProgressErrors.length -
-                                                            5}{' '}
-                                                        error lainnya
-                                                    </span>
-                                                )}
-                                            </div>
-                                        )}
-                                    </>
-                                )}
-                            </div>
-                        )}
-
                         {/* Action Buttons */}
                         <DialogFooter className="pt-2">
                             <Button
@@ -1334,15 +1006,8 @@ export default function OutagePlansIndex({
                             >
                                 Batal
                             </Button>
-                            <Button
-                                type="submit"
-                                disabled={
-                                    processing || dailyProgressErrors.length > 0
-                                }
-                            >
-                                {editingItem
-                                    ? 'Simpan Perubahan'
-                                    : 'Simpan Perencanaan'}
+                            <Button type="submit" disabled={processing}>
+                                Simpan Perencanaan
                             </Button>
                         </DialogFooter>
                     </form>

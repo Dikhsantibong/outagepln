@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Support\UploadLimit;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
@@ -45,6 +46,12 @@ class HandleInertiaRequests extends Middleware
             'flash' => [
                 'success' => fn () => $request->session()->get('success'),
                 'error' => fn () => $request->session()->get('error'),
+            ],
+            // Dibagikan ke semua halaman supaya form unggah bisa menolak berkas
+            // kebesaran di browser, sebelum PHP menggagalkan seluruh request.
+            'uploadLimit' => [
+                'bytes' => UploadLimit::bytes(),
+                'label' => UploadLimit::label(),
             ],
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
         ];

@@ -1,6 +1,7 @@
 import { Head, useForm, usePage } from '@inertiajs/react';
-import { FormEventHandler, useRef, useState, useEffect } from 'react';
 import { CheckCircle2 } from 'lucide-react';
+import type { FormEventHandler} from 'react';
+import { useRef, useState, useEffect } from 'react';
 
 type Meeting = {
     id: number;
@@ -32,9 +33,16 @@ export default function AttendForm({
     // Setup canvas
     useEffect(() => {
         const canvas = canvasRef.current;
-        if (!canvas) return;
+
+        if (!canvas) {
+return;
+}
+
         const ctx = canvas.getContext('2d');
-        if (!ctx) return;
+
+        if (!ctx) {
+return;
+}
 
         // Set canvas size for retina
         const rect = canvas.getBoundingClientRect();
@@ -50,14 +58,20 @@ export default function AttendForm({
 
     const getPos = (e: React.TouchEvent | React.MouseEvent) => {
         const canvas = canvasRef.current;
-        if (!canvas) return { x: 0, y: 0 };
+
+        if (!canvas) {
+return { x: 0, y: 0 };
+}
+
         const rect = canvas.getBoundingClientRect();
+
         if ('touches' in e) {
             return {
                 x: e.touches[0].clientX - rect.left,
                 y: e.touches[0].clientY - rect.top,
             };
         }
+
         return {
             x: (e as React.MouseEvent).clientX - rect.left,
             y: (e as React.MouseEvent).clientY - rect.top,
@@ -67,7 +81,11 @@ export default function AttendForm({
     const startDrawing = (e: React.TouchEvent | React.MouseEvent) => {
         e.preventDefault();
         const ctx = canvasRef.current?.getContext('2d');
-        if (!ctx) return;
+
+        if (!ctx) {
+return;
+}
+
         const pos = getPos(e);
         ctx.beginPath();
         ctx.moveTo(pos.x, pos.y);
@@ -77,9 +95,17 @@ export default function AttendForm({
 
     const draw = (e: React.TouchEvent | React.MouseEvent) => {
         e.preventDefault();
-        if (!isDrawing) return;
+
+        if (!isDrawing) {
+return;
+}
+
         const ctx = canvasRef.current?.getContext('2d');
-        if (!ctx) return;
+
+        if (!ctx) {
+return;
+}
+
         const pos = getPos(e);
         ctx.lineTo(pos.x, pos.y);
         ctx.stroke();
@@ -92,9 +118,17 @@ export default function AttendForm({
 
     const clearSignature = () => {
         const canvas = canvasRef.current;
-        if (!canvas) return;
+
+        if (!canvas) {
+return;
+}
+
         const ctx = canvas.getContext('2d');
-        if (!ctx) return;
+
+        if (!ctx) {
+return;
+}
+
         const dpr = window.devicePixelRatio || 1;
         ctx.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr);
         setHasSignature(false);
@@ -105,9 +139,11 @@ export default function AttendForm({
         // Capture signature as base64
         const canvas = canvasRef.current;
         let signatureData = '';
+
         if (canvas && hasSignature) {
             signatureData = canvas.toDataURL('image/png');
         }
+
         data.signature = signatureData;
         post(`/attend/${token}`);
     };
