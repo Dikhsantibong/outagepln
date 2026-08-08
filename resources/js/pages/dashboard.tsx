@@ -6,6 +6,7 @@ import {
     Calendar,
     CalendarClock,
     CheckCircle2,
+    ChevronRight,
     Clock,
     DollarSign,
     Crosshair,
@@ -16,6 +17,7 @@ import {
     ShieldCheck,
     Users,
 } from 'lucide-react';
+import { useMemo, useState } from 'react';
 import {
     Bar,
     BarChart,
@@ -30,7 +32,12 @@ import {
     YAxis,
 } from 'recharts';
 import { FilterTahun, TAHUN_SEMUA } from '@/components/data-filter-bar';
-import { OutageQuickAccess } from '@/components/outage-quick-access';
+import {
+    OutageQuickAccess,
+    PlanDetailDialog,
+    PlanRow,
+    usePlanDetail,
+} from '@/components/outage-quick-access';
 import type { QuickAccessPlan } from '@/components/outage-quick-access';
 import {
     Card,
@@ -39,6 +46,13 @@ import {
     CardHeader,
     CardTitle,
 } from '@/components/ui/card';
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog';
 import { dashboard } from '@/routes';
 
 type Bucket = { label: string; total: number };
@@ -98,18 +112,52 @@ const TOOLTIP = {
 
 const BULAN = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
 
+/**
+ * Kategori di balik tiap kartu KPI.
+ *
+ * Difilter dari daftar yang sudah dikirim dashboard, jadi membuka daftarnya
+ * tidak perlu permintaan baru ke server.
+ */
+const KATEGORI = {
+    total: {
+        judul: 'Seluruh Pekerjaan',
+        deskripsi: 'semua rencana outage pada periode ini',
+        filter: () => true,
+    },
+    selesai: {
+        judul: 'Pekerjaan Selesai',
+        deskripsi: 'progres sudah mencapai 100%',
+        filter: (p: QuickAccessPlan) => p.progress >= 100,
+    },
+    berjalan: {
+        judul: 'Sedang Dikerjakan',
+        deskripsi: 'progres berjalan, belum mencapai 100%',
+        filter: (p: QuickAccessPlan) => p.progress > 0 && p.progress < 100,
+    },
+    belum: {
+        judul: 'Belum Dimulai',
+        deskripsi: 'belum ada progres yang tercatat',
+        filter: (p: QuickAccessPlan) => p.progress <= 0,
+    },
+} as const;
+
+type KategoriKpi = keyof typeof KATEGORI;
+
 function Kpi({
     label,
     value,
     sub,
     icon: Icon,
     tone,
+    onClick,
 }: {
     label: string;
     value: string | number;
     sub?: string;
     icon: typeof Activity;
     tone: 'primary' | 'emerald' | 'amber' | 'slate' | 'blue';
+    /** Bila diisi, kartu jadi tombol yang membuka daftar mesinnya. */
+    onClick?: () => void;
 }) {
     const tones = {
         primary: 'bg-primary/10 text-primary',
@@ -120,18 +168,71 @@ function Kpi({
     };
 
     return (
-        <Card>
+        <Card
+            onClick={onClick}
+            className={
+                onClick
+                    ? 'group cursor-pointer transition-all hover:border-primary/50 hover:shadow-sm'
+                    : ''
+            }
+        >
             <CardContent className="flex items-center gap-3 p-4">
                 <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full ${tones[tone]}`}>
                     <Icon className="h-5 w-5" />
                 </div>
-                <div className="min-w-0">
+                <div className="min-w-0 flex-1">
                     <p className="truncate text-xs text-muted-foreground">{label}</p>
-                    <p className="text-2xl font-bold leading-tight">{value}</p>
+                    <p className="text-2xl leading-tight font-bold">{value}</p>
                     {sub && <p className="truncate text-[11px] text-muted-foreground">{sub}</p>}
                 </div>
+                {onClick && (
+                    <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+                )}
             </CardContent>
         </Card>
+    );
+}
+
+/** Daftar mesin di balik sebuah kartu KPI. */
+function KpiListDialog({
+    judul,
+    deskripsi,
+    plans,
+    onClose,
+    onOpen,
+}: {
+    judul: string | null;
+    deskripsi: string;
+    plans: QuickAccessPlan[];
+    onClose: () => void;
+    onOpen: (item: QuickAccessPlan) => void;
+}) {
+    return (
+        <Dialog open={judul !== null} onOpenChange={(o) => !o && onClose()}>
+            <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
+                <DialogHeader>
+                    <DialogTitle>{judul}</DialogTitle>
+                    <DialogDescription>
+                        {plans.length} mesin &middot; {deskripsi}
+                    </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-1.5">
+                    {plans.length > 0 ? (
+                        plans.map((item) => (
+                            <PlanRow
+                                key={item.id}
+                                item={item}
+                                onClick={() => onOpen(item)}
+                            />
+                        ))
+                    ) : (
+                        <p className="py-10 text-center text-sm text-muted-foreground italic">
+                            Tidak ada mesin pada kategori ini.
+                        </p>
+                    )}
+                </div>
+            </DialogContent>
+        </Dialog>
     );
 }
 
@@ -277,6 +378,21 @@ export default function Dashboard({
 
     const top = (arr: Bucket[], n = 8) => arr.slice(0, n).map((b) => ({ name: b.label, jumlah: b.total }));
 
+    // Detail satu pekerjaan, dipakai bersama oleh Quick Access dan daftar KPI.
+    const planDetail = usePlanDetail();
+    const [kategori, setKategori] = useState<KategoriKpi | null>(null);
+
+    const daftarKategori = useMemo(
+        () => (kategori ? quickAccessPlans.filter(KATEGORI[kategori].filter) : []),
+        [kategori, quickAccessPlans],
+    );
+
+    /** Dari daftar kategori, lanjut membuka detail mesinnya. */
+    const bukaDariDaftar = (item: QuickAccessPlan) => {
+        setKategori(null);
+        planDetail.buka(item);
+    };
+
     return (
         <>
             <Head title="Dashboard" />
@@ -318,47 +434,63 @@ export default function Dashboard({
                     </div>
                 </div>
 
-                {/* KPI utama */}
+                {/* KPI utama - tiap kartu membuka daftar mesin di baliknya */}
                 <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
                     <Kpi
                         label="Total Mesin"
                         value={s.total}
-                        sub="rencana outage"
+                        sub="rencana outage · klik untuk melihat"
                         icon={Layers}
                         tone="primary"
+                        onClick={() => setKategori('total')}
                     />
                     <Kpi
                         label="Selesai"
                         value={s.status.selesai}
-                        sub={`${pct(s.status.selesai)}% dari total`}
+                        sub={`${pct(s.status.selesai)}% dari total · klik untuk melihat`}
                         icon={CheckCircle2}
                         tone="emerald"
+                        onClick={() => setKategori('selesai')}
                     />
                     <Kpi
                         label="Sedang Berjalan"
                         value={s.status.berjalan}
-                        sub={`${pct(s.status.berjalan)}% dari total`}
+                        sub={`${pct(s.status.berjalan)}% dari total · klik untuk melihat`}
                         icon={Hourglass}
                         tone="amber"
+                        onClick={() => setKategori('berjalan')}
                     />
                     <Kpi
                         label="Belum Mulai"
                         value={s.status.belum}
-                        sub={`${pct(s.status.belum)}% dari total`}
+                        sub={`${pct(s.status.belum)}% dari total · klik untuk melihat`}
                         icon={AlertCircle}
                         tone="slate"
+                        onClick={() => setKategori('belum')}
                     />
-                    <Kpi
-                        label="Rapat"
-                        value={s.meetings.total}
-                        sub={`${s.meetings.hariIni} hari ini · ${s.meetings.akanDatang} akan datang`}
-                        icon={Users}
-                        tone="blue"
-                    />
+                    {/* Rapat punya halamannya sendiri, bukan daftar mesin. */}
+                    <Link href="/daily-meetings">
+                        <Kpi
+                            label="Rapat"
+                            value={s.meetings.total}
+                            sub={`${s.meetings.hariIni} hari ini · ${s.meetings.akanDatang} akan datang`}
+                            icon={Users}
+                            tone="blue"
+                        />
+                    </Link>
                 </div>
 
                 {/* Quick Access - buka detail satu pekerjaan tanpa pindah halaman */}
-                <OutageQuickAccess plans={quickAccessPlans} />
+                <OutageQuickAccess plans={quickAccessPlans} onOpen={planDetail.buka} />
+
+                <KpiListDialog
+                    judul={kategori ? KATEGORI[kategori].judul : null}
+                    deskripsi={kategori ? KATEGORI[kategori].deskripsi : ''}
+                    plans={daftarKategori}
+                    onClose={() => setKategori(null)}
+                    onOpen={bukaDariDaftar}
+                />
+                <PlanDetailDialog {...planDetail} />
 
                 {/* Kinerja Outage */}
                 <div>
