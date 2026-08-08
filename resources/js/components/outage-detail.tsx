@@ -36,6 +36,9 @@ export type DailyProgress = {
     /** null = hari tersebut belum diisi. */
     plan_progress: number | null;
     actual_progress: number | null;
+    material_part_number?: string | null;
+    material_nama?: string | null;
+    uraian_pekerjaan?: string | null;
     keterangan: string | null;
     status: ProgressStatus;
 };
@@ -331,7 +334,8 @@ export function OutageDailyTable({ rows }: { rows: DailyProgress[] }) {
             </CardHeader>
             {terbuka && (
                 <CardContent className="overflow-x-auto p-0">
-                    <Table className="whitespace-nowrap">
+                    {/* Tanpa whitespace-nowrap: kolom uraian harus boleh membungkus. */}
+                    <Table className="align-top">
                         <TableHeader>
                             <TableRow className="border-y bg-muted/30">
                                 <TableHead className="w-16 px-4 text-center font-bold">
@@ -349,8 +353,17 @@ export function OutageDailyTable({ rows }: { rows: DailyProgress[] }) {
                                 <TableHead className="px-4 text-center font-bold">
                                     Status
                                 </TableHead>
-                                <TableHead className="min-w-[200px] px-4 font-bold">
-                                    Catatan
+                                <TableHead className="min-w-[130px] px-4 font-bold">
+                                    Part Number
+                                </TableHead>
+                                <TableHead className="min-w-[180px] px-4 font-bold">
+                                    Nama Material
+                                </TableHead>
+                                <TableHead className="min-w-[260px] px-4 font-bold">
+                                    Uraian Pekerjaan
+                                </TableHead>
+                                <TableHead className="min-w-[180px] px-4 font-bold">
+                                    Keterangan
                                 </TableHead>
                             </TableRow>
                         </TableHeader>
@@ -358,10 +371,10 @@ export function OutageDailyTable({ rows }: { rows: DailyProgress[] }) {
                             {rows.length > 0 ? (
                                 rows.map((row, idx) => (
                                     <TableRow key={row.id ?? row.tanggal} className="hover:bg-muted/30">
-                                        <TableCell className="px-4 text-center font-mono text-xs text-muted-foreground">
+                                        <TableCell className="px-4 text-center font-mono text-xs whitespace-nowrap text-muted-foreground">
                                             Day {idx + 1}
                                         </TableCell>
-                                        <TableCell className="px-4 text-center font-mono text-[11px] text-muted-foreground">
+                                        <TableCell className="px-4 text-center font-mono text-[11px] whitespace-nowrap text-muted-foreground">
                                             {formatDMY(row.tanggal)}
                                         </TableCell>
                                         <TableCell className="px-4 text-center text-xs font-semibold">
@@ -381,7 +394,18 @@ export function OutageDailyTable({ rows }: { rows: DailyProgress[] }) {
                                                 {row.status}
                                             </span>
                                         </TableCell>
-                                        <TableCell className="px-4 text-xs text-muted-foreground">
+                                        <TableCell className="px-4 font-mono text-[11px] text-muted-foreground">
+                                            {row.material_part_number || '-'}
+                                        </TableCell>
+                                        <TableCell className="px-4 text-xs">
+                                            {row.material_nama || '-'}
+                                        </TableCell>
+                                        {/* Uraian bisa panjang: dibiarkan membungkus,
+                                            bukan dipotong seperti kolom lain. */}
+                                        <TableCell className="px-4 text-xs whitespace-pre-line">
+                                            {row.uraian_pekerjaan || '-'}
+                                        </TableCell>
+                                        <TableCell className="px-4 text-xs whitespace-pre-line text-muted-foreground">
                                             {row.keterangan || '-'}
                                         </TableCell>
                                     </TableRow>
@@ -389,7 +413,7 @@ export function OutageDailyTable({ rows }: { rows: DailyProgress[] }) {
                             ) : (
                                 <TableRow>
                                     <TableCell
-                                        colSpan={6}
+                                        colSpan={9}
                                         className="h-24 text-center text-muted-foreground"
                                     >
                                         Belum ada data progress harian.

@@ -83,6 +83,46 @@ type OutagePlan = {
     }[];
 };
 
+/**
+ * Textarea yang tingginya mengikuti isi.
+ *
+ * Uraian pekerjaan panjangnya tidak menentu — satu kalimat atau satu paragraf —
+ * jadi tingginya dihitung ulang tiap perubahan, dengan batas atas supaya satu
+ * baris yang panjang tidak mendorong seluruh tabel.
+ */
+function AutoTextarea({
+    value,
+    onChange,
+    placeholder,
+}: {
+    value: string;
+    onChange: (value: string) => void;
+    placeholder?: string;
+}) {
+    const atur = (el: HTMLTextAreaElement | null) => {
+        if (!el) {
+            return;
+        }
+
+        el.style.height = 'auto';
+        el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+    };
+
+    return (
+        <textarea
+            ref={atur}
+            rows={1}
+            placeholder={placeholder}
+            value={value}
+            onChange={(e) => {
+                atur(e.currentTarget);
+                onChange(e.target.value);
+            }}
+            className="min-h-8 w-full resize-none rounded-md border border-input bg-transparent px-3 py-1.5 text-xs shadow-xs transition-[color,box-shadow] outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+        />
+    );
+}
+
 function Field({
     label,
     htmlFor,
@@ -194,7 +234,7 @@ export default function OutagePlanEdit({ outagePlan }: { outagePlan: OutagePlan 
 
     const updateDailyRow = (
         tanggal: string,
-        field: 'plan_progress' | 'actual_progress' | 'keterangan',
+        field: keyof DailyProgressRow,
         value: string,
     ) => {
         setRows(
@@ -584,7 +624,16 @@ export default function OutagePlanEdit({ outagePlan }: { outagePlan: OutagePlan 
                                             <TableHead className="w-28 px-3 text-center font-bold">
                                                 Status
                                             </TableHead>
-                                            <TableHead className="min-w-[220px] px-3 font-bold">
+                                            <TableHead className="min-w-[150px] px-3 font-bold">
+                                                Part Number
+                                            </TableHead>
+                                            <TableHead className="min-w-[200px] px-3 font-bold">
+                                                Nama Material
+                                            </TableHead>
+                                            <TableHead className="min-w-[280px] px-3 font-bold">
+                                                Uraian Pekerjaan
+                                            </TableHead>
+                                            <TableHead className="min-w-[200px] px-3 font-bold">
                                                 Keterangan
                                             </TableHead>
                                         </TableRow>
@@ -681,17 +730,60 @@ export default function OutagePlanEdit({ outagePlan }: { outagePlan: OutagePlan 
                                                             {status}
                                                         </span>
                                                     </TableCell>
+                                                    {/* Material masih diketik manual; nanti dipilih
+                                                        dari data master. */}
+                                                    <TableCell className="px-3">
+                                                        <Input
+                                                            type="text"
+                                                            className="h-8 font-mono text-xs"
+                                                            placeholder="cth: 1234-5678"
+                                                            value={row.material_part_number}
+                                                            onChange={(e) =>
+                                                                updateDailyRow(
+                                                                    row.tanggal,
+                                                                    'material_part_number',
+                                                                    e.target.value,
+                                                                )
+                                                            }
+                                                        />
+                                                    </TableCell>
                                                     <TableCell className="px-3">
                                                         <Input
                                                             type="text"
                                                             className="h-8 text-xs"
-                                                            placeholder="Catatan..."
-                                                            value={row.keterangan}
+                                                            placeholder="cth: Gasket cylinder head"
+                                                            value={row.material_nama}
                                                             onChange={(e) =>
                                                                 updateDailyRow(
                                                                     row.tanggal,
-                                                                    'keterangan',
+                                                                    'material_nama',
                                                                     e.target.value,
+                                                                )
+                                                            }
+                                                        />
+                                                    </TableCell>
+                                                    <TableCell className="px-3">
+                                                        <AutoTextarea
+                                                            placeholder="Uraian pekerjaan hari ini..."
+                                                            value={row.uraian_pekerjaan}
+                                                            onChange={(v) =>
+                                                                updateDailyRow(
+                                                                    row.tanggal,
+                                                                    'uraian_pekerjaan',
+                                                                    v,
+                                                                )
+                                                            }
+                                                        />
+                                                    </TableCell>
+                                                    <TableCell className="px-3">
+                                                        <AutoTextarea
+                                                            placeholder="Catatan..."
+                                                            value={row.keterangan}
+                                                            onChange={(v) =>
+                                                                updateDailyRow(
+                                                                    row.tanggal,
+                                                                    'keterangan',
+                                                                    v,
                                                                 )
                                                             }
                                                         />

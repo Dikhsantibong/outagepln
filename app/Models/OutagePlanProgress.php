@@ -13,6 +13,10 @@ class OutagePlanProgress extends Model
         'tanggal',
         'plan_progress',
         'actual_progress',
+        // Diketik manual dulu; menyusul dari data master material.
+        'material_part_number',
+        'material_nama',
+        'uraian_pekerjaan',
         'keterangan',
     ];
 

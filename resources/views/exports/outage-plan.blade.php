@@ -74,6 +74,12 @@
         .status-onprogres { color: #1d4ed8; font-weight: bold; }
         .status-lagging { color: #b91c1c; font-weight: bold; }
         .status-kosong { color: #94a3b8; }
+        /* Uraian pekerjaan menghormati baris baru yang diketik pengguna. */
+        .nowrap-pre { white-space: pre-line; }
+        /* Tabel harian kini 9 kolom; dikecilkan agar tetap muat di A4 portrait
+           tanpa mengubah orientasi halaman lain yang sudah tertata. */
+        table.harian { font-size: 8px; }
+        table.harian th, table.harian td { padding: 3px 4px; }
 
         .footer { margin-top: 8px; font-size: 8.5px; color: #94a3b8; text-align: center; }
     </style>
@@ -151,14 +157,17 @@
     @endif
 
     <div class="section-title">Riwayat Progress Harian (Perencanaan vs Realisasi)</div>
-    <table class="data">
+    <table class="data harian">
         <thead>
             <tr>
-                <th style="width: 8%;">Day</th>
-                <th style="width: 12%;">Tanggal</th>
-                <th style="width: 10%;">Plan (%)</th>
-                <th style="width: 10%;">Actual (%)</th>
-                <th style="width: 12%;">Status</th>
+                <th style="width: 6%;">Day</th>
+                <th style="width: 9%;">Tanggal</th>
+                <th style="width: 7%;">Plan (%)</th>
+                <th style="width: 7%;">Actual (%)</th>
+                <th style="width: 9%;">Status</th>
+                <th style="width: 11%;">Part Number</th>
+                <th style="width: 15%;">Nama Material</th>
+                <th style="width: 22%;">Uraian Pekerjaan</th>
                 <th>Keterangan</th>
             </tr>
         </thead>
@@ -178,11 +187,14 @@
                         };
                     @endphp
                     <td class="{{ $statusClass }}">{{ $dp->status }}</td>
-                    <td class="left">{{ $dp->keterangan ?: '-' }}</td>
+                    <td class="left">{{ $dp->material_part_number ?: '-' }}</td>
+                    <td class="left">{{ $dp->material_nama ?: '-' }}</td>
+                    <td class="left nowrap-pre">{{ $dp->uraian_pekerjaan ?: '-' }}</td>
+                    <td class="left nowrap-pre">{{ $dp->keterangan ?: '-' }}</td>
                 </tr>
             @empty
                 <tr>
-                    <td colspan="6">Belum ada data progress harian.</td>
+                    <td colspan="9">Belum ada data progress harian.</td>
                 </tr>
             @endforelse
         </tbody>

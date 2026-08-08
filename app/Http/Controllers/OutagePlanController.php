@@ -279,14 +279,17 @@ class OutagePlanController extends Controller
 
         $row++;
         $headerRow = $row;
-        $headers = ['Day', 'Tanggal', 'Plan (%)', 'Actual (%)', 'Status', 'Keterangan'];
+        $headers = [
+            'Day', 'Tanggal', 'Plan (%)', 'Actual (%)', 'Status',
+            'Part Number', 'Nama Material', 'Uraian Pekerjaan', 'Keterangan',
+        ];
         foreach ($headers as $i => $label) {
             $col = chr(65 + $i);
             $sheet->setCellValue("{$col}{$headerRow}", $label);
         }
-        $sheet->getStyle("A{$headerRow}:F{$headerRow}")->getFont()->setBold(true);
-        $sheet->getStyle("A{$headerRow}:F{$headerRow}")->getFill()->applyFromArray($headerFill);
-        $sheet->getStyle("A{$headerRow}:F{$headerRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+        $sheet->getStyle("A{$headerRow}:I{$headerRow}")->getFont()->setBold(true);
+        $sheet->getStyle("A{$headerRow}:I{$headerRow}")->getFill()->applyFromArray($headerFill);
+        $sheet->getStyle("A{$headerRow}:I{$headerRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
         $row = $headerRow + 1;
         foreach ($outagePlan->dailyProgresses as $idx => $dp) {
@@ -296,21 +299,31 @@ class OutagePlanController extends Controller
             $sheet->setCellValue("C{$row}", $dp->plan_progress === null ? '' : (float) $dp->plan_progress);
             $sheet->setCellValue("D{$row}", $dp->actual_progress === null ? '' : (float) $dp->actual_progress);
             $sheet->setCellValue("E{$row}", $dp->status);
-            $sheet->setCellValue("F{$row}", $dp->keterangan ?: '-');
+            $sheet->setCellValue("F{$row}", $dp->material_part_number ?: '-');
+            $sheet->setCellValue("G{$row}", $dp->material_nama ?: '-');
+            $sheet->setCellValue("H{$row}", $dp->uraian_pekerjaan ?: '-');
+            $sheet->setCellValue("I{$row}", $dp->keterangan ?: '-');
             $sheet->getStyle("A{$row}:E{$row}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+            // Uraian dan keterangan bisa panjang: dibungkus, bukan melebar.
+            $sheet->getStyle("H{$row}:I{$row}")->getAlignment()->setWrapText(true);
+            $sheet->getStyle("A{$row}:I{$row}")->getAlignment()->setVertical(Alignment::VERTICAL_TOP);
             $row++;
         }
 
         $lastRow = $row - 1;
         if ($lastRow >= $headerRow) {
-            $sheet->getStyle("A{$headerRow}:F{$lastRow}")
+            $sheet->getStyle("A{$headerRow}:I{$lastRow}")
                 ->getBorders()->getAllBorders()
                 ->setBorderStyle(\PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN);
         }
 
-        foreach (range('A', 'F') as $col) {
+        foreach (range('A', 'G') as $col) {
             $sheet->getColumnDimension($col)->setAutoSize(true);
         }
+
+        // Lebar tetap: autoSize pada teks panjang menghasilkan kolom raksasa.
+        $sheet->getColumnDimension('H')->setWidth(48);
+        $sheet->getColumnDimension('I')->setWidth(32);
 
         $writer = new Xlsx($spreadsheet);
         $filename = $this->exportFilename($outagePlan, 'xlsx');
@@ -380,6 +393,9 @@ class OutagePlanController extends Controller
             'daily_progress.*.tanggal' => 'required_with:daily_progress|date',
             'daily_progress.*.plan_progress' => 'nullable|numeric|min:0|max:100',
             'daily_progress.*.actual_progress' => 'nullable|numeric|min:0|max:100',
+            'daily_progress.*.material_part_number' => 'nullable|string|max:100',
+            'daily_progress.*.material_nama' => 'nullable|string|max:255',
+            'daily_progress.*.uraian_pekerjaan' => 'nullable|string',
             'daily_progress.*.keterangan' => 'nullable|string|max:255',
         ]);
 
@@ -401,6 +417,9 @@ class OutagePlanController extends Controller
                         // cumulative-progress rule then blocked every later save.
                         'plan_progress' => $row['plan_progress'] ?? null,
                         'actual_progress' => $row['actual_progress'] ?? null,
+                        'material_part_number' => $row['material_part_number'] ?? null,
+                        'material_nama' => $row['material_nama'] ?? null,
+                        'uraian_pekerjaan' => $row['uraian_pekerjaan'] ?? null,
                         'keterangan' => $row['keterangan'] ?? null,
                     ]
                 );

@@ -128,6 +128,36 @@ class OutagePlanDailyProgressTest extends TestCase
         $this->get("/outage-plans/{$milikOrangLain->id}/edit")->assertForbidden();
     }
 
+    /** Material dan uraian pekerjaan per hari; material masih diketik manual. */
+    public function test_material_dan_uraian_pekerjaan_tersimpan(): void
+    {
+        $plan = $this->plan();
+        $uraian = "Bongkar cylinder head\nGanti gasket dan periksa dudukan katup";
+
+        $this->put("/outage-plans/{$plan->id}", $this->payload($plan, [
+            [
+                'tanggal' => '2024-11-10',
+                'plan_progress' => '45',
+                'actual_progress' => '44',
+                'material_part_number' => '1234-5678',
+                'material_nama' => 'Gasket cylinder head',
+                'uraian_pekerjaan' => $uraian,
+                'keterangan' => 'Menunggu material',
+            ],
+            // Hari tanpa material tetap boleh disimpan.
+            ['tanggal' => '2024-11-11', 'plan_progress' => '50', 'actual_progress' => '50', 'keterangan' => ''],
+        ]))->assertRedirect()->assertSessionHasNoErrors();
+
+        $rows = $plan->dailyProgresses()->orderBy('tanggal')->get();
+
+        $this->assertSame('1234-5678', $rows[0]->material_part_number);
+        $this->assertSame('Gasket cylinder head', $rows[0]->material_nama);
+        $this->assertSame($uraian, $rows[0]->uraian_pekerjaan);
+        $this->assertSame('Menunggu material', $rows[0]->keterangan);
+        $this->assertNull($rows[1]->material_part_number);
+        $this->assertNull($rows[1]->uraian_pekerjaan);
+    }
+
     public function test_status_on_progres_saat_plan_dan_actual_sama(): void
     {
         $plan = $this->plan();

@@ -2,8 +2,22 @@ export type DailyProgressRow = {
     tanggal: string;
     plan_progress: string;
     actual_progress: string;
+    /** Diketik manual dulu; menyusul dipilih dari data master material. */
+    material_part_number: string;
+    material_nama: string;
+    uraian_pekerjaan: string;
     keterangan: string;
 };
+
+/** Kolom teks pada baris harian, dipakai untuk membangun baris kosong. */
+export const DAILY_TEXT_FIELDS = [
+    'material_part_number',
+    'material_nama',
+    'uraian_pekerjaan',
+    'keterangan',
+] as const;
+
+export type DailyTextField = (typeof DAILY_TEXT_FIELDS)[number];
 
 export type DailyProgressRecord = {
     id?: number;
@@ -11,6 +25,9 @@ export type DailyProgressRecord = {
     /** null = hari tersebut belum diisi. */
     plan_progress: number | string | null;
     actual_progress: number | string | null;
+    material_part_number?: string | null;
+    material_nama?: string | null;
+    uraian_pekerjaan?: string | null;
     keterangan: string | null;
     status?: string;
 };
@@ -74,12 +91,23 @@ export function generateDateRangeByCount(start: string, count: number): string[]
     return dates;
 }
 
-/** A row counts as filled once either value has been entered. */
+/**
+ * Sebuah hari dianggap terisi bila ada nilai apa pun di dalamnya — termasuk
+ * material dan uraian pekerjaan, bukan hanya angka progres. Kalau tidak, catatan
+ * material yang sudah diketik bisa hilang saat Real Start diubah.
+ */
 function hasData(row: DailyProgressRecord): boolean {
     const filled = (v: number | string | null | undefined) =>
         v !== null && v !== undefined && v !== '';
 
-    return filled(row.plan_progress) || filled(row.actual_progress);
+    return (
+        filled(row.plan_progress) ||
+        filled(row.actual_progress) ||
+        filled(row.material_part_number) ||
+        filled(row.material_nama) ||
+        filled(row.uraian_pekerjaan) ||
+        filled(row.keterangan)
+    );
 }
 
 export type ProgressDateOptions = {
@@ -205,9 +233,25 @@ export function buildDailyRows(
                 found?.actual_progress !== null
                     ? String(found.actual_progress)
                     : '',
+            material_part_number: found?.material_part_number ?? '',
+            material_nama: found?.material_nama ?? '',
+            uraian_pekerjaan: found?.uraian_pekerjaan ?? '',
             keterangan: found?.keterangan ?? '',
         };
     });
+}
+
+/** Baris kosong untuk satu tanggal, dipakai saat hari baru ditambahkan. */
+export function emptyDailyRow(tanggal: string): DailyProgressRow {
+    return {
+        tanggal,
+        plan_progress: '',
+        actual_progress: '',
+        material_part_number: '',
+        material_nama: '',
+        uraian_pekerjaan: '',
+        keterangan: '',
+    };
 }
 
 /** Progress is cumulative, so the highest recorded actual value is the current overall progress. */
