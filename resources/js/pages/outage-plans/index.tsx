@@ -530,7 +530,7 @@ export default function OutagePlansIndex({
                                                             </DropdownMenuContent>
                                                         </DropdownMenu>
                                                         {!isTamu && (
-                                                            <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                                                            <div className="flex items-center gap-1">
                                                                 {/* Edit punya halaman sendiri: progress harian
                                                                     tidak muat diisi di dalam modal. */}
                                                                 <Link
