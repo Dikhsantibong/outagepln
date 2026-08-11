@@ -1,4 +1,4 @@
-import { Head, Link, router } from '@inertiajs/react';
+import { Head, Link, router, usePage } from '@inertiajs/react';
 import {
     Activity,
     AlertCircle,
@@ -346,6 +346,9 @@ export default function Dashboard({
     outageMeetings,
 }: DashboardProps) {
     const s = stats;
+    const { auth } = usePage<any>().props;
+    // Izin datang dari server; halaman tidak menafsirkan sendiri string role.
+    const bolehLihatRapat = auth?.can?.viewMeetings ?? true;
 
     // Tanpa parameter, server memilih tahun berjalan — jadi nilainya selalu
     // dikirim eksplisit, termasuk "semua".
@@ -468,16 +471,21 @@ export default function Dashboard({
                         tone="slate"
                         onClick={() => setKategori('belum')}
                     />
-                    {/* Rapat punya halamannya sendiri, bukan daftar mesin. */}
-                    <Link href="/daily-meetings">
-                        <Kpi
-                            label="Rapat"
-                            value={s.meetings.total}
-                            sub={`${s.meetings.hariIni} hari ini · ${s.meetings.akanDatang} akan datang`}
-                            icon={Users}
-                            tone="blue"
-                        />
-                    </Link>
+                    {/* Rapat punya halamannya sendiri, bukan daftar mesin.
+                        Disembunyikan bagi akun yang menu rapatnya juga tidak
+                        ditampilkan, supaya tidak ada jalan pintas ke menu yang
+                        sudah dihilangkan. */}
+                    {bolehLihatRapat && (
+                        <Link href="/daily-meetings">
+                            <Kpi
+                                label="Rapat"
+                                value={s.meetings.total}
+                                sub={`${s.meetings.hariIni} hari ini · ${s.meetings.akanDatang} akan datang`}
+                                icon={Users}
+                                tone="blue"
+                            />
+                        </Link>
+                    )}
                 </div>
 
                 {/* Quick Access - buka detail satu pekerjaan tanpa pindah halaman */}
@@ -754,7 +762,8 @@ export default function Dashboard({
                     </Card>
                 </div>
 
-                {/* Jadwal rapat */}
+                {/* Jadwal rapat — ikut disembunyikan bila menu rapat tidak ditampilkan. */}
+                {bolehLihatRapat && (
                 <Card>
                     <CardHeader className="pb-3">
                         <CardTitle className="flex items-center gap-2 text-base">
@@ -836,6 +845,7 @@ export default function Dashboard({
                         </div>
                     </CardContent>
                 </Card>
+                )}
             </div>
         </>
     );

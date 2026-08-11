@@ -23,8 +23,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('team-outage', function() {
         return inertia('team-outage');
     })->name('team-outage');
-    
-    // Daily Meeting routes
+
+    // Menu Daily Meeting yang baru — masih placeholder. Rute jamak di bawah
+    // (daily-meetings) adalah fitur Rapat Outage yang sudah berjalan.
+    Route::get('daily-meeting', fn () => inertia('daily-meeting'))->name('daily-meeting');
+
+    // Rapat Outage routes
     Route::resource('daily-meetings', DailyMeetingController::class)->only(['index', 'store', 'show', 'destroy']);
     Route::get('daily-meetings/{dailyMeeting}/qr', [DailyMeetingController::class, 'qrDisplay'])->name('daily-meetings.qr');
     Route::post('daily-meetings/{dailyMeeting}/minutes', [DailyMeetingController::class, 'storeMinutes'])->name('daily-meetings.minutes');

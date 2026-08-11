@@ -1405,7 +1405,7 @@ return '-';
 DailyMeetingShow.layout = {
     breadcrumbs: [
         {
-            title: 'Daily Meeting',
+            title: 'Rapat Outage',
             href: '/daily-meetings',
         },
         {

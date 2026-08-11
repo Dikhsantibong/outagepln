@@ -25,7 +25,21 @@ class OutagePlan extends Model
         'real_start',
         'real_stop',
         'ket_realisasi',
+        'photos',
     ];
+
+    protected $casts = [
+        'photos' => 'array',
+    ];
+
+    /**
+     * Status penyelesaian pekerjaan.
+     *
+     * Dulu kolom teks bebas, tapi seluruh datanya memang hanya OPEN atau CLOSE.
+     * Dijadikan daftar tertutup supaya filter dan hitungan status tidak meleset
+     * gara-gara variasi ejaan.
+     */
+    public const KET_OPTIONS = ['OPEN', 'CLOSE'];
 
     /**
      * Spelling variants found in the source sheet, folded onto one brand so a

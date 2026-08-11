@@ -42,6 +42,14 @@ class HandleInertiaRequests extends Middleware
             'appUrl' => config('app.url'),
             'auth' => [
                 'user' => $request->user(),
+                // Izin dikirim sebagai boolean, bukan dibiarkan UI menebak dari
+                // string role. Kalau aturannya berubah, cukup satu tempat yang
+                // disesuaikan dan seluruh halaman ikut benar.
+                'can' => [
+                    'delete' => (bool) $request->user()?->canDeleteRecords(),
+                    'write' => (bool) $request->user()?->canWrite(),
+                    'viewMeetings' => (bool) $request->user()?->canViewMeetings(),
+                ],
             ],
             'flash' => [
                 'success' => fn () => $request->session()->get('success'),

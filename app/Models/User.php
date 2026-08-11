@@ -31,4 +31,44 @@ class User extends Authenticatable
             'two_factor_confirmed_at' => 'datetime',
         ];
     }
+
+    public function isAdmin(): bool
+    {
+        return $this->role === 'admin';
+    }
+
+    /** Tamu hanya boleh melihat; tidak boleh menambah maupun mengubah apa pun. */
+    public function isTamu(): bool
+    {
+        return $this->role === 'tamu';
+    }
+
+    /**
+     * Pengelola mengisi dan mengubah data mesin merek yang dikelolanya, tapi
+     * tidak boleh membuang catatan induk — jadwal outage dan rapat. Menghapus
+     * satu jadwal ikut membuang seluruh riwayat progres harian, foto, dan
+     * notulennya, dan itu tidak bisa dibatalkan.
+     *
+     * Menghapus temuan atau foto notulen tetap boleh, karena itu bagian dari
+     * mengoreksi isian mereka sendiri.
+     */
+    public function canDeleteRecords(): bool
+    {
+        return $this->isAdmin();
+    }
+
+    /** Tamu tidak boleh menulis apa pun. */
+    public function canWrite(): bool
+    {
+        return ! $this->isTamu();
+    }
+
+    /**
+     * Rapat outage dikoordinasi terpusat, bukan per merek mesin, jadi menunya
+     * tidak relevan untuk pengelola.
+     */
+    public function canViewMeetings(): bool
+    {
+        return $this->role !== 'pengelola';
+    }
 }

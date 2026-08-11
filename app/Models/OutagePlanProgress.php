@@ -18,12 +18,14 @@ class OutagePlanProgress extends Model
         'material_nama',
         'uraian_pekerjaan',
         'keterangan',
+        'photos',
     ];
 
     protected $casts = [
         'tanggal' => 'date:Y-m-d',
         'plan_progress' => 'float',
         'actual_progress' => 'float',
+        'photos' => 'array',
     ];
 
     protected $appends = [

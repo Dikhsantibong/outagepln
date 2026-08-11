@@ -7,6 +7,7 @@ export type DailyProgressRow = {
     material_nama: string;
     uraian_pekerjaan: string;
     keterangan: string;
+    photos?: string[];
 };
 
 /** Kolom teks pada baris harian, dipakai untuk membangun baris kosong. */
@@ -29,6 +30,7 @@ export type DailyProgressRecord = {
     material_nama?: string | null;
     uraian_pekerjaan?: string | null;
     keterangan: string | null;
+    photos?: string[] | null;
     status?: string;
 };
 
@@ -237,6 +239,7 @@ export function buildDailyRows(
             material_nama: found?.material_nama ?? '',
             uraian_pekerjaan: found?.uraian_pekerjaan ?? '',
             keterangan: found?.keterangan ?? '',
+            photos: found?.photos ?? [],
         };
     });
 }
@@ -251,6 +254,7 @@ export function emptyDailyRow(tanggal: string): DailyProgressRow {
         material_nama: '',
         uraian_pekerjaan: '',
         keterangan: '',
+        photos: [],
     };
 }
 

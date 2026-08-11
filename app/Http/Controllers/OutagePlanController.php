@@ -8,6 +8,7 @@ use Inertia\Inertia;
 use App\Models\OutagePlan;
 use App\Support\SCurveChartRenderer;
 use App\Support\TahunFilter;
+use Illuminate\Validation\Rule;
 use Barryvdh\DomPDF\Facade\Pdf;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
@@ -335,6 +336,22 @@ class OutagePlanController extends Controller
         ]);
     }
 
+    /**
+     * Membuang berkas foto yang tidak lagi dipakai sebuah baris harian.
+     *
+     * @param  array<int, string>  $photosBaru  daftar path yang akan disimpan
+     */
+    private function hapusFotoYatim(OutagePlan $outagePlan, string $tanggal, array $photosBaru): void
+    {
+        $lama = $outagePlan->dailyProgresses()
+            ->where('tanggal', $tanggal)
+            ->value('photos') ?? [];
+
+        foreach (array_diff($lama, $photosBaru) as $path) {
+            \Illuminate\Support\Facades\Storage::disk('public')->delete($path);
+        }
+    }
+
     private function exportFilename(OutagePlan $outagePlan, string $extension): string
     {
         $slug = \Illuminate\Support\Str::slug($outagePlan->mesin_pembangkit ?: 'outage-plan');
@@ -357,7 +374,10 @@ class OutagePlanController extends Controller
             'rapat_p1' => 'nullable|string',
             'rapat_p2' => 'nullable|string',
             'rapat_p3' => 'nullable|string',
-            'ket' => 'nullable|string|max:50',
+            // Hanya OPEN/CLOSE. Seluruh data yang ada memang sudah begitu, dan
+            // membatasinya di sini mencegah variasi ejaan baru masuk lewat
+            // request langsung — yang akan membuat filter Ket meleset.
+            'ket' => ['nullable', Rule::in(OutagePlan::KET_OPTIONS)],
             'sistem' => 'nullable|string|max:100',
             'real_start' => 'nullable|date',
             'real_stop' => 'nullable|date',
@@ -384,7 +404,10 @@ class OutagePlanController extends Controller
             'rapat_p1' => 'nullable|string',
             'rapat_p2' => 'nullable|string',
             'rapat_p3' => 'nullable|string',
-            'ket' => 'nullable|string|max:50',
+            // Hanya OPEN/CLOSE. Seluruh data yang ada memang sudah begitu, dan
+            // membatasinya di sini mencegah variasi ejaan baru masuk lewat
+            // request langsung — yang akan membuat filter Ket meleset.
+            'ket' => ['nullable', Rule::in(OutagePlan::KET_OPTIONS)],
             'sistem' => 'nullable|string|max:100',
             'real_start' => 'nullable|date',
             'real_stop' => 'nullable|date',
@@ -397,6 +420,9 @@ class OutagePlanController extends Controller
             'daily_progress.*.material_nama' => 'nullable|string|max:255',
             'daily_progress.*.uraian_pekerjaan' => 'nullable|string',
             'daily_progress.*.keterangan' => 'nullable|string|max:255',
+            'daily_progress.*.new_photos.*' => 'nullable|image|max:5120',
+            'daily_progress.*.retained_photos' => 'nullable|array',
+            'daily_progress.*.retained_photos.*' => 'nullable|string',
         ]);
 
         $dailyProgress = $validated['daily_progress'] ?? null;
@@ -408,19 +434,34 @@ class OutagePlanController extends Controller
             $tanggalList = collect($dailyProgress)->pluck('tanggal')->all();
             $outagePlan->dailyProgresses()->whereNotIn('tanggal', $tanggalList)->delete();
 
-            foreach ($dailyProgress as $row) {
+            foreach ($dailyProgress as $index => $row) {
+                // Determine photos for this row
+                $photos = $row['retained_photos'] ?? [];
+
+                if ($request->hasFile("daily_progress.{$index}.new_photos")) {
+                    foreach ($request->file("daily_progress.{$index}.new_photos") as $file) {
+                        if ($file->isValid()) {
+                            $path = $file->store('outage-photos', 'public');
+                            $photos[] = $path;
+                        }
+                    }
+                }
+
+                // Foto yang dilepas dari baris ini ikut dibuang dari disk.
+                // Tanpa ini setiap penghapusan menyisakan berkas yatim yang
+                // tidak lagi dirujuk siapa pun tapi terus memakan penyimpanan.
+                $this->hapusFotoYatim($outagePlan, $row['tanggal'], $photos);
+
                 $outagePlan->dailyProgresses()->updateOrCreate(
                     ['tanggal' => $row['tanggal']],
                     [
-                        // Blank stays NULL ("belum diisi"). Coercing it to 0 made
-                        // the row look like a drop from the previous day, and the
-                        // cumulative-progress rule then blocked every later save.
                         'plan_progress' => $row['plan_progress'] ?? null,
                         'actual_progress' => $row['actual_progress'] ?? null,
                         'material_part_number' => $row['material_part_number'] ?? null,
                         'material_nama' => $row['material_nama'] ?? null,
                         'uraian_pekerjaan' => $row['uraian_pekerjaan'] ?? null,
                         'keterangan' => $row['keterangan'] ?? null,
+                        'photos' => array_values($photos),
                     ]
                 );
             }
@@ -437,9 +478,23 @@ class OutagePlanController extends Controller
         return redirect()->back()->with('success', 'Data berhasil diperbarui.');
     }
 
-    public function destroy(OutagePlan $outagePlan)
+    /**
+     * Hanya admin yang boleh membuang jadwal outage.
+     *
+     * Menyembunyikan tombolnya di layar tidak cukup — rutenya tetap bisa
+     * dipanggil langsung. Pemeriksaannya harus di sini.
+     */
+    public function destroy(Request $request, OutagePlan $outagePlan)
     {
+        abort_unless($request->user()?->canDeleteRecords(), 403);
+
+        abort_unless(
+            OutagePlan::visibleTo($request->user())->whereKey($outagePlan->id)->exists(),
+            403,
+        );
+
         $outagePlan->delete();
+
         return redirect()->back()->with('success', 'Data berhasil dihapus.');
     }
 }

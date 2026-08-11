@@ -57,6 +57,12 @@ import {
     TableHeader,
     TableRow,
 } from '@/components/ui/table';
+import {
+    JENIS_PEMBANGKIT,
+    KET_OPTIONS,
+    SCOPES,
+} from '@/lib/outage-options';
+import { formatDMY } from '@/lib/outage-progress';
 
 type FilterOptions = {
     tahun: (string | number)[];
@@ -69,6 +75,39 @@ type FilterOptions = {
 
 /** Sentinel for "no filter" - Radix Select does not allow an empty item value. */
 const ALL = '__all__';
+
+/**
+ * Tanggal pelaksanaan pada tabel: Real Start / Real Stop.
+ *
+ * Sebagian pekerjaan belum punya tanggal realisasi. Alih-alih membiarkan
+ * selnya kosong, tanggal rencana ditampilkan meredup dan ditandai bintang —
+ * informasinya tetap ada, tapi tidak bisa tertukar dengan tanggal sebenarnya.
+ */
+function TanggalPelaksanaan({
+    real,
+    rencana,
+}: {
+    real?: string | null;
+    rencana?: string | null;
+}) {
+    if (real) {
+        return <span className="font-mono text-[11px]">{formatDMY(real)}</span>;
+    }
+
+    if (rencana) {
+        return (
+            <span
+                className="font-mono text-[11px] text-muted-foreground/70 italic"
+                title="Realisasi belum diisi — yang tampil tanggal rencana"
+            >
+                {formatDMY(rencana)}
+                <span className="ml-0.5 not-italic">*</span>
+            </span>
+        );
+    }
+
+    return <span className="text-[11px] text-muted-foreground">-</span>;
+}
 
 function FilterSelect({
     label,
@@ -117,7 +156,9 @@ export default function OutagePlansIndex({
     filterOptions?: FilterOptions;
 }) {
     const { auth } = usePage<any>().props;
-    const isTamu = auth?.user?.role === 'tamu';
+    // Izin datang dari server; halaman tidak menafsirkan sendiri string role.
+    const bolehTulis = auth?.can?.write ?? false;
+    const bolehHapus = auth?.can?.delete ?? false;
     // Modal ini khusus menambah jadwal baru; pengubahan punya halaman sendiri
     // di /outage-plans/{id}/edit karena progress harian butuh ruang penuh.
     const [dialogOpen, setDialogOpen] = useState(false);
@@ -276,7 +317,7 @@ export default function OutagePlansIndex({
                             pembangkit
                         </p>
                     </div>
-                    {!isTamu && (
+                    {bolehTulis && (
                         <Button onClick={openAddDialog} className="gap-2">
                             <Plus className="h-4 w-4" />
                             Tambah Jadwal
@@ -312,6 +353,11 @@ export default function OutagePlansIndex({
                                 </div>
                                 <div className="rounded-md border bg-muted px-2 py-1 text-xs font-medium text-muted-foreground">
                                     Total: {outagePlans.total || 0}
+                                </div>
+                                <div className="text-[11px] text-muted-foreground italic">
+                                    Kolom tanggal = realisasi &middot;{' '}
+                                    <span className="not-italic">*</span> masih tanggal
+                                    rencana
                                 </div>
                             </div>
                         </div>
@@ -453,10 +499,10 @@ export default function OutagePlansIndex({
                                         Jenis
                                     </TableHead>
                                     <TableHead className="px-4 text-center font-bold">
-                                        Mulai
+                                        Real Start
                                     </TableHead>
                                     <TableHead className="px-4 text-center font-bold">
-                                        Selesai
+                                        Real Stop
                                     </TableHead>
                                     <TableHead className="w-32 px-4 text-center font-bold">
                                         Progres
@@ -529,7 +575,7 @@ export default function OutagePlansIndex({
                                                                 </DropdownMenuItem>
                                                             </DropdownMenuContent>
                                                         </DropdownMenu>
-                                                        {!isTamu && (
+                                                        {bolehTulis && (
                                                             <div className="flex items-center gap-1">
                                                                 {/* Edit punya halaman sendiri: progress harian
                                                                     tidak muat diisi di dalam modal. */}
@@ -544,18 +590,23 @@ export default function OutagePlansIndex({
                                                                         <Pencil className="h-3.5 w-3.5" />
                                                                     </Button>
                                                                 </Link>
-                                                                <Button
-                                                                    variant="ghost"
-                                                                    size="icon"
-                                                                    className="h-7 w-7 text-destructive hover:bg-destructive/10"
-                                                                    onClick={() =>
-                                                                        handleDelete(
-                                                                            plan.id,
-                                                                        )
-                                                                    }
-                                                                >
-                                                                    <Trash2 className="h-3.5 w-3.5" />
-                                                                </Button>
+                                                                {/* Pengelola hanya mengisi dan mengubah;
+                                                                    membuang jadwal ikut membuang seluruh
+                                                                    riwayat hariannya. */}
+                                                                {bolehHapus && (
+                                                                    <Button
+                                                                        variant="ghost"
+                                                                        size="icon"
+                                                                        className="h-7 w-7 text-destructive hover:bg-destructive/10"
+                                                                        onClick={() =>
+                                                                            handleDelete(
+                                                                                plan.id,
+                                                                            )
+                                                                        }
+                                                                    >
+                                                                        <Trash2 className="h-3.5 w-3.5" />
+                                                                    </Button>
+                                                                )}
                                                             </div>
                                                         )}
                                                     </div>
@@ -571,11 +622,17 @@ export default function OutagePlansIndex({
                                                         {plan.jenis_pembangkit}
                                                     </span>
                                                 </TableCell>
-                                                <TableCell className="px-4 text-center font-mono text-[11px] text-muted-foreground">
-                                                    {plan.start_date || '-'}
+                                                <TableCell className="px-4 text-center">
+                                                    <TanggalPelaksanaan
+                                                        real={plan.real_start}
+                                                        rencana={plan.start_date}
+                                                    />
                                                 </TableCell>
-                                                <TableCell className="px-4 text-center font-mono text-[11px] text-muted-foreground">
-                                                    {plan.selesai || '-'}
+                                                <TableCell className="px-4 text-center">
+                                                    <TanggalPelaksanaan
+                                                        real={plan.real_stop}
+                                                        rencana={plan.selesai}
+                                                    />
                                                 </TableCell>
                                                 <TableCell className="px-4 text-center">
                                                     <div className="flex items-center gap-2">
@@ -763,32 +820,11 @@ export default function OutagePlansIndex({
                                         <SelectValue placeholder="Pilih Scope" />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="FINAL STAGE">
-                                            FINAL STAGE
-                                        </SelectItem>
-                                        <SelectItem value="SECOND STAGE">
-                                            SECOND STAGE
-                                        </SelectItem>
-                                        <SelectItem value="2ND STAGE">
-                                            2ND STAGE
-                                        </SelectItem>
-                                        <SelectItem value="TO">TO</SelectItem>
-                                        <SelectItem value="MO">MO</SelectItem>
-                                        <SelectItem value="SO">SO</SelectItem>
-                                        <SelectItem value="AI">AI</SelectItem>
-                                        <SelectItem value="GI">GI</SelectItem>
-                                        <SelectItem value="PMS 20 K">
-                                            PMS 20 K
-                                        </SelectItem>
-                                        <SelectItem value="PMS 24 K">
-                                            PMS 24 K
-                                        </SelectItem>
-                                        <SelectItem value="PMS 32K">
-                                            PMS 32K
-                                        </SelectItem>
-                                        <SelectItem value="PMS 40K">
-                                            PMS 40K
-                                        </SelectItem>
+                                        {SCOPES.map((sc) => (
+                                            <SelectItem key={sc} value={sc}>
+                                                {sc}
+                                            </SelectItem>
+                                        ))}
                                     </SelectContent>
                                 </Select>
                                 {errors.scope && (
@@ -809,15 +845,11 @@ export default function OutagePlansIndex({
                                         <SelectValue placeholder="Pilih Jenis" />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="PLTD">
-                                            PLTD
-                                        </SelectItem>
-                                        <SelectItem value="PLTMG">
-                                            PLTMG
-                                        </SelectItem>
-                                        <SelectItem value="PLTM">
-                                            PLTM
-                                        </SelectItem>
+                                        {JENIS_PEMBANGKIT.map((j) => (
+                                            <SelectItem key={j} value={j}>
+                                                {j}
+                                            </SelectItem>
+                                        ))}
                                     </SelectContent>
                                 </Select>
                             </div>
@@ -934,14 +966,24 @@ export default function OutagePlansIndex({
                         <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-2">
                                 <Label htmlFor="ket">Keterangan</Label>
-                                <Input
-                                    id="ket"
-                                    type="text"
+                                <Select
                                     value={data.ket}
-                                    onChange={(e) =>
-                                        setData('ket', e.target.value)
-                                    }
-                                />
+                                    onValueChange={(v) => setData('ket', v)}
+                                >
+                                    <SelectTrigger id="ket">
+                                        <SelectValue placeholder="Pilih status" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {KET_OPTIONS.map((k) => (
+                                            <SelectItem key={k} value={k}>
+                                                {k}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                                <p className="text-xs text-muted-foreground">
+                                    OPEN = masih berjalan, CLOSE = sudah ditutup.
+                                </p>
                             </div>
                             <div className="space-y-2">
                                 <Label htmlFor="sistem">Sistem</Label>

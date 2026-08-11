@@ -654,9 +654,13 @@ class DailyMeetingController extends Controller
         ]);
     }
 
-    public function destroy(DailyMeeting $dailyMeeting)
+    /** Hanya admin yang boleh membuang rapat; lihat User::canDeleteRecords(). */
+    public function destroy(Request $request, DailyMeeting $dailyMeeting)
     {
+        abort_unless($request->user()?->canDeleteRecords(), 403);
+
         $dailyMeeting->delete();
+
         return redirect()->route('daily-meetings.index')->with('success', 'Meeting berhasil dihapus.');
     }
 }

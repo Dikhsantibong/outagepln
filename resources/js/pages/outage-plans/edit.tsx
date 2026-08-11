@@ -1,4 +1,4 @@
-import { Head, Link, useForm } from '@inertiajs/react';
+import { Head, Link, useForm, router } from '@inertiajs/react';
 import {
     AlertTriangle,
     ArrowLeft,
@@ -12,6 +12,8 @@ import {
 } from 'lucide-react';
 import type { FormEventHandler, KeyboardEvent } from 'react';
 import { useMemo, useState } from 'react';
+import { DailyPhotoCell } from '@/components/daily-photo-cell';
+import type { FotoItem } from '@/components/daily-photo-cell';
 import { Button } from '@/components/ui/button';
 import {
     Card,
@@ -38,6 +40,11 @@ import {
     TableRow,
 } from '@/components/ui/table';
 import {
+    JENIS_PEMBANGKIT,
+    KET_OPTIONS,
+    SCOPES,
+} from '@/lib/outage-options';
+import {
     buildDailyRows,
     buildProgressDates,
     computeStatus,
@@ -48,13 +55,6 @@ import {
     validateDailyProgress,
 } from '@/lib/outage-progress';
 import type { DailyProgressRow } from '@/lib/outage-progress';
-
-const SCOPES = [
-    'FINAL STAGE', 'SECOND STAGE', '2ND STAGE', 'TO', 'MO', 'SO', 'AI', 'GI',
-    'PMS 20 K', 'PMS 24 K', 'PMS 32K', 'PMS 40K',
-];
-
-const JENIS = ['PLTD', 'PLTMG', 'PLTM'];
 
 type OutagePlan = {
     id: number;
@@ -80,6 +80,7 @@ type OutagePlan = {
         plan_progress: number | null;
         actual_progress: number | null;
         keterangan: string | null;
+        photos: string[] | null;
     }[];
 };
 
@@ -148,7 +149,7 @@ function Field({
 export default function OutagePlanEdit({ outagePlan }: { outagePlan: OutagePlan }) {
     const existing = outagePlan.daily_progresses ?? [];
 
-    const { data, setData, put, processing, errors } = useForm({
+    const { data, setData, processing, errors } = useForm({
         mesin_pembangkit: outagePlan.mesin_pembangkit || '',
         scope: outagePlan.scope ? outagePlan.scope.toUpperCase() : '',
         jenis_pembangkit: outagePlan.jenis_pembangkit
@@ -179,6 +180,91 @@ export default function OutagePlanEdit({ outagePlan }: { outagePlan: OutagePlan 
             existing,
         ) as DailyProgressRow[],
     });
+
+    // --- Photo state (per row, keyed by tanggal) ---
+    const [retainedPhotos, setRetainedPhotos] = useState<Record<string, string[]>>(() => {
+        const init: Record<string, string[]> = {};
+        existing.forEach((row) => {
+            init[row.tanggal] = row.photos ?? [];
+        });
+
+        return init;
+    });
+    const [newPhotoFiles, setNewPhotoFiles] = useState<Record<string, File[]>>({});
+    const [newPhotoPreviews, setNewPhotoPreviews] = useState<Record<string, string[]>>({});
+
+    const removeRetainedPhoto = (tanggal: string, index: number) => {
+        setRetainedPhotos((prev) => ({
+            ...prev,
+            [tanggal]: (prev[tanggal] ?? []).filter((_, i) => i !== index),
+        }));
+    };
+
+    const removeNewPhoto = (tanggal: string, index: number) => {
+        setNewPhotoFiles((prev) => ({
+            ...prev,
+            [tanggal]: (prev[tanggal] ?? []).filter((_, i) => i !== index),
+        }));
+        setNewPhotoPreviews((prev) => ({
+            ...prev,
+            [tanggal]: (prev[tanggal] ?? []).filter((_, i) => i !== index),
+        }));
+    };
+
+    /** Daftar foto satu baris: yang sudah tersimpan dulu, lalu yang baru. */
+    const fotoBaris = (tanggal: string): FotoItem[] => [
+        ...(retainedPhotos[tanggal] ?? []).map((path, index) => ({
+            src: `/storage/${path}`,
+            baru: false,
+            index,
+        })),
+        ...(newPhotoPreviews[tanggal] ?? []).map((src, index) => ({
+            src,
+            baru: true,
+            index,
+        })),
+    ];
+
+    const hapusFoto = (tanggal: string, foto: FotoItem) => {
+        if (foto.baru) {
+            removeNewPhoto(tanggal, foto.index);
+        } else {
+            removeRetainedPhoto(tanggal, foto.index);
+        }
+    };
+
+    /**
+     * Mengganti satu foto: yang lama dilepas, yang baru menyusul di belakang.
+     *
+     * Foto tersimpan tidak bisa ditimpa di tempat — path-nya baru terbentuk
+     * setelah berkasnya sampai di server — jadi penggantian dilakukan sebagai
+     * "lepas yang lama, tambahkan yang baru" dalam satu aksi.
+     */
+    const gantiFoto = (tanggal: string, foto: FotoItem, file: File) => {
+        hapusFoto(tanggal, foto);
+        tambahFoto(tanggal, [file]);
+    };
+
+    /** Menambahkan berkas ke antrean unggah sekaligus membuat pratinjaunya. */
+    const tambahFoto = (tanggal: string, files: File[]) => {
+        setNewPhotoFiles((prev) => ({
+            ...prev,
+            [tanggal]: [...(prev[tanggal] ?? []), ...files],
+        }));
+
+        files.forEach((file) => {
+            const reader = new FileReader();
+
+            reader.onloadend = () => {
+                setNewPhotoPreviews((prev) => ({
+                    ...prev,
+                    [tanggal]: [...(prev[tanggal] ?? []), reader.result as string],
+                }));
+            };
+
+            reader.readAsDataURL(file);
+        });
+    };
 
     const [extraDays, setExtraDays] = useState(() =>
         countExtraDays({
@@ -313,7 +399,50 @@ export default function OutagePlanEdit({ outagePlan }: { outagePlan: OutagePlan 
             return;
         }
 
-        put(`/outage-plans/${outagePlan.id}`, { preserveScroll: true });
+        // Use FormData because file uploads don't work with PUT.
+        // Laravel reads _method to treat this as a PUT request.
+        const formData = new FormData();
+        formData.append('_method', 'put');
+
+        // Append all scalar form fields
+        const scalarKeys = [
+            'mesin_pembangkit', 'scope', 'jenis_pembangkit', 'durasi',
+            'start_date', 'selesai', 'rapat_r2', 'rapat_r3', 'rapat_p1',
+            'rapat_p2', 'rapat_p3', 'ket', 'sistem', 'real_start',
+            'real_stop', 'ket_realisasi',
+        ] as const;
+
+        for (const key of scalarKeys) {
+            formData.append(key, data[key]);
+        }
+
+        // Append daily progress as indexed array
+        data.daily_progress.forEach((row, i) => {
+            formData.append(`daily_progress[${i}][tanggal]`, row.tanggal);
+            formData.append(`daily_progress[${i}][plan_progress]`, row.plan_progress);
+            formData.append(`daily_progress[${i}][actual_progress]`, row.actual_progress);
+            formData.append(`daily_progress[${i}][material_part_number]`, row.material_part_number);
+            formData.append(`daily_progress[${i}][material_nama]`, row.material_nama);
+            formData.append(`daily_progress[${i}][uraian_pekerjaan]`, row.uraian_pekerjaan);
+            formData.append(`daily_progress[${i}][keterangan]`, row.keterangan);
+
+            // Append retained photos for this row
+            const retained = retainedPhotos[row.tanggal] || [];
+            retained.forEach((path, j) => {
+                formData.append(`daily_progress[${i}][retained_photos][${j}]`, path);
+            });
+
+            // Append new photos for this row
+            const newFiles = newPhotoFiles[row.tanggal] || [];
+            newFiles.forEach((file) => {
+                formData.append(`daily_progress[${i}][new_photos][]`, file);
+            });
+        });
+
+        router.post(`/outage-plans/${outagePlan.id}`, formData, {
+            preserveScroll: true,
+            forceFormData: true,
+        });
     };
 
     const hariIni = new Date().toISOString().slice(0, 10);
@@ -420,7 +549,7 @@ export default function OutagePlanEdit({ outagePlan }: { outagePlan: OutagePlan 
                                         <SelectValue placeholder="Pilih Jenis" />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        {JENIS.map((j) => (
+                                        {JENIS_PEMBANGKIT.map((j) => (
                                             <SelectItem key={j} value={j}>
                                                 {j}
                                             </SelectItem>
@@ -470,12 +599,25 @@ export default function OutagePlanEdit({ outagePlan }: { outagePlan: OutagePlan 
                                 />
                             </Field>
 
-                            <Field label="Keterangan" htmlFor="ket">
-                                <Input
-                                    id="ket"
+                            <Field
+                                label="Keterangan"
+                                hint="OPEN = masih berjalan, CLOSE = sudah ditutup."
+                            >
+                                <Select
                                     value={data.ket}
-                                    onChange={(e) => setData('ket', e.target.value)}
-                                />
+                                    onValueChange={(v) => setData('ket', v)}
+                                >
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Pilih status" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {KET_OPTIONS.map((k) => (
+                                            <SelectItem key={k} value={k}>
+                                                {k}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
                             </Field>
 
                             <Field
@@ -634,6 +776,9 @@ export default function OutagePlanEdit({ outagePlan }: { outagePlan: OutagePlan 
                                                 Uraian Pekerjaan
                                             </TableHead>
                                             <TableHead className="min-w-[200px] px-3 font-bold">
+                                                Dokumentasi Foto
+                                            </TableHead>
+                                            <TableHead className="min-w-[200px] px-3 font-bold">
                                                 Keterangan
                                             </TableHead>
                                         </TableRow>
@@ -771,6 +916,31 @@ export default function OutagePlanEdit({ outagePlan }: { outagePlan: OutagePlan 
                                                                     row.tanggal,
                                                                     'uraian_pekerjaan',
                                                                     v,
+                                                                )
+                                                            }
+                                                        />
+                                                    </TableCell>
+                                                    <TableCell className="px-3 align-top">
+                                                        <DailyPhotoCell
+                                                            label={formatDMY(row.tanggal)}
+                                                            fotos={fotoBaris(row.tanggal)}
+                                                            onTambah={(files) =>
+                                                                tambahFoto(
+                                                                    row.tanggal,
+                                                                    files,
+                                                                )
+                                                            }
+                                                            onHapus={(foto) =>
+                                                                hapusFoto(
+                                                                    row.tanggal,
+                                                                    foto,
+                                                                )
+                                                            }
+                                                            onGanti={(foto, file) =>
+                                                                gantiFoto(
+                                                                    row.tanggal,
+                                                                    foto,
+                                                                    file,
                                                                 )
                                                             }
                                                         />

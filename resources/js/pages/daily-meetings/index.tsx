@@ -88,7 +88,9 @@ export default function DailyMeetingsIndex({
     filterOptions?: FilterOptions;
 }) {
     const { auth } = usePage<any>().props;
-    const isTamu = auth?.user?.role === 'tamu';
+    // Izin datang dari server; halaman tidak menafsirkan sendiri string role.
+    const isTamu = !(auth?.can?.write ?? false);
+    const bolehHapus = auth?.can?.delete ?? false;
     const [searchTerm, setSearchTerm] = useState(filters?.search || '');
 
     const opts: FilterOptions = filterOptions ?? {
@@ -177,13 +179,13 @@ export default function DailyMeetingsIndex({
 
     return (
         <>
-            <Head title="Daily Meeting" />
+            <Head title="Rapat Outage" />
 
             <div className="flex h-full flex-1 flex-col gap-6 p-4">
                 {/* Header */}
                 <div className="flex items-center justify-between">
                     <div>
-                        <h1 className="text-2xl font-bold tracking-tight">Daily Meeting</h1>
+                        <h1 className="text-2xl font-bold tracking-tight">Rapat Outage</h1>
                         <p className="text-sm text-muted-foreground mt-1">Kelola rapat harian, daftar hadir, dan notulen</p>
                     </div>
                     <div className="flex items-center gap-2">
@@ -349,7 +351,9 @@ export default function DailyMeetingsIndex({
                                                 <QrCode className="h-4 w-4" />
                                             </Button>
                                         )}
-                                        {!isTamu && (
+                                        {/* Pengelola hanya mengisi notulen; membuang rapat
+                                            ikut membuang temuan dan absensinya. */}
+                                        {bolehHapus && (
                                             <Button
                                                 size="sm"
                                                 variant="ghost"
@@ -410,7 +414,7 @@ export default function DailyMeetingsIndex({
 DailyMeetingsIndex.layout = {
     breadcrumbs: [
         {
-            title: 'Daily Meeting',
+            title: 'Rapat Outage',
             href: '/daily-meetings',
         },
     ],

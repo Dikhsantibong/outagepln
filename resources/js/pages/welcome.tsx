@@ -6,10 +6,14 @@ import {
     CalendarClock,
     CheckCircle2,
     Clock,
+    Crosshair,
+    DollarSign,
+    HeartPulse,
     Hourglass,
     Layers,
     RefreshCw,
     Server,
+    ShieldCheck,
     Wrench,
 } from 'lucide-react';
 import {
@@ -44,6 +48,8 @@ import {
 } from '@/components/ui/table';
 
 type Bucket = { label: string; total: number };
+type KinerjaDetail = { label: string; value: string; baik?: boolean };
+type KinerjaItem = { nilai: number; terisi: number; detail?: KinerjaDetail[] };
 
 interface WelcomeProps {
     canLogin: boolean;
@@ -60,6 +66,8 @@ interface WelcomeProps {
         scopeDistribution: Bucket[];
         progressDistribution: { range: string; count: number }[];
         monthlyTimeline: { bulan: string; total: number }[];
+        durasiByScope: { scope: string; avg_durasi: number; total: number }[];
+        kinerja: Record<string, KinerjaItem>;
     };
     berjalanList: {
         mesin: string;
@@ -181,6 +189,68 @@ function Komposisi({ judul, data, total, warna }: { judul: string; data: Bucket[
     );
 }
 
+function KinerjaCard({
+    label,
+    item,
+    icon: Icon,
+    color,
+}: {
+    label: string;
+    item?: KinerjaItem;
+    icon: typeof ShieldCheck;
+    color: string;
+}) {
+    const nilai = item?.nilai ?? 0;
+    const terisi = item?.terisi ?? 0;
+
+    return (
+        <Card className="shadow-sm">
+            <CardContent className="p-4 text-center">
+                <Icon className={`mx-auto mb-2 h-5 w-5 ${color}`} />
+                <p className="text-[10px] font-bold tracking-wider text-muted-foreground uppercase">
+                    {label}
+                </p>
+                {terisi > 0 ? (
+                    <>
+                        <p className={`text-2xl font-black ${color}`}>{nilai}%</p>
+                        <p className="text-[10px] text-muted-foreground">dari {terisi} data</p>
+
+                        {/* Parameter pembentuk nilai */}
+                        {item?.detail && item.detail.length > 0 && (
+                            <div className="mt-2.5 space-y-1 border-t pt-2 text-left">
+                                {item.detail.map((d) => (
+                                    <div
+                                        key={d.label}
+                                        className="flex items-baseline justify-between gap-2 text-[10px]"
+                                    >
+                                        <span className="truncate text-muted-foreground">{d.label}</span>
+                                        <span
+                                            className={`shrink-0 font-bold ${
+                                                d.baik === undefined
+                                                    ? ''
+                                                    : d.baik
+                                                      ? 'text-emerald-600 dark:text-emerald-400'
+                                                      : 'text-red-600 dark:text-red-400'
+                                            }`}
+                                        >
+                                            {d.value}
+                                        </span>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </>
+                ) : (
+                    <>
+                        <p className="text-2xl font-black text-muted-foreground">–</p>
+                        <p className="text-[10px] text-muted-foreground">belum ada data</p>
+                    </>
+                )}
+            </CardContent>
+        </Card>
+    );
+}
+
 export default function Welcome({
     canLogin,
     updatedAt,
@@ -205,6 +275,11 @@ export default function Welcome({
     }));
 
     const scopeData = s.scopeDistribution.slice(0, 10).map((b) => ({ name: b.label, jumlah: b.total }));
+
+    const durasiData = s.durasiByScope.map((d) => ({
+        name: d.scope,
+        durasi: d.avg_durasi,
+    }));
 
     const warnaProgres = (v: number) => (v >= 75 ? '#10b981' : v >= 40 ? '#f59e0b' : '#3b82f6');
 
@@ -359,6 +434,24 @@ export default function Welcome({
                         </CardContent>
                     </Card>
 
+                    {/* Kinerja Outage */}
+                    <div>
+                        <h2 className="mb-2 flex items-center gap-2 text-sm font-bold">
+                            <Activity className="h-4 w-4 text-primary" />
+                            Kinerja Outage
+                            <span className="font-normal text-muted-foreground">
+                                &middot; On Quality tercapai bila daya mampu naik dan SFC turun
+                            </span>
+                        </h2>
+                        <div className="grid grid-cols-2 items-start gap-3 md:grid-cols-5">
+                            <KinerjaCard label="On Quality" item={s.kinerja.onQuality} icon={ShieldCheck} color="text-emerald-600" />
+                            <KinerjaCard label="On Time" item={s.kinerja.onTime} icon={Clock} color="text-blue-600" />
+                            <KinerjaCard label="On Cost" item={s.kinerja.onCost} icon={DollarSign} color="text-amber-600" />
+                            <KinerjaCard label="On Scope" item={s.kinerja.onScope} icon={Crosshair} color="text-indigo-600" />
+                            <KinerjaCard label="On Safety" item={s.kinerja.onSafety} icon={HeartPulse} color="text-rose-600" />
+                        </div>
+                    </div>
+
                     {/* Grafik */}
                     <div className="grid gap-6 lg:grid-cols-2">
                         <Card className="shadow-sm">
@@ -456,6 +549,40 @@ export default function Welcome({
                                         </ResponsiveContainer>
                                     ) : (
                                         <div className="flex h-full items-center justify-center text-xs text-muted-foreground italic">
+                                            Data tidak tersedia.
+                                        </div>
+                                    )}
+                                </div>
+                            </CardContent>
+                        </Card>
+                    </div>
+
+                    {/* Grafik Tambahan */}
+                    <div className="grid gap-6 lg:grid-cols-2">
+                        <Card className="shadow-sm">
+                            <CardHeader className="pb-2">
+                                <CardTitle className="flex items-center gap-2 text-base">
+                                    <Clock className="h-4 w-4 text-amber-500" />
+                                    Rata-rata Durasi per Scope
+                                </CardTitle>
+                                <CardDescription>Dalam hari</CardDescription>
+                            </CardHeader>
+                            <CardContent>
+                                <div className="h-[260px] w-full">
+                                    {durasiData.length > 0 ? (
+                                        <ResponsiveContainer width="100%" height="100%">
+                                            <BarChart data={durasiData} margin={{ top: 18, right: 10, left: -20, bottom: 0 }}>
+                                                <CartesianGrid strokeDasharray="3 3" vertical={false} opacity={0.3} />
+                                                <XAxis dataKey="name" fontSize={10} tickLine={false} axisLine={false} />
+                                                <YAxis fontSize={11} tickLine={false} axisLine={false} />
+                                                <Tooltip contentStyle={TOOLTIP} cursor={{ fill: 'rgba(0,0,0,0.04)' }} formatter={(v) => [`${v} hari`, 'Rata-rata']} />
+                                                <Bar dataKey="durasi" fill="#f59e0b" radius={[5, 5, 0, 0]} maxBarSize={44}>
+                                                    <LabelList dataKey="durasi" position="top" fontSize={11} fontWeight="bold" />
+                                                </Bar>
+                                            </BarChart>
+                                        </ResponsiveContainer>
+                                    ) : (
+                                        <div className="flex h-full items-center justify-center text-sm text-muted-foreground italic">
                                             Data tidak tersedia.
                                         </div>
                                     )}
