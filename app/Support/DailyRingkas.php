@@ -69,4 +69,41 @@ class DailyRingkas
             })
             ->implode("\n");
     }
+
+    /**
+     * Material sebagai baris terstruktur — satu entri per spare part.
+     *
+     * Dipakai lembar/halaman Material tersendiri di rekap PDF dan Excel, yang
+     * menampilkannya sebagai tabel berkolom (bukan teks berpoin). Data lama
+     * (kolom teks tunggal) tetap terbaca sebagai satu baris.
+     *
+     * @return array<int, array{nama: string, part_number: string, qty: string, keterangan: string}>
+     */
+    public static function materialRows($dp): array
+    {
+        $parts = collect($dp->spare_parts ?? [])
+            ->filter(fn ($p) => filled($p['nama'] ?? null) || filled($p['part_number'] ?? null))
+            ->values();
+
+        if ($parts->isNotEmpty()) {
+            return $parts->map(fn ($p) => [
+                'nama' => (string) ($p['nama'] ?? ''),
+                'part_number' => (string) ($p['part_number'] ?? ''),
+                'qty' => (string) ($p['qty'] ?? ''),
+                'keterangan' => (string) ($p['keterangan'] ?? ''),
+            ])->all();
+        }
+
+        // Data sebelum migrasi masih memakai kolom teks tunggal.
+        if (filled($dp->material_nama) || filled($dp->material_part_number)) {
+            return [[
+                'nama' => (string) ($dp->material_nama ?? ''),
+                'part_number' => (string) ($dp->material_part_number ?? ''),
+                'qty' => '',
+                'keterangan' => '',
+            ]];
+        }
+
+        return [];
+    }
 }

@@ -35,6 +35,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
+import { toast } from 'sonner';
 import {
     Table,
     TableBody,
@@ -477,6 +478,8 @@ export default function OutagePlanEdit({ outagePlan }: { outagePlan: OutagePlan 
         router.post(`/outage-plans/${outagePlan.id}`, formData, {
             preserveScroll: true,
             forceFormData: true,
+            onSuccess: () => toast.success('Laporan progress berhasil disimpan'),
+            onError: () => toast.error('Gagal menyimpan laporan progress, periksa kembali inputan Anda'),
         });
     };
 

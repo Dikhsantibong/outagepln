@@ -1,7 +1,7 @@
 import { Plus, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
+import TextareaAutosize from 'react-textarea-autosize';
 import type { SparePart, WorkItem } from '@/lib/outage-progress';
 import { emptySparePart, emptyWorkItem } from '@/lib/outage-progress';
 
@@ -108,29 +108,12 @@ export function WorkItemsInput({
             {items.map((item, i) => (
                 <div key={i} className="flex items-start gap-1">
                     <Nomor i={i} />
-                    <Textarea
-                        className="min-h-[32px] h-auto flex-1 text-[16px] md:text-xs py-1.5 resize-y"
-                        rows={1}
+                    <TextareaAutosize
+                        className="min-h-[32px] flex-1 rounded-md border border-input bg-transparent px-3 py-1.5 text-[16px] md:text-xs shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-none"
+                        minRows={1}
                         placeholder="cth: Pretest beban 1.700 kW"
                         value={item.uraian}
                         onChange={(e) => ubah(i, 'uraian', e.target.value)}
-                        onKeyDown={(e) => {
-                            if (e.key === 'Enter' && !e.shiftKey) {
-                                // Default behavior is a new line, which is what we want.
-                                // It will naturally expand if rows are adjusted or just scroll.
-                                // Actually, let's auto adjust the height based on scrollHeight.
-                                const target = e.target as HTMLTextAreaElement;
-                                setTimeout(() => {
-                                    target.style.height = 'auto';
-                                    target.style.height = `${target.scrollHeight}px`;
-                                }, 0);
-                            }
-                        }}
-                        onInput={(e) => {
-                            const target = e.target as HTMLTextAreaElement;
-                            target.style.height = 'auto';
-                            target.style.height = `${target.scrollHeight}px`;
-                        }}
                     />
                     <div className="relative w-[76px] shrink-0">
                         <Input

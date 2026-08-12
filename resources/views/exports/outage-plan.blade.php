@@ -122,9 +122,14 @@
         .foto-kosong { font-size: 9px; color: #94a3b8; font-style: italic; padding: 8px 0; }
 
         .footer { margin-top: 8px; font-size: 8.5px; color: #94a3b8; text-align: center; }
+
+        /* Tiap bagian rekap dimulai di halaman sendiri. */
+        .page-break { page-break-before: always; }
+        .empty-note { font-size: 10px; color: #94a3b8; font-style: italic; margin-top: 6px; }
     </style>
 </head>
 <body>
+    {{-- ══════════════ HALAMAN 1 · URAIAN PEKERJAAN ══════════════ --}}
     <div class="header">
         <div class="header-left">
             @if ($logo)
@@ -188,68 +193,13 @@
         </tr>
     </table>
 
-    <div class="section-title">Kurva S - Plan vs Actual</div>
-    @if ($chartImage)
-        {{-- The chart image carries its own RENCANA/REALISASI legend. --}}
-        <img src="{{ $chartImage }}" style="width: 100%; display: block;">
-    @else
-        <p style="font-size: 10px; color: #94a3b8; font-style: italic;">Belum ada data progress harian.</p>
-    @endif
-
-    {{-- 1. Kurva S sebagai tabel: angka di balik grafik di atas. --}}
-    <div class="section-title">Tabel Kurva S - Plan vs Actual</div>
-    <table class="data rapat">
-        <thead>
-            <tr>
-                <th style="width: 10%;">Day</th>
-                <th style="width: 16%;">Tanggal</th>
-                <th style="width: 16%;">Plan (%)</th>
-                <th style="width: 16%;">Actual (%)</th>
-                <th style="width: 16%;">Deviasi</th>
-                <th>Status</th>
-            </tr>
-        </thead>
-        <tbody>
-            @forelse ($outagePlan->dailyProgresses as $idx => $dp)
-                @php
-                    $statusClass = match ($dp->status) {
-                        'Leading' => 'status-leading',
-                        'On Progres' => 'status-onprogres',
-                        'Lagging' => 'status-lagging',
-                        default => 'status-kosong',
-                    };
-                    // Deviasi hanya bermakna bila kedua nilainya sudah terisi.
-                    $deviasi = ($dp->plan_progress === null || $dp->actual_progress === null)
-                        ? null
-                        : (float) $dp->actual_progress - (float) $dp->plan_progress;
-                @endphp
-                <tr>
-                    <td>Day {{ $idx + 1 }}</td>
-                    <td>{{ \Carbon\Carbon::parse($dp->tanggal)->format('d-m-Y') }}</td>
-                    <td>{{ $dp->plan_progress === null ? '-' : number_format((float) $dp->plan_progress, 2) . '%' }}</td>
-                    <td>{{ $dp->actual_progress === null ? '-' : number_format((float) $dp->actual_progress, 2) . '%' }}</td>
-                    <td class="{{ $deviasi === null ? 'status-kosong' : ($deviasi < 0 ? 'status-lagging' : 'status-leading') }}">
-                        {{ $deviasi === null ? '-' : ($deviasi > 0 ? '+' : '') . number_format($deviasi, 2) . '%' }}
-                    </td>
-                    <td class="{{ $statusClass }}">{{ $dp->status }}</td>
-                </tr>
-            @empty
-                <tr>
-                    <td colspan="6">Belum ada data progress harian.</td>
-                </tr>
-            @endforelse
-        </tbody>
-    </table>
-
-    {{-- 2. Uraian pekerjaan beserta material yang dipakai. --}}
-    <div class="section-title">Uraian Pekerjaan &amp; Material</div>
+    <div class="section-title">Uraian Pekerjaan</div>
     <table class="data rapat">
         <thead>
             <tr>
                 <th style="width: 8%;">Day</th>
-                <th style="width: 12%;">Tanggal</th>
-                <th style="width: 30%;">Uraian Pekerjaan</th>
-                <th style="width: 26%;">Material Digunakan</th>
+                <th style="width: 14%;">Tanggal</th>
+                <th style="width: 52%;">Uraian Pekerjaan</th>
                 <th>Keterangan</th>
             </tr>
         </thead>
@@ -259,22 +209,82 @@
                     <td>Day {{ $idx + 1 }}</td>
                     <td>{{ \Carbon\Carbon::parse($dp->tanggal)->format('d-m-Y') }}</td>
                     <td class="left nowrap-pre">{{ \App\Support\DailyRingkas::pekerjaan($dp) ?: '-' }}</td>
-                    <td class="left nowrap-pre">{{ \App\Support\DailyRingkas::material($dp) ?: '-' }}</td>
                     <td class="left nowrap-pre">{{ $dp->keterangan ?: '-' }}</td>
                 </tr>
             @empty
                 <tr>
-                    <td colspan="6">Belum ada data progress harian.</td>
+                    <td colspan="4">Belum ada data progress harian.</td>
                 </tr>
             @endforelse
         </tbody>
     </table>
 
-    {{-- 3. Dokumentasi foto — dimulai di lembar sendiri.
+    {{-- ══════════════ HALAMAN 2 · MATERIAL ══════════════ --}}
+    <div class="page-break">
+        <div class="header">
+            <div class="header-left">
+                @if ($logo)
+                    <img src="{{ $logo }}" style="height: 26px; vertical-align: middle; margin-right: 8px;">
+                @endif
+                <span style="vertical-align: middle;">UP KENDARI</span>
+            </div>
+            <div class="header-right">{{ $outagePlan->mesin_pembangkit }}</div>
+        </div>
 
-         Tiap hari jadi satu blok, bukan satu baris tabel: baris tabel yang
-         tinggi tidak bisa dipecah dompdf dan menyisakan halaman kosong. --}}
-    <div class="foto-page">
+        <div class="section-title">Material / Spare Part</div>
+
+        @php
+            // Hanya hari yang ada penggantian material yang ditampilkan.
+            $barisMaterial = collect();
+            foreach ($outagePlan->dailyProgresses as $i => $dp) {
+                foreach (\App\Support\DailyRingkas::materialRows($dp) as $m) {
+                    $barisMaterial->push(['no' => $i + 1, 'dp' => $dp, 'm' => $m]);
+                }
+            }
+        @endphp
+
+        <table class="data rapat">
+            <thead>
+                <tr>
+                    <th style="width: 8%;">Day</th>
+                    <th style="width: 14%;">Tanggal</th>
+                    <th style="width: 34%;">Nama Material</th>
+                    <th style="width: 20%;">Part Number</th>
+                    <th style="width: 8%;">Qty</th>
+                    <th>Keterangan</th>
+                </tr>
+            </thead>
+            <tbody>
+                @forelse ($barisMaterial as $baris)
+                    <tr>
+                        <td>Day {{ $baris['no'] }}</td>
+                        <td>{{ \Carbon\Carbon::parse($baris['dp']->tanggal)->format('d-m-Y') }}</td>
+                        <td class="left">{{ $baris['m']['nama'] ?: '-' }}</td>
+                        <td class="left">{{ $baris['m']['part_number'] ?: '-' }}</td>
+                        <td>{{ $baris['m']['qty'] ?: '-' }}</td>
+                        <td class="left nowrap-pre">{{ $baris['m']['keterangan'] ?: '-' }}</td>
+                    </tr>
+                @empty
+                    <tr>
+                        <td colspan="6">Tidak ada penggantian material.</td>
+                    </tr>
+                @endforelse
+            </tbody>
+        </table>
+    </div>
+
+    {{-- ══════════════ HALAMAN 3 · DOKUMENTASI ══════════════ --}}
+    <div class="page-break">
+        <div class="header">
+            <div class="header-left">
+                @if ($logo)
+                    <img src="{{ $logo }}" style="height: 26px; vertical-align: middle; margin-right: 8px;">
+                @endif
+                <span style="vertical-align: middle;">UP KENDARI</span>
+            </div>
+            <div class="header-right">{{ $outagePlan->mesin_pembangkit }}</div>
+        </div>
+
         <div class="section-title">Dokumentasi Foto</div>
 
         @php
@@ -292,11 +302,6 @@
                     Day {{ $baris['no'] }}
                     &nbsp;&middot;&nbsp;
                     {{ \Carbon\Carbon::parse($baris['dp']->tanggal)->format('d-m-Y') }}
-                    @php $material = \App\Support\DailyRingkas::material($baris['dp']); @endphp
-                    @if ($material)
-                        &nbsp;&middot;&nbsp; {{ str_replace("
-", ' · ', $material) }}
-                    @endif
                 </div>
 
                 @php $uraian = \App\Support\DailyRingkas::pekerjaan($baris['dp']); @endphp
@@ -321,6 +326,71 @@
         @empty
             <p class="foto-kosong">Belum ada dokumentasi foto yang diunggah.</p>
         @endforelse
+    </div>
+
+    {{-- ══════════════ HALAMAN 4 · KURVA S ══════════════ --}}
+    <div class="page-break">
+        <div class="header">
+            <div class="header-left">
+                @if ($logo)
+                    <img src="{{ $logo }}" style="height: 26px; vertical-align: middle; margin-right: 8px;">
+                @endif
+                <span style="vertical-align: middle;">UP KENDARI</span>
+            </div>
+            <div class="header-right">{{ $outagePlan->mesin_pembangkit }}</div>
+        </div>
+
+        <div class="section-title">Kurva S - Plan vs Actual</div>
+        @if ($chartImage)
+            {{-- The chart image carries its own RENCANA/REALISASI legend. --}}
+            <img src="{{ $chartImage }}" style="width: 100%; display: block;">
+        @else
+            <p class="empty-note">Belum ada data progress harian.</p>
+        @endif
+
+        <div class="section-title">Tabel Kurva S - Plan vs Actual</div>
+        <table class="data rapat">
+            <thead>
+                <tr>
+                    <th style="width: 10%;">Day</th>
+                    <th style="width: 16%;">Tanggal</th>
+                    <th style="width: 16%;">Plan (%)</th>
+                    <th style="width: 16%;">Actual (%)</th>
+                    <th style="width: 16%;">Deviasi</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                @forelse ($outagePlan->dailyProgresses as $idx => $dp)
+                    @php
+                        $statusClass = match ($dp->status) {
+                            'Leading' => 'status-leading',
+                            'On Progres' => 'status-onprogres',
+                            'Lagging' => 'status-lagging',
+                            default => 'status-kosong',
+                        };
+                        // Deviasi hanya bermakna bila kedua nilainya sudah terisi.
+                        $deviasi = ($dp->plan_progress === null || $dp->actual_progress === null)
+                            ? null
+                            : (float) $dp->actual_progress - (float) $dp->plan_progress;
+                    @endphp
+                    <tr>
+                        <td>Day {{ $idx + 1 }}</td>
+                        <td>{{ \Carbon\Carbon::parse($dp->tanggal)->format('d-m-Y') }}</td>
+                        <td>{{ $dp->plan_progress === null ? '-' : number_format((float) $dp->plan_progress, 2) . '%' }}</td>
+                        <td>{{ $dp->actual_progress === null ? '-' : number_format((float) $dp->actual_progress, 2) . '%' }}</td>
+                        <td class="{{ $deviasi === null ? 'status-kosong' : ($deviasi < 0 ? 'status-lagging' : 'status-leading') }}">
+                            {{ $deviasi === null ? '-' : ($deviasi > 0 ? '+' : '') . number_format($deviasi, 2) . '%' }}
+                        </td>
+                        <td class="{{ $statusClass }}">{{ $dp->status }}</td>
+                    </tr>
+                @empty
+                    <tr>
+                        <td colspan="6">Belum ada data progress harian.</td>
+                    </tr>
+                @endforelse
+            </tbody>
+        </table>
     </div>
 
     <div class="footer">Dokumen ini dibuat otomatis oleh sistem Outage Monitoring PT PLN Nusantara Power UP Kendari.</div>

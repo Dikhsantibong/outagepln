@@ -17,7 +17,6 @@ use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
 use PhpOffice\PhpSpreadsheet\Worksheet\Drawing;
-use PhpOffice\PhpSpreadsheet\Worksheet\MemoryDrawing;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
 class OutagePlanController extends Controller
@@ -27,6 +26,9 @@ class OutagePlanController extends Controller
         'search', 'tahun', 'scope', 'jenis', 'sistem', 'ket',
         'ket_realisasi', 'progres', 'dari', 'sampai',
     ];
+
+    /** @var array<int, string> Berkas PNG grafik sementara yang perlu dihapus setelah workbook ditulis. */
+    private array $chartTempFiles = [];
 
     public function index(Request $request)
     {
@@ -314,6 +316,7 @@ class OutagePlanController extends Controller
 
         return response()->streamDownload(function () use ($writer) {
             $writer->save('php://output');
+            $this->cleanupChartTempFiles();
         }, $filename, [
             'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         ]);
@@ -594,23 +597,60 @@ class OutagePlanController extends Controller
         $sheet->getStyle("A{$row}")->getFont()->setBold(true);
         $row++;
 
-        $chart = SCurveChartRenderer::buildImage($outagePlan, 900, 360);
+        $chart = $this->chartDrawing($outagePlan, 900, 360);
 
         if ($chart !== null) {
-            $drawing = new MemoryDrawing();
-            $drawing->setName('Kurva S');
-            $drawing->setImageResource($chart);
-            $drawing->setRenderingFunction(MemoryDrawing::RENDERING_PNG);
-            $drawing->setMimeType(MemoryDrawing::MIMETYPE_PNG);
-            $drawing->setCoordinates("A{$row}");
-            $drawing->setWorksheet($sheet);
+            $chart->setCoordinates("A{$row}");
+            $chart->setWorksheet($sheet);
+            // Sisakan ruang setinggi grafik (±360px) sebelum tabel datanya.
+            $row += 20;
         }
+
+        // ── Data Kurva S sebagai tabel ──────────────────────────────────
+        // Grafik hanyalah gambar; angkanya tetap ditulis di sini agar seluruh
+        // data ada di dalam sheet dan bisa diolah kembali, sekaligus menjadi
+        // cadangan bila gambar tidak dirender oleh pembaca tertentu.
+        $this->tabelKurvaS($sheet, $outagePlan, $row);
 
         $sheet->getColumnDimension('A')->setWidth(10);
         $sheet->getColumnDimension('B')->setWidth(48);
         foreach (['C', 'D', 'E'] as $col) {
             $sheet->getColumnDimension($col)->setWidth(18);
         }
+    }
+
+    /** Tabel angka Plan vs Actual harian, sumber data grafik Kurva S. */
+    private function tabelKurvaS($sheet, OutagePlan $outagePlan, int $row): void
+    {
+        $sheet->setCellValue("A{$row}", 'DATA KURVA S');
+        $sheet->getStyle("A{$row}")->getFont()->setBold(true);
+        $row++;
+
+        $headerRow = $row;
+        $kolomAkhir = $this->tulisHeader(
+            $sheet,
+            ['Hari', 'Tanggal', 'Plan (%)', 'Actual (%)', 'Deviasi (%)'],
+            $headerRow,
+        );
+        $row++;
+
+        foreach ($outagePlan->dailyProgresses as $idx => $dp) {
+            // Hari yang belum diisi dibiarkan kosong, bukan ditulis 0.
+            $plan = $dp->plan_progress === null ? null : (float) $dp->plan_progress;
+            $actual = $dp->actual_progress === null ? null : (float) $dp->actual_progress;
+
+            $sheet->setCellValue("A{$row}", 'Hari ' . ($idx + 1));
+            $sheet->setCellValue("B{$row}", $this->tgl($dp->tanggal));
+            $sheet->setCellValue("C{$row}", $plan ?? '');
+            $sheet->setCellValue("D{$row}", $actual ?? '');
+            // Deviasi hanya bermakna bila kedua nilainya sudah terisi.
+            $sheet->setCellValue("E{$row}", ($plan === null || $actual === null) ? '' : $actual - $plan);
+            $sheet->getStyle("A{$row}:E{$row}")->getAlignment()
+                ->setHorizontal(Alignment::HORIZONTAL_CENTER);
+            $row++;
+        }
+
+        $this->beriGaris($sheet, "A{$headerRow}:{$kolomAkhir}" . ($row - 1));
     }
 
     /**
@@ -643,11 +683,11 @@ class OutagePlanController extends Controller
     }
 
     /**
-     * Ekspor Excel, dipecah menjadi tiga lembar sesuai topiknya.
+     * Ekspor Excel dalam satu lembar gabungan.
      *
-     * Satu lembar berisi sembilan kolom membuat uraian dan foto berdesakan
-     * dengan angka progres. Memisahkannya membuat tiap lembar bisa memakai
-     * lebar kolom dan tinggi baris yang sesuai isinya.
+     * Bagiannya ditumpuk ke bawah dengan urutan yang sama seperti versi PDF —
+     * identitas, uraian pekerjaan, material, dokumentasi, lalu kurva S di akhir —
+     * sehingga seluruh rekap ada dalam satu tab yang tinggal digulir.
      */
     public function exportExcel(OutagePlan $outagePlan)
     {
@@ -655,18 +695,25 @@ class OutagePlanController extends Controller
         $summary = $this->summarize($outagePlan);
 
         $spreadsheet = new Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+        $sheet->setTitle('Rekap Outage');
 
-        $this->sheetKurvaS($spreadsheet->getActiveSheet(), $outagePlan, $summary);
-        $this->sheetUraian($spreadsheet->createSheet(), $outagePlan);
-        $this->sheetFoto($spreadsheet->createSheet(), $outagePlan);
+        // Semua bagian ditumpuk dalam satu lembar, berurutan seperti versi PDF:
+        // identitas → uraian → material → dokumentasi → kurva S.
+        $row = $this->rekapKop($sheet, $outagePlan, $summary);
+        $row = $this->rekapUraian($sheet, $outagePlan, $row);
+        $row = $this->rekapMaterial($sheet, $outagePlan, $row);
+        $row = $this->rekapDokumentasi($sheet, $outagePlan, $row);
+        $this->rekapKurvaS($sheet, $outagePlan, $row);
 
-        $spreadsheet->setActiveSheetIndex(0);
+        $this->aturKolomRekap($sheet);
 
         $writer = new Xlsx($spreadsheet);
         $filename = $this->exportFilename($outagePlan, 'xlsx');
 
         return response()->streamDownload(function () use ($writer) {
             $writer->save('php://output');
+            $this->cleanupChartTempFiles();
         }, $filename, [
             'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         ]);
@@ -704,24 +751,88 @@ class OutagePlanController extends Controller
             ->setBorderStyle(\PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN);
     }
 
+    /**
+     * Menyiapkan grafik Kurva S sebagai Drawing berbasis berkas.
+     *
+     * Sebelumnya grafik dipasang lewat MemoryDrawing langsung dari resource GD.
+     * Medianya memang ikut tertanam di berkas, tetapi sejumlah versi Microsoft
+     * Excel tidak menampilkan gambar MemoryDrawing sama sekali — itulah sebabnya
+     * logo dan foto (yang memakai Drawing berkas) tampil, sedangkan kurva S tidak.
+     * Dengan menulis PNG ke berkas sementara lalu memuatnya sebagai Drawing biasa,
+     * gambarnya tampil di semua pembaca. Berkasnya dihapus lewat
+     * cleanupChartTempFiles() setelah workbook selesai ditulis.
+     */
+    private function chartDrawing(OutagePlan $outagePlan, int $width, int $height): ?Drawing
+    {
+        $image = SCurveChartRenderer::buildImage($outagePlan, $width, $height);
+
+        if ($image === null) {
+            return null;
+        }
+
+        // tempnam menjamin nama unik; ekstensinya diganti ke .png agar part
+        // media di dalam xlsx dikenali sebagai gambar oleh semua pembaca —
+        // di Windows tempnam menghasilkan berkas .tmp yang tidak semua Excel
+        // perlakukan sebagai gambar.
+        $base = tempnam(sys_get_temp_dir(), 'kurva-s');
+        $path = $base . '.png';
+        @rename($base, $path);
+        imagepng($image, $path);
+        imagedestroy($image);
+        $this->chartTempFiles[] = $path;
+
+        $drawing = new Drawing();
+        $drawing->setName('Kurva S');
+        $drawing->setDescription('Kurva S - Plan vs Actual');
+        $drawing->setPath($path);
+
+        return $drawing;
+    }
+
+    /** Menghapus berkas PNG grafik sementara; dipanggil setelah workbook ditulis. */
+    private function cleanupChartTempFiles(): void
+    {
+        foreach ($this->chartTempFiles as $path) {
+            if (is_file($path)) {
+                @unlink($path);
+            }
+        }
+
+        $this->chartTempFiles = [];
+    }
+
     private function tgl($value): string
     {
         return $value ? \Carbon\Carbon::parse($value)->format('d-m-Y') : '-';
     }
 
-    /** Lembar 1: identitas pekerjaan, grafik kurva S, lalu angkanya sebagai tabel. */
-    private function sheetKurvaS($sheet, OutagePlan $outagePlan, array $summary): void
+    /** Judul satu bagian rekap, dilatarbelakangi abu-abu selebar A:F. */
+    private function judulBagian($sheet, string $judul, int $row): int
     {
-        $sheet->setTitle('Kurva S');
+        $sheet->setCellValue("A{$row}", $judul);
+        $sheet->mergeCells("A{$row}:F{$row}");
+        $sheet->getStyle("A{$row}")->getFont()->setBold(true)->setSize(12);
+        $sheet->getStyle("A{$row}")->getFill()->applyFromArray([
+            'fillType' => Fill::FILL_SOLID,
+            'startColor' => ['rgb' => 'E2E8F0'],
+        ]);
 
+        return $row + 1;
+    }
+
+    /** Kop rekap: judul, nama mesin, lalu tabel identitas. Mengembalikan baris berikutnya. */
+    private function rekapKop($sheet, OutagePlan $outagePlan, array $summary): int
+    {
         $sheet->setCellValue('A1', 'LAPORAN PERENCANAAN & REALISASI OUTAGE');
         $sheet->mergeCells('A1:F1');
         $sheet->getStyle('A1')->getFont()->setBold(true)->setSize(14);
+        $sheet->getStyle('A1')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
         $sheet->setCellValue('A2', $outagePlan->mesin_pembangkit);
         $sheet->mergeCells('A2:F2');
         $sheet->getStyle('A2')->getFont()->setItalic(true)
             ->setColor(new \PhpOffice\PhpSpreadsheet\Style\Color('64748B'));
+        $sheet->getStyle('A2')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
         $infoRows = [
             ['Mesin Pembangkit', $outagePlan->mesin_pembangkit ?? '-', 'Scope', $outagePlan->scope ?? '-'],
@@ -742,33 +853,169 @@ class OutagePlanController extends Controller
             $row++;
         }
 
-        $row++;
-        $sheet->setCellValue("A{$row}", 'Kurva S - Plan vs Actual');
-        $sheet->getStyle("A{$row}")->getFont()->setBold(true)->setSize(11);
+        return $row + 1;
+    }
+
+    /** Bagian uraian pekerjaan harian. Mengembalikan baris kosong berikutnya. */
+    private function rekapUraian($sheet, OutagePlan $outagePlan, int $row): int
+    {
+        $row = $this->judulBagian($sheet, 'URAIAN PEKERJAAN', $row);
+
+        $headerRow = $row;
+        $kolomAkhir = $this->tulisHeader(
+            $sheet,
+            ['Day', 'Tanggal', 'Uraian Pekerjaan', 'Keterangan'],
+            $headerRow,
+        );
         $row++;
 
-        $chartImage = SCurveChartRenderer::buildImage($outagePlan, 640, 260);
-        if ($chartImage !== null) {
-            $drawing = new MemoryDrawing();
-            $drawing->setName('Kurva S');
-            $drawing->setDescription('Kurva S - Plan vs Actual');
-            $drawing->setImageResource($chartImage);
-            $drawing->setRenderingFunction(MemoryDrawing::RENDERING_PNG);
-            $drawing->setMimeType(MemoryDrawing::MIMETYPE_PNG);
-            $drawing->setCoordinates("A{$row}");
-            $drawing->setWorksheet($sheet);
-            $row += 14; // kira-kira setinggi grafik saat dirender
+        foreach ($outagePlan->dailyProgresses as $idx => $dp) {
+            $sheet->setCellValue("A{$row}", 'Day ' . ($idx + 1));
+            $sheet->setCellValue("B{$row}", $this->tgl($dp->tanggal));
+            $sheet->setCellValue("C{$row}", DailyRingkas::pekerjaan($dp) ?: '-');
+            $sheet->setCellValue("D{$row}", $dp->keterangan ?: '-');
+            $sheet->getStyle("A{$row}:B{$row}")->getAlignment()
+                ->setHorizontal(Alignment::HORIZONTAL_CENTER);
+            // Daftar berpoin dan keterangan bisa panjang: dibungkus, bukan melebar.
+            $sheet->getStyle("C{$row}:D{$row}")->getAlignment()->setWrapText(true);
+            $sheet->getStyle("A{$row}:D{$row}")->getAlignment()
+                ->setVertical(Alignment::VERTICAL_TOP);
+            $row++;
         }
 
+        if ($outagePlan->dailyProgresses->isEmpty()) {
+            $sheet->setCellValue("A{$row}", 'Belum ada data progress harian.');
+            $sheet->getStyle("A{$row}")->getFont()->setItalic(true);
+            $row++;
+        }
+
+        $this->beriGaris($sheet, "A{$headerRow}:{$kolomAkhir}" . ($row - 1));
+
+        return $row + 2;
+    }
+
+    /** Bagian material/spare part — satu baris per material. */
+    private function rekapMaterial($sheet, OutagePlan $outagePlan, int $row): int
+    {
+        $row = $this->judulBagian($sheet, 'MATERIAL / SPARE PART', $row);
+
+        $headerRow = $row;
+        $kolomAkhir = $this->tulisHeader(
+            $sheet,
+            ['Day', 'Tanggal', 'Nama Material', 'Part Number', 'Qty', 'Keterangan'],
+            $headerRow,
+        );
         $row++;
+
+        $ada = false;
+        foreach ($outagePlan->dailyProgresses as $idx => $dp) {
+            foreach (DailyRingkas::materialRows($dp) as $m) {
+                $ada = true;
+                $sheet->setCellValue("A{$row}", 'Day ' . ($idx + 1));
+                $sheet->setCellValue("B{$row}", $this->tgl($dp->tanggal));
+                $sheet->setCellValue("C{$row}", $m['nama'] ?: '-');
+                $sheet->setCellValue("D{$row}", $m['part_number'] ?: '-');
+                $sheet->setCellValue("E{$row}", $m['qty'] ?: '-');
+                $sheet->setCellValue("F{$row}", $m['keterangan'] ?: '-');
+                $sheet->getStyle("A{$row}:B{$row}")->getAlignment()
+                    ->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                $sheet->getStyle("E{$row}")->getAlignment()
+                    ->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                $sheet->getStyle("C{$row}:F{$row}")->getAlignment()->setWrapText(true);
+                $row++;
+            }
+        }
+
+        if (! $ada) {
+            $sheet->setCellValue("A{$row}", 'Tidak ada penggantian material.');
+            $sheet->getStyle("A{$row}")->getFont()->setItalic(true);
+            $row++;
+        }
+
+        $this->beriGaris($sheet, "A{$headerRow}:{$kolomAkhir}" . ($row - 1));
+
+        return $row + 2;
+    }
+
+    /**
+     * Bagian dokumentasi foto.
+     *
+     * Foto diletakkan mengambang di atas baris tinggi, digeser ke kanan agar
+     * berjajar; hanya hari berfoto yang ditulis.
+     */
+    private function rekapDokumentasi($sheet, OutagePlan $outagePlan, int $row): int
+    {
+        $row = $this->judulBagian($sheet, 'DOKUMENTASI FOTO', $row);
+
+        $ada = false;
+        foreach ($outagePlan->dailyProgresses as $idx => $dp) {
+            $fotos = OutagePhotos::paths($dp->photos);
+
+            if ($fotos === []) {
+                continue;
+            }
+
+            $ada = true;
+            $sheet->setCellValue("A{$row}", 'Day ' . ($idx + 1) . ' · ' . $this->tgl($dp->tanggal));
+            $sheet->mergeCells("A{$row}:F{$row}");
+            $sheet->getStyle("A{$row}")->getFont()->setBold(true);
+            $row++;
+
+            $uraian = DailyRingkas::pekerjaan($dp);
+            if ($uraian !== '') {
+                $sheet->setCellValue("A{$row}", $uraian);
+                $sheet->mergeCells("A{$row}:F{$row}");
+                $sheet->getStyle("A{$row}")->getAlignment()->setWrapText(true)
+                    ->setVertical(Alignment::VERTICAL_TOP);
+                $sheet->getRowDimension($row)->setRowHeight(48);
+                $row++;
+            }
+
+            $sheet->getRowDimension($row)->setRowHeight(120);
+            foreach ($fotos as $i => $path) {
+                $drawing = new Drawing();
+                $drawing->setName('Foto Dokumentasi');
+                $drawing->setDescription('Foto Dokumentasi');
+                $drawing->setPath($path);
+                $drawing->setHeight(110);
+                $drawing->setOffsetX(6 + ($i * 150));
+                $drawing->setOffsetY(4);
+                $drawing->setCoordinates("A{$row}");
+                $drawing->setWorksheet($sheet);
+            }
+
+            $row += 2;
+        }
+
+        if (! $ada) {
+            $sheet->setCellValue("A{$row}", 'Belum ada dokumentasi foto yang diunggah.');
+            $sheet->getStyle("A{$row}")->getFont()->setItalic(true);
+            $row++;
+        }
+
+        return $row + 2;
+    }
+
+    /** Bagian kurva S di akhir: grafik lalu tabel angkanya. */
+    private function rekapKurvaS($sheet, OutagePlan $outagePlan, int $row): int
+    {
+        $row = $this->judulBagian($sheet, 'KURVA S - PLAN VS ACTUAL', $row);
+
+        $chart = $this->chartDrawing($outagePlan, 640, 260);
+        if ($chart !== null) {
+            $chart->setCoordinates("A{$row}");
+            $chart->setWorksheet($sheet);
+            $row += 15; // sisakan ruang setinggi grafik sebelum tabel
+        }
+
         $headerRow = $row;
         $kolomAkhir = $this->tulisHeader(
             $sheet,
             ['Day', 'Tanggal', 'Plan (%)', 'Actual (%)', 'Deviasi (%)', 'Status'],
             $headerRow,
         );
+        $row++;
 
-        $row = $headerRow + 1;
         foreach ($outagePlan->dailyProgresses as $idx => $dp) {
             // Hari yang belum diisi dibiarkan kosong, bukan ditulis 0.
             $plan = $dp->plan_progress === null ? null : (float) $dp->plan_progress;
@@ -786,137 +1033,28 @@ class OutagePlanController extends Controller
             $row++;
         }
 
-        $lastRow = $row - 1;
-        if ($lastRow >= $headerRow) {
-            $this->beriGaris($sheet, "A{$headerRow}:{$kolomAkhir}{$lastRow}");
-        }
-
-        foreach (range('A', 'F') as $col) {
-            $sheet->getColumnDimension($col)->setAutoSize(true);
-        }
-    }
-
-    /** Lembar 2: material yang dipakai dan uraian pekerjaannya. */
-    private function sheetUraian($sheet, OutagePlan $outagePlan): void
-    {
-        $sheet->setTitle('Uraian Pekerjaan');
-
-        $sheet->setCellValue('A1', 'URAIAN PEKERJAAN & MATERIAL');
-        $sheet->mergeCells('A1:F1');
-        $sheet->getStyle('A1')->getFont()->setBold(true)->setSize(13);
-        $sheet->setCellValue('A2', $outagePlan->mesin_pembangkit);
-        $sheet->getStyle('A2')->getFont()->setItalic(true);
-
-        $headerRow = 4;
-        $kolomAkhir = $this->tulisHeader(
-            $sheet,
-            ['Day', 'Tanggal', 'Uraian Pekerjaan', 'Material Digunakan', 'Keterangan'],
-            $headerRow,
-        );
-
-        $row = $headerRow + 1;
-        foreach ($outagePlan->dailyProgresses as $idx => $dp) {
-            $sheet->setCellValue("A{$row}", 'Day ' . ($idx + 1));
-            $sheet->setCellValue("B{$row}", $this->tgl($dp->tanggal));
-            $sheet->setCellValue("C{$row}", DailyRingkas::pekerjaan($dp) ?: '-');
-            $sheet->setCellValue("D{$row}", DailyRingkas::material($dp) ?: '-');
-            $sheet->setCellValue("E{$row}", $dp->keterangan ?: '-');
-            $sheet->getStyle("A{$row}:B{$row}")->getAlignment()
-                ->setHorizontal(Alignment::HORIZONTAL_CENTER);
-            // Daftar berpoin dan keterangan bisa panjang: dibungkus, bukan melebar.
-            $sheet->getStyle("C{$row}:E{$row}")->getAlignment()->setWrapText(true);
-            $sheet->getStyle("A{$row}:E{$row}")->getAlignment()
-                ->setVertical(Alignment::VERTICAL_TOP);
+        if ($outagePlan->dailyProgresses->isEmpty()) {
+            $sheet->setCellValue("A{$row}", 'Belum ada data progress harian.');
+            $sheet->getStyle("A{$row}")->getFont()->setItalic(true);
             $row++;
         }
 
-        $lastRow = $row - 1;
-        if ($lastRow >= $headerRow) {
-            $this->beriGaris($sheet, "A{$headerRow}:{$kolomAkhir}{$lastRow}");
-        }
+        $this->beriGaris($sheet, "A{$headerRow}:{$kolomAkhir}" . ($row - 1));
 
-        foreach (['A', 'B'] as $col) {
-            $sheet->getColumnDimension($col)->setAutoSize(true);
-        }
-
-        // Lebar tetap: autoSize pada teks panjang menghasilkan kolom raksasa.
-        $sheet->getColumnDimension('C')->setWidth(52);
-        $sheet->getColumnDimension('D')->setWidth(40);
-        $sheet->getColumnDimension('E')->setWidth(30);
+        return $row;
     }
 
     /**
-     * Lembar 3: dokumentasi foto.
+     * Lebar kolom lembar rekap gabungan.
      *
-     * Hanya hari yang berfoto yang ditulis, supaya lembarnya tidak berisi
-     * puluhan baris kosong setinggi foto.
+     * Satu lembar dipakai bersama beberapa tabel berbeda, jadi lebarnya dipilih
+     * sebagai kompromi: C lebar untuk uraian/nama material, sisanya secukupnya.
      */
-    private function sheetFoto($sheet, OutagePlan $outagePlan): void
+    private function aturKolomRekap($sheet): void
     {
-        $sheet->setTitle('Dokumentasi Foto');
-
-        $sheet->setCellValue('A1', 'DOKUMENTASI FOTO');
-        $sheet->mergeCells('A1:D1');
-        $sheet->getStyle('A1')->getFont()->setBold(true)->setSize(13);
-        $sheet->setCellValue('A2', $outagePlan->mesin_pembangkit);
-        $sheet->getStyle('A2')->getFont()->setItalic(true);
-
-        $headerRow = 4;
-        $kolomAkhir = $this->tulisHeader(
-            $sheet,
-            ['Day', 'Tanggal', 'Uraian Pekerjaan', 'Foto'],
-            $headerRow,
-        );
-
-        $row = $headerRow + 1;
-        foreach ($outagePlan->dailyProgresses as $idx => $dp) {
-            $fotos = OutagePhotos::paths($dp->photos);
-
-            if ($fotos === []) {
-                continue;
-            }
-
-            $sheet->getRowDimension($row)->setRowHeight(110);
-            $sheet->setCellValue("A{$row}", 'Day ' . ($idx + 1));
-            $sheet->setCellValue("B{$row}", $this->tgl($dp->tanggal));
-            $sheet->setCellValue("C{$row}", DailyRingkas::pekerjaan($dp) ?: '-');
-            $sheet->getStyle("A{$row}:B{$row}")->getAlignment()
-                ->setHorizontal(Alignment::HORIZONTAL_CENTER);
-            $sheet->getStyle("C{$row}")->getAlignment()->setWrapText(true)
-                ->setVertical(Alignment::VERTICAL_TOP);
-
-            foreach ($fotos as $i => $path) {
-                $drawing = new Drawing();
-                $drawing->setPath($path);
-                $drawing->setHeight(100);
-                // Digeser ke kanan supaya beberapa foto pada satu hari berjajar,
-                // bukan bertumpuk di titik yang sama.
-                $drawing->setOffsetX(6 + ($i * 140));
-                $drawing->setOffsetY(4);
-                $drawing->setCoordinates("D{$row}");
-                $drawing->setWorksheet($sheet);
-            }
-
-            $row++;
+        foreach (['A' => 10, 'B' => 15, 'C' => 48, 'D' => 26, 'E' => 12, 'F' => 22] as $col => $lebar) {
+            $sheet->getColumnDimension($col)->setWidth($lebar);
         }
-
-        $lastRow = $row - 1;
-
-        if ($lastRow >= $headerRow + 1) {
-            $this->beriGaris($sheet, "A{$headerRow}:{$kolomAkhir}{$lastRow}");
-        } else {
-            $sheet->setCellValue("A{$headerRow}", 'Belum ada dokumentasi foto yang diunggah.');
-            $sheet->mergeCells("A{$headerRow}:D{$headerRow}");
-            $sheet->getStyle("A{$headerRow}")->getFont()->setItalic(true)->setBold(false);
-        }
-
-        foreach (['A', 'B'] as $col) {
-            $sheet->getColumnDimension($col)->setAutoSize(true);
-        }
-
-        $sheet->getColumnDimension('C')->setWidth(40);
-        // Cukup lebar untuk MAKS_PER_HARI foto berjajar.
-        $sheet->getColumnDimension('D')->setWidth(85);
     }
 
     /**
