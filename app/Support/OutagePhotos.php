@@ -49,17 +49,73 @@ class OutagePhotos
         $uris = [];
 
         foreach (self::paths($photos) as $path) {
-            $isi = @file_get_contents($path);
-
-            if ($isi === false) {
-                continue;
+            $isi = self::resizeAndEncode($path);
+            if ($isi !== null) {
+                $uris[] = $isi;
             }
-
-            $mime = @mime_content_type($path) ?: 'image/jpeg';
-            $uris[] = 'data:' . $mime . ';base64,' . base64_encode($isi);
         }
 
         return $uris;
+    }
+
+    private static function resizeAndEncode(string $path): ?string
+    {
+        $mime = @mime_content_type($path);
+        
+        if (! in_array($mime, ['image/jpeg', 'image/png', 'image/webp'])) {
+            $isi = @file_get_contents($path);
+            if ($isi === false) return null;
+            return 'data:' . ($mime ?: 'image/jpeg') . ';base64,' . base64_encode($isi);
+        }
+
+        try {
+            $img = null;
+            if ($mime === 'image/jpeg') {
+                $img = @imagecreatefromjpeg($path);
+            } elseif ($mime === 'image/png') {
+                $img = @imagecreatefrompng($path);
+            } elseif ($mime === 'image/webp') {
+                $img = @imagecreatefromwebp($path);
+            }
+
+            if (! $img) {
+                $isi = @file_get_contents($path);
+                if ($isi === false) return null;
+                return 'data:' . $mime . ';base64,' . base64_encode($isi);
+            }
+
+            $width = imagesx($img);
+            $height = imagesy($img);
+            $maxDimension = 800; 
+
+            if ($width > $maxDimension || $height > $maxDimension) {
+                if ($width > $height) {
+                    $newWidth = $maxDimension;
+                    $newHeight = (int) ($height * ($maxDimension / $width));
+                } else {
+                    $newHeight = $maxDimension;
+                    $newWidth = (int) ($width * ($maxDimension / $height));
+                }
+
+                $newImg = imagecreatetruecolor($newWidth, $newHeight);
+                $white = imagecolorallocate($newImg, 255, 255, 255);
+                imagefill($newImg, 0, 0, $white);
+                imagecopyresampled($newImg, $img, 0, 0, 0, 0, $newWidth, $newHeight, $width, $height);
+                imagedestroy($img);
+                $img = $newImg;
+            }
+
+            ob_start();
+            imagejpeg($img, null, 75);
+            $imageString = ob_get_clean();
+            imagedestroy($img);
+
+            return 'data:image/jpeg;base64,' . base64_encode($imageString);
+        } catch (\Throwable $e) {
+            $isi = @file_get_contents($path);
+            if ($isi === false) return null;
+            return 'data:' . ($mime ?: 'image/jpeg') . ';base64,' . base64_encode($isi);
+        }
     }
 
     /** Berapa hari yang punya dokumentasi foto. */

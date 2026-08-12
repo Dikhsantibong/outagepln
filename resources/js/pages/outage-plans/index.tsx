@@ -66,6 +66,7 @@ import {
     SCOPES,
 } from '@/lib/outage-options';
 import { formatDMY } from '@/lib/outage-progress';
+import { cn } from '@/lib/utils';
 
 type FilterOptions = {
     tahun: (string | number)[];
@@ -215,43 +216,63 @@ function PilihHariDialog({
 
                 {hari.length > 0 ? (
                     <div className="space-y-1.5">
-                        {hari.map((h: any, i: number) => (
-                            <div
-                                key={h.tanggal}
-                                className="flex items-center gap-3 rounded-lg border p-2.5"
-                            >
-                                <div className="min-w-0 flex-1">
-                                    <p className="text-xs font-semibold">
-                                        Hari ke-{i + 1}
-                                        <span className="ml-2 font-mono font-normal text-muted-foreground">
-                                            {formatDMY(h.tanggal)}
-                                        </span>
-                                    </p>
-                                    <p className="text-[10px] text-muted-foreground">
-                                        Progres:{' '}
-                                        {h.actual_progress === null
-                                            ? 'belum diisi'
-                                            : `${h.actual_progress}%`}
-                                    </p>
+                        {hari.map((h: any, i: number) => {
+                            // Find the last index that has an actual_progress (not null)
+                            let lastInputIndex = -1;
+                            for (let j = hari.length - 1; j >= 0; j--) {
+                                if (hari[j].actual_progress !== null) {
+                                    lastInputIndex = j;
+                                    break;
+                                }
+                            }
+                            const isLastInput = i === lastInputIndex;
+
+                            return (
+                                <div
+                                    key={h.tanggal}
+                                    className={cn(
+                                        "flex items-center gap-3 rounded-lg border p-2.5",
+                                        isLastInput ? "border-primary bg-primary/5" : ""
+                                    )}
+                                >
+                                    <div className="min-w-0 flex-1">
+                                        <p className="text-xs font-semibold flex items-center flex-wrap gap-2">
+                                            Hari ke-{i + 1}
+                                            <span className="font-mono font-normal text-muted-foreground">
+                                                {formatDMY(h.tanggal)}
+                                            </span>
+                                            {isLastInput && (
+                                                <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[9px] text-primary font-medium tracking-wide">
+                                                    TERAKHIR DIISI
+                                                </span>
+                                            )}
+                                        </p>
+                                        <p className="text-[10px] text-muted-foreground mt-0.5">
+                                            Progres:{' '}
+                                            {h.actual_progress === null
+                                                ? 'belum diisi'
+                                                : `${h.actual_progress}%`}
+                                        </p>
+                                    </div>
+                                    <TombolUnduh
+                                        tanggal={h.tanggal}
+                                        jenis="pdf"
+                                        label="PDF"
+                                        judul="Laporan lengkap: kegiatan, dokumentasi, dan kurva S (PDF)"
+                                        icon={FileText}
+                                        warna="text-red-500"
+                                    />
+                                    <TombolUnduh
+                                        tanggal={h.tanggal}
+                                        jenis="excel"
+                                        label="Excel"
+                                        judul="Laporan lengkap: kegiatan, dokumentasi, dan kurva S (Excel, 3 lembar)"
+                                        icon={FileSpreadsheet}
+                                        warna="text-emerald-600"
+                                    />
                                 </div>
-                                <TombolUnduh
-                                    tanggal={h.tanggal}
-                                    jenis="pdf"
-                                    label="PDF"
-                                    judul="Laporan lengkap: kegiatan, dokumentasi, dan kurva S (PDF)"
-                                    icon={FileText}
-                                    warna="text-red-500"
-                                />
-                                <TombolUnduh
-                                    tanggal={h.tanggal}
-                                    jenis="excel"
-                                    label="Excel"
-                                    judul="Laporan lengkap: kegiatan, dokumentasi, dan kurva S (Excel, 3 lembar)"
-                                    icon={FileSpreadsheet}
-                                    warna="text-emerald-600"
-                                />
-                            </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 ) : (
                     <p className="py-10 text-center text-sm text-muted-foreground italic">

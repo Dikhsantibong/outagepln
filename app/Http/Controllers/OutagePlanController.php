@@ -597,13 +597,16 @@ class OutagePlanController extends Controller
         $sheet->getStyle("A{$row}")->getFont()->setBold(true);
         $row++;
 
-        $chart = $this->chartDrawing($outagePlan, 900, 360);
+        // Generate chart at high resolution so padding doesn't squash the plot area
+        $chart = $this->chartDrawing($outagePlan, 1600, 880);
 
         if ($chart !== null) {
             $chart->setCoordinates("A{$row}");
+            // Scale it down for Excel display (400 pixels high)
+            $chart->setHeight(400);
             $chart->setWorksheet($sheet);
-            // Sisakan ruang setinggi grafik (±360px) sebelum tabel datanya.
-            $row += 20;
+            // 400 pixels is about 20 standard rows (20px each). Leave 22 rows of space.
+            $row += 22;
         }
 
         // ── Data Kurva S sebagai tabel ──────────────────────────────────
@@ -864,23 +867,61 @@ class OutagePlanController extends Controller
         $headerRow = $row;
         $kolomAkhir = $this->tulisHeader(
             $sheet,
-            ['Day', 'Tanggal', 'Uraian Pekerjaan', 'Keterangan'],
+            ['Day', 'Tanggal', 'Uraian Pekerjaan', 'Progres (%)', 'Keterangan'],
             $headerRow,
         );
         $row++;
 
         foreach ($outagePlan->dailyProgresses as $idx => $dp) {
-            $sheet->setCellValue("A{$row}", 'Day ' . ($idx + 1));
-            $sheet->setCellValue("B{$row}", $this->tgl($dp->tanggal));
-            $sheet->setCellValue("C{$row}", DailyRingkas::pekerjaan($dp) ?: '-');
-            $sheet->setCellValue("D{$row}", $dp->keterangan ?: '-');
-            $sheet->getStyle("A{$row}:B{$row}")->getAlignment()
-                ->setHorizontal(Alignment::HORIZONTAL_CENTER);
-            // Daftar berpoin dan keterangan bisa panjang: dibungkus, bukan melebar.
-            $sheet->getStyle("C{$row}:D{$row}")->getAlignment()->setWrapText(true);
-            $sheet->getStyle("A{$row}:D{$row}")->getAlignment()
-                ->setVertical(Alignment::VERTICAL_TOP);
-            $row++;
+            $items = collect($dp->work_items ?? [])
+                ->filter(fn ($w) => filled($w['uraian'] ?? null))
+                ->values();
+
+            if ($items->isEmpty()) {
+                // Hari tanpa work items: satu baris biasa
+                $sheet->setCellValue("A{$row}", 'Day ' . ($idx + 1));
+                $sheet->setCellValue("B{$row}", $this->tgl($dp->tanggal));
+                $sheet->setCellValue("C{$row}", $dp->uraian_pekerjaan ?: '-');
+                $sheet->setCellValue("D{$row}", '-');
+                $sheet->setCellValue("E{$row}", $dp->keterangan ?: '-');
+                $sheet->getStyle("A{$row}:B{$row}")->getAlignment()
+                    ->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                $sheet->getStyle("D{$row}")->getAlignment()
+                    ->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                $sheet->getStyle("C{$row}:E{$row}")->getAlignment()->setWrapText(true);
+                $sheet->getStyle("A{$row}:E{$row}")->getAlignment()
+                    ->setVertical(Alignment::VERTICAL_TOP);
+                $row++;
+            } else {
+                // Hari dengan work items: satu baris per item, merge Day/Tanggal/Keterangan
+                $startRow = $row;
+                $count = $items->count();
+
+                foreach ($items as $itemIdx => $w) {
+                    $sheet->setCellValue("C{$row}", ($itemIdx + 1) . '. ' . $w['uraian']);
+                    $progress = $w['progress'] ?? null;
+                    $sheet->setCellValue("D{$row}", filled($progress) ? number_format((float) $progress, 2, ',', '.') . '%' : '-');
+                    $sheet->getStyle("D{$row}")->getAlignment()
+                        ->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                    $sheet->getStyle("C{$row}:E{$row}")->getAlignment()->setWrapText(true);
+                    $sheet->getStyle("A{$row}:E{$row}")->getAlignment()
+                        ->setVertical(Alignment::VERTICAL_TOP);
+                    $row++;
+                }
+
+                $endRow = $row - 1;
+                $sheet->setCellValue("A{$startRow}", 'Day ' . ($idx + 1));
+                $sheet->setCellValue("B{$startRow}", $this->tgl($dp->tanggal));
+                $sheet->setCellValue("E{$startRow}", $dp->keterangan ?: '-');
+                $sheet->getStyle("A{$startRow}:B{$startRow}")->getAlignment()
+                    ->setHorizontal(Alignment::HORIZONTAL_CENTER);
+
+                if ($count > 1) {
+                    $sheet->mergeCells("A{$startRow}:A{$endRow}");
+                    $sheet->mergeCells("B{$startRow}:B{$endRow}");
+                    $sheet->mergeCells("E{$startRow}:E{$endRow}");
+                }
+            }
         }
 
         if ($outagePlan->dailyProgresses->isEmpty()) {
@@ -1001,11 +1042,13 @@ class OutagePlanController extends Controller
     {
         $row = $this->judulBagian($sheet, 'KURVA S - PLAN VS ACTUAL', $row);
 
-        $chart = $this->chartDrawing($outagePlan, 640, 260);
+        // Generate chart at high resolution so padding doesn't squash the plot area
+        $chart = $this->chartDrawing($outagePlan, 1600, 880);
         if ($chart !== null) {
             $chart->setCoordinates("A{$row}");
+            $chart->setHeight(400);
             $chart->setWorksheet($sheet);
-            $row += 15; // sisakan ruang setinggi grafik sebelum tabel
+            $row += 22; // sisakan ruang setinggi grafik sebelum tabel
         }
 
         $headerRow = $row;
@@ -1052,7 +1095,7 @@ class OutagePlanController extends Controller
      */
     private function aturKolomRekap($sheet): void
     {
-        foreach (['A' => 10, 'B' => 15, 'C' => 48, 'D' => 26, 'E' => 12, 'F' => 22] as $col => $lebar) {
+        foreach (['A' => 10, 'B' => 15, 'C' => 40, 'D' => 14, 'E' => 26, 'F' => 22] as $col => $lebar) {
             $sheet->getColumnDimension($col)->setWidth($lebar);
         }
     }
