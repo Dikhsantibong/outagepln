@@ -6,6 +6,7 @@ use Illuminate\Http\Request;
 
 use Inertia\Inertia;
 use App\Models\OutagePlan;
+use App\Support\OutagePhotos;
 use App\Support\SCurveChartRenderer;
 use App\Support\TahunFilter;
 use Illuminate\Validation\Rule;
@@ -13,6 +14,7 @@ use Barryvdh\DomPDF\Facade\Pdf;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
+use PhpOffice\PhpSpreadsheet\Worksheet\Drawing;
 use PhpOffice\PhpSpreadsheet\Worksheet\MemoryDrawing;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
@@ -220,19 +222,77 @@ class OutagePlanController extends Controller
         return 'data:image/png;base64,' . base64_encode(file_get_contents($path));
     }
 
+    /**
+     * Ekspor Excel, dipecah menjadi tiga lembar sesuai topiknya.
+     *
+     * Satu lembar berisi sembilan kolom membuat uraian dan foto berdesakan
+     * dengan angka progres. Memisahkannya membuat tiap lembar bisa memakai
+     * lebar kolom dan tinggi baris yang sesuai isinya.
+     */
     public function exportExcel(OutagePlan $outagePlan)
     {
         $outagePlan->load('dailyProgresses');
         $summary = $this->summarize($outagePlan);
 
         $spreadsheet = new Spreadsheet();
-        $sheet = $spreadsheet->getActiveSheet();
-        $sheet->setTitle('Progress Harian');
 
-        $headerFill = [
+        $this->sheetKurvaS($spreadsheet->getActiveSheet(), $outagePlan, $summary);
+        $this->sheetUraian($spreadsheet->createSheet(), $outagePlan);
+        $this->sheetFoto($spreadsheet->createSheet(), $outagePlan);
+
+        $spreadsheet->setActiveSheetIndex(0);
+
+        $writer = new Xlsx($spreadsheet);
+        $filename = $this->exportFilename($outagePlan, 'xlsx');
+
+        return response()->streamDownload(function () use ($writer) {
+            $writer->save('php://output');
+        }, $filename, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        ]);
+    }
+
+    /** @return array{fillType: string, startColor: array{rgb: string}} */
+    private function headerFill(): array
+    {
+        return [
             'fillType' => Fill::FILL_SOLID,
             'startColor' => ['rgb' => 'F1F5F9'],
         ];
+    }
+
+    /** Menulis baris header tabel dan mengembalikan huruf kolom terakhirnya. */
+    private function tulisHeader($sheet, array $headers, int $row): string
+    {
+        foreach ($headers as $i => $label) {
+            $sheet->setCellValue(chr(65 + $i) . $row, $label);
+        }
+
+        $kolomAkhir = chr(65 + count($headers) - 1);
+
+        $sheet->getStyle("A{$row}:{$kolomAkhir}{$row}")->getFont()->setBold(true);
+        $sheet->getStyle("A{$row}:{$kolomAkhir}{$row}")->getFill()->applyFromArray($this->headerFill());
+        $sheet->getStyle("A{$row}:{$kolomAkhir}{$row}")->getAlignment()
+            ->setHorizontal(Alignment::HORIZONTAL_CENTER);
+
+        return $kolomAkhir;
+    }
+
+    private function beriGaris($sheet, string $range): void
+    {
+        $sheet->getStyle($range)->getBorders()->getAllBorders()
+            ->setBorderStyle(\PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN);
+    }
+
+    private function tgl($value): string
+    {
+        return $value ? \Carbon\Carbon::parse($value)->format('d-m-Y') : '-';
+    }
+
+    /** Lembar 1: identitas pekerjaan, grafik kurva S, lalu angkanya sebagai tabel. */
+    private function sheetKurvaS($sheet, OutagePlan $outagePlan, array $summary): void
+    {
+        $sheet->setTitle('Kurva S');
 
         $sheet->setCellValue('A1', 'LAPORAN PERENCANAAN & REALISASI OUTAGE');
         $sheet->mergeCells('A1:F1');
@@ -240,12 +300,14 @@ class OutagePlanController extends Controller
 
         $sheet->setCellValue('A2', $outagePlan->mesin_pembangkit);
         $sheet->mergeCells('A2:F2');
-        $sheet->getStyle('A2')->getFont()->setItalic(true)->setColor(new \PhpOffice\PhpSpreadsheet\Style\Color('64748B'));
+        $sheet->getStyle('A2')->getFont()->setItalic(true)
+            ->setColor(new \PhpOffice\PhpSpreadsheet\Style\Color('64748B'));
 
         $infoRows = [
             ['Mesin Pembangkit', $outagePlan->mesin_pembangkit ?? '-', 'Scope', $outagePlan->scope ?? '-'],
             ['Jenis Pembangkit', $outagePlan->jenis_pembangkit ?? '-', 'Status', $outagePlan->ket ?? 'OPEN'],
-            ['Waktu Mulai', $outagePlan->start_date ? \Carbon\Carbon::parse($outagePlan->start_date)->format('d-m-Y') : '-', 'Waktu Selesai', $outagePlan->selesai ? \Carbon\Carbon::parse($outagePlan->selesai)->format('d-m-Y') : '-'],
+            ['Waktu Mulai', $this->tgl($outagePlan->start_date), 'Waktu Selesai', $this->tgl($outagePlan->selesai)],
+            ['Real Start', $this->tgl($outagePlan->real_start), 'Real Stop', $this->tgl($outagePlan->real_stop)],
             ['Total Hari', $summary['totalHari'] ? $summary['totalHari'] . ' Hari' : '-', 'Progress Keseluruhan', 'Plan ' . number_format($summary['overallPlan'], 0) . '% / Actual ' . number_format($summary['overallActual'], 0) . '%'],
         ];
 
@@ -275,65 +337,166 @@ class OutagePlanController extends Controller
             $drawing->setMimeType(MemoryDrawing::MIMETYPE_PNG);
             $drawing->setCoordinates("A{$row}");
             $drawing->setWorksheet($sheet);
-            $row += 14; // reserve roughly the chart's rendered height in rows
+            $row += 14; // kira-kira setinggi grafik saat dirender
         }
 
         $row++;
         $headerRow = $row;
-        $headers = [
-            'Day', 'Tanggal', 'Plan (%)', 'Actual (%)', 'Status',
-            'Part Number', 'Nama Material', 'Uraian Pekerjaan', 'Keterangan',
-        ];
-        foreach ($headers as $i => $label) {
-            $col = chr(65 + $i);
-            $sheet->setCellValue("{$col}{$headerRow}", $label);
-        }
-        $sheet->getStyle("A{$headerRow}:I{$headerRow}")->getFont()->setBold(true);
-        $sheet->getStyle("A{$headerRow}:I{$headerRow}")->getFill()->applyFromArray($headerFill);
-        $sheet->getStyle("A{$headerRow}:I{$headerRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+        $kolomAkhir = $this->tulisHeader(
+            $sheet,
+            ['Day', 'Tanggal', 'Plan (%)', 'Actual (%)', 'Deviasi (%)', 'Status'],
+            $headerRow,
+        );
 
         $row = $headerRow + 1;
         foreach ($outagePlan->dailyProgresses as $idx => $dp) {
-            $sheet->setCellValue("A{$row}", 'Day ' . ($idx + 1));
-            $sheet->setCellValue("B{$row}", \Carbon\Carbon::parse($dp->tanggal)->format('d-m-Y'));
             // Hari yang belum diisi dibiarkan kosong, bukan ditulis 0.
-            $sheet->setCellValue("C{$row}", $dp->plan_progress === null ? '' : (float) $dp->plan_progress);
-            $sheet->setCellValue("D{$row}", $dp->actual_progress === null ? '' : (float) $dp->actual_progress);
-            $sheet->setCellValue("E{$row}", $dp->status);
-            $sheet->setCellValue("F{$row}", $dp->material_part_number ?: '-');
-            $sheet->setCellValue("G{$row}", $dp->material_nama ?: '-');
-            $sheet->setCellValue("H{$row}", $dp->uraian_pekerjaan ?: '-');
-            $sheet->setCellValue("I{$row}", $dp->keterangan ?: '-');
-            $sheet->getStyle("A{$row}:E{$row}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
-            // Uraian dan keterangan bisa panjang: dibungkus, bukan melebar.
-            $sheet->getStyle("H{$row}:I{$row}")->getAlignment()->setWrapText(true);
-            $sheet->getStyle("A{$row}:I{$row}")->getAlignment()->setVertical(Alignment::VERTICAL_TOP);
+            $plan = $dp->plan_progress === null ? null : (float) $dp->plan_progress;
+            $actual = $dp->actual_progress === null ? null : (float) $dp->actual_progress;
+
+            $sheet->setCellValue("A{$row}", 'Day ' . ($idx + 1));
+            $sheet->setCellValue("B{$row}", $this->tgl($dp->tanggal));
+            $sheet->setCellValue("C{$row}", $plan ?? '');
+            $sheet->setCellValue("D{$row}", $actual ?? '');
+            // Deviasi hanya bermakna bila kedua nilainya sudah terisi.
+            $sheet->setCellValue("E{$row}", ($plan === null || $actual === null) ? '' : $actual - $plan);
+            $sheet->setCellValue("F{$row}", $dp->status);
+            $sheet->getStyle("A{$row}:F{$row}")->getAlignment()
+                ->setHorizontal(Alignment::HORIZONTAL_CENTER);
             $row++;
         }
 
         $lastRow = $row - 1;
         if ($lastRow >= $headerRow) {
-            $sheet->getStyle("A{$headerRow}:I{$lastRow}")
-                ->getBorders()->getAllBorders()
-                ->setBorderStyle(\PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN);
+            $this->beriGaris($sheet, "A{$headerRow}:{$kolomAkhir}{$lastRow}");
         }
 
-        foreach (range('A', 'G') as $col) {
+        foreach (range('A', 'F') as $col) {
+            $sheet->getColumnDimension($col)->setAutoSize(true);
+        }
+    }
+
+    /** Lembar 2: material yang dipakai dan uraian pekerjaannya. */
+    private function sheetUraian($sheet, OutagePlan $outagePlan): void
+    {
+        $sheet->setTitle('Uraian Pekerjaan');
+
+        $sheet->setCellValue('A1', 'URAIAN PEKERJAAN & MATERIAL');
+        $sheet->mergeCells('A1:F1');
+        $sheet->getStyle('A1')->getFont()->setBold(true)->setSize(13);
+        $sheet->setCellValue('A2', $outagePlan->mesin_pembangkit);
+        $sheet->getStyle('A2')->getFont()->setItalic(true);
+
+        $headerRow = 4;
+        $kolomAkhir = $this->tulisHeader(
+            $sheet,
+            ['Day', 'Tanggal', 'Part Number', 'Nama Material', 'Uraian Pekerjaan', 'Keterangan'],
+            $headerRow,
+        );
+
+        $row = $headerRow + 1;
+        foreach ($outagePlan->dailyProgresses as $idx => $dp) {
+            $sheet->setCellValue("A{$row}", 'Day ' . ($idx + 1));
+            $sheet->setCellValue("B{$row}", $this->tgl($dp->tanggal));
+            $sheet->setCellValue("C{$row}", $dp->material_part_number ?: '-');
+            $sheet->setCellValue("D{$row}", $dp->material_nama ?: '-');
+            $sheet->setCellValue("E{$row}", $dp->uraian_pekerjaan ?: '-');
+            $sheet->setCellValue("F{$row}", $dp->keterangan ?: '-');
+            $sheet->getStyle("A{$row}:B{$row}")->getAlignment()
+                ->setHorizontal(Alignment::HORIZONTAL_CENTER);
+            // Uraian dan keterangan bisa panjang: dibungkus, bukan melebar.
+            $sheet->getStyle("E{$row}:F{$row}")->getAlignment()->setWrapText(true);
+            $sheet->getStyle("A{$row}:F{$row}")->getAlignment()
+                ->setVertical(Alignment::VERTICAL_TOP);
+            $row++;
+        }
+
+        $lastRow = $row - 1;
+        if ($lastRow >= $headerRow) {
+            $this->beriGaris($sheet, "A{$headerRow}:{$kolomAkhir}{$lastRow}");
+        }
+
+        foreach (['A', 'B', 'C', 'D'] as $col) {
             $sheet->getColumnDimension($col)->setAutoSize(true);
         }
 
         // Lebar tetap: autoSize pada teks panjang menghasilkan kolom raksasa.
-        $sheet->getColumnDimension('H')->setWidth(48);
-        $sheet->getColumnDimension('I')->setWidth(32);
+        $sheet->getColumnDimension('E')->setWidth(52);
+        $sheet->getColumnDimension('F')->setWidth(32);
+    }
 
-        $writer = new Xlsx($spreadsheet);
-        $filename = $this->exportFilename($outagePlan, 'xlsx');
+    /**
+     * Lembar 3: dokumentasi foto.
+     *
+     * Hanya hari yang berfoto yang ditulis, supaya lembarnya tidak berisi
+     * puluhan baris kosong setinggi foto.
+     */
+    private function sheetFoto($sheet, OutagePlan $outagePlan): void
+    {
+        $sheet->setTitle('Dokumentasi Foto');
 
-        return response()->streamDownload(function () use ($writer) {
-            $writer->save('php://output');
-        }, $filename, [
-            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        ]);
+        $sheet->setCellValue('A1', 'DOKUMENTASI FOTO');
+        $sheet->mergeCells('A1:D1');
+        $sheet->getStyle('A1')->getFont()->setBold(true)->setSize(13);
+        $sheet->setCellValue('A2', $outagePlan->mesin_pembangkit);
+        $sheet->getStyle('A2')->getFont()->setItalic(true);
+
+        $headerRow = 4;
+        $kolomAkhir = $this->tulisHeader(
+            $sheet,
+            ['Day', 'Tanggal', 'Uraian Pekerjaan', 'Foto'],
+            $headerRow,
+        );
+
+        $row = $headerRow + 1;
+        foreach ($outagePlan->dailyProgresses as $idx => $dp) {
+            $fotos = OutagePhotos::paths($dp->photos);
+
+            if ($fotos === []) {
+                continue;
+            }
+
+            $sheet->getRowDimension($row)->setRowHeight(110);
+            $sheet->setCellValue("A{$row}", 'Day ' . ($idx + 1));
+            $sheet->setCellValue("B{$row}", $this->tgl($dp->tanggal));
+            $sheet->setCellValue("C{$row}", $dp->uraian_pekerjaan ?: '-');
+            $sheet->getStyle("A{$row}:B{$row}")->getAlignment()
+                ->setHorizontal(Alignment::HORIZONTAL_CENTER);
+            $sheet->getStyle("C{$row}")->getAlignment()->setWrapText(true)
+                ->setVertical(Alignment::VERTICAL_TOP);
+
+            foreach ($fotos as $i => $path) {
+                $drawing = new Drawing();
+                $drawing->setPath($path);
+                $drawing->setHeight(100);
+                // Digeser ke kanan supaya beberapa foto pada satu hari berjajar,
+                // bukan bertumpuk di titik yang sama.
+                $drawing->setOffsetX(6 + ($i * 140));
+                $drawing->setOffsetY(4);
+                $drawing->setCoordinates("D{$row}");
+                $drawing->setWorksheet($sheet);
+            }
+
+            $row++;
+        }
+
+        $lastRow = $row - 1;
+
+        if ($lastRow >= $headerRow + 1) {
+            $this->beriGaris($sheet, "A{$headerRow}:{$kolomAkhir}{$lastRow}");
+        } else {
+            $sheet->setCellValue("A{$headerRow}", 'Belum ada dokumentasi foto yang diunggah.');
+            $sheet->mergeCells("A{$headerRow}:D{$headerRow}");
+            $sheet->getStyle("A{$headerRow}")->getFont()->setItalic(true)->setBold(false);
+        }
+
+        foreach (['A', 'B'] as $col) {
+            $sheet->getColumnDimension($col)->setAutoSize(true);
+        }
+
+        $sheet->getColumnDimension('C')->setWidth(40);
+        // Cukup lebar untuk MAKS_PER_HARI foto berjajar.
+        $sheet->getColumnDimension('D')->setWidth(85);
     }
 
     /**

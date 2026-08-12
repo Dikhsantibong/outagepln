@@ -76,10 +76,15 @@
         .status-kosong { color: #94a3b8; }
         /* Uraian pekerjaan menghormati baris baru yang diketik pengguna. */
         .nowrap-pre { white-space: pre-line; }
-        /* Tabel harian kini 9 kolom; dikecilkan agar tetap muat di A4 portrait
-           tanpa mengubah orientasi halaman lain yang sudah tertata. */
-        table.harian { font-size: 8px; }
-        table.harian th, table.harian td { padding: 3px 4px; }
+        /* Tabel dipecah per topik supaya tiap kolom dapat lebar yang layak
+           di A4 portrait — satu tabel 9 kolom membuat semuanya sempit. */
+        table.rapat { font-size: 8.5px; }
+        table.rapat th, table.rapat td { padding: 3px 5px; }
+
+        /* Dokumentasi foto: sel dibiarkan tinggi agar gambarnya terbaca. */
+        td.foto { text-align: center; padding: 4px; }
+        td.foto img { max-height: 110px; max-width: 150px; }
+        .foto-kosong { font-size: 8px; color: #94a3b8; font-style: italic; }
 
         .footer { margin-top: 8px; font-size: 8.5px; color: #94a3b8; text-align: center; }
     </style>
@@ -156,18 +161,61 @@
         <p style="font-size: 10px; color: #94a3b8; font-style: italic;">Belum ada data progress harian.</p>
     @endif
 
-    <div class="section-title">Riwayat Progress Harian (Perencanaan vs Realisasi)</div>
-    <table class="data harian">
+    {{-- 1. Kurva S sebagai tabel: angka di balik grafik di atas. --}}
+    <div class="section-title">Tabel Kurva S - Plan vs Actual</div>
+    <table class="data rapat">
         <thead>
             <tr>
-                <th style="width: 6%;">Day</th>
-                <th style="width: 9%;">Tanggal</th>
-                <th style="width: 7%;">Plan (%)</th>
-                <th style="width: 7%;">Actual (%)</th>
-                <th style="width: 9%;">Status</th>
-                <th style="width: 11%;">Part Number</th>
-                <th style="width: 15%;">Nama Material</th>
-                <th style="width: 22%;">Uraian Pekerjaan</th>
+                <th style="width: 10%;">Day</th>
+                <th style="width: 16%;">Tanggal</th>
+                <th style="width: 16%;">Plan (%)</th>
+                <th style="width: 16%;">Actual (%)</th>
+                <th style="width: 16%;">Deviasi</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            @forelse ($outagePlan->dailyProgresses as $idx => $dp)
+                @php
+                    $statusClass = match ($dp->status) {
+                        'Leading' => 'status-leading',
+                        'On Progres' => 'status-onprogres',
+                        'Lagging' => 'status-lagging',
+                        default => 'status-kosong',
+                    };
+                    // Deviasi hanya bermakna bila kedua nilainya sudah terisi.
+                    $deviasi = ($dp->plan_progress === null || $dp->actual_progress === null)
+                        ? null
+                        : (float) $dp->actual_progress - (float) $dp->plan_progress;
+                @endphp
+                <tr>
+                    <td>Day {{ $idx + 1 }}</td>
+                    <td>{{ \Carbon\Carbon::parse($dp->tanggal)->format('d-m-Y') }}</td>
+                    <td>{{ $dp->plan_progress === null ? '-' : number_format((float) $dp->plan_progress, 2) . '%' }}</td>
+                    <td>{{ $dp->actual_progress === null ? '-' : number_format((float) $dp->actual_progress, 2) . '%' }}</td>
+                    <td class="{{ $deviasi === null ? 'status-kosong' : ($deviasi < 0 ? 'status-lagging' : 'status-leading') }}">
+                        {{ $deviasi === null ? '-' : ($deviasi > 0 ? '+' : '') . number_format($deviasi, 2) . '%' }}
+                    </td>
+                    <td class="{{ $statusClass }}">{{ $dp->status }}</td>
+                </tr>
+            @empty
+                <tr>
+                    <td colspan="6">Belum ada data progress harian.</td>
+                </tr>
+            @endforelse
+        </tbody>
+    </table>
+
+    {{-- 2. Uraian pekerjaan beserta material yang dipakai. --}}
+    <div class="section-title">Uraian Pekerjaan &amp; Material</div>
+    <table class="data rapat">
+        <thead>
+            <tr>
+                <th style="width: 8%;">Day</th>
+                <th style="width: 12%;">Tanggal</th>
+                <th style="width: 14%;">Part Number</th>
+                <th style="width: 20%;">Nama Material</th>
+                <th style="width: 27%;">Uraian Pekerjaan</th>
                 <th>Keterangan</th>
             </tr>
         </thead>
@@ -176,17 +224,6 @@
                 <tr>
                     <td>Day {{ $idx + 1 }}</td>
                     <td>{{ \Carbon\Carbon::parse($dp->tanggal)->format('d-m-Y') }}</td>
-                    <td>{{ $dp->plan_progress === null ? '-' : number_format((float) $dp->plan_progress, 2) . '%' }}</td>
-                    <td>{{ $dp->actual_progress === null ? '-' : number_format((float) $dp->actual_progress, 2) . '%' }}</td>
-                    @php
-                        $statusClass = match ($dp->status) {
-                            'Leading' => 'status-leading',
-                            'On Progres' => 'status-onprogres',
-                            'Lagging' => 'status-lagging',
-                            default => 'status-kosong',
-                        };
-                    @endphp
-                    <td class="{{ $statusClass }}">{{ $dp->status }}</td>
                     <td class="left">{{ $dp->material_part_number ?: '-' }}</td>
                     <td class="left">{{ $dp->material_nama ?: '-' }}</td>
                     <td class="left nowrap-pre">{{ $dp->uraian_pekerjaan ?: '-' }}</td>
@@ -194,9 +231,47 @@
                 </tr>
             @empty
                 <tr>
-                    <td colspan="9">Belum ada data progress harian.</td>
+                    <td colspan="6">Belum ada data progress harian.</td>
                 </tr>
             @endforelse
+        </tbody>
+    </table>
+
+    {{-- 3. Dokumentasi foto. Hanya hari yang berfoto yang ditampilkan supaya
+         tabelnya tidak berisi baris kosong berderet. --}}
+    <div class="section-title">Dokumentasi Foto</div>
+    <table class="data rapat">
+        <thead>
+            <tr>
+                <th style="width: 8%;">Day</th>
+                <th style="width: 12%;">Tanggal</th>
+                <th style="width: 25%;">Uraian Pekerjaan</th>
+                <th>Foto</th>
+            </tr>
+        </thead>
+        <tbody>
+            @php $adaFoto = false; @endphp
+            @foreach ($outagePlan->dailyProgresses as $idx => $dp)
+                @php $fotos = \App\Support\OutagePhotos::dataUris($dp->photos); @endphp
+                @if ($fotos)
+                    @php $adaFoto = true; @endphp
+                    <tr>
+                        <td>Day {{ $idx + 1 }}</td>
+                        <td>{{ \Carbon\Carbon::parse($dp->tanggal)->format('d-m-Y') }}</td>
+                        <td class="left nowrap-pre">{{ $dp->uraian_pekerjaan ?: '-' }}</td>
+                        <td class="foto">
+                            @foreach ($fotos as $foto)
+                                <img src="{{ $foto }}" style="margin: 2px;">
+                            @endforeach
+                        </td>
+                    </tr>
+                @endif
+            @endforeach
+            @if (! $adaFoto)
+                <tr>
+                    <td colspan="4" class="foto-kosong">Belum ada dokumentasi foto yang diunggah.</td>
+                </tr>
+            @endif
         </tbody>
     </table>
 
