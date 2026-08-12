@@ -132,11 +132,12 @@ class OutagePlanExportTest extends TestCase
 
         // Lembar uraian memuat material dan uraiannya.
         $uraian = $book->getSheetByName('Uraian Pekerjaan');
-        $this->assertSame('Part Number', $uraian->getCell('C4')->getValue());
-        $this->assertSame('Nama Material', $uraian->getCell('D4')->getValue());
-        $this->assertSame('PN-9911', $uraian->getCell('C5')->getValue());
-        $this->assertSame('Gasket cylinder head', $uraian->getCell('D5')->getValue());
-        $this->assertSame('Bongkar cylinder head', $uraian->getCell('E5')->getValue());
+        $this->assertSame('Uraian Pekerjaan', $uraian->getCell('C4')->getValue());
+        $this->assertSame('Material Digunakan', $uraian->getCell('D4')->getValue());
+        // Kedua kolom kini berisi daftar bernomor, bukan satu nilai tunggal.
+        $this->assertStringContainsString('Bongkar cylinder head', $uraian->getCell('C5')->getValue());
+        $this->assertStringContainsString('Gasket cylinder head', $uraian->getCell('D5')->getValue());
+        $this->assertStringContainsString('PN-9911', $uraian->getCell('D5')->getValue());
 
         // Lembar kurva S memuat deviasi terhitung: 25 - 30 = -5.
         $kurva = $book->getSheetByName('Kurva S');

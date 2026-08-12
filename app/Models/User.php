@@ -11,7 +11,7 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Fortify\TwoFactorAuthenticatable;
 
-#[Fillable(['name', 'email', 'password', 'role', 'merek'])]
+#[Fillable(['name', 'email', 'password', 'role', 'merek', 'menu_access'])]
 #[Hidden(['password', 'two_factor_secret', 'two_factor_recovery_codes', 'remember_token'])]
 class User extends Authenticatable
 {
@@ -29,12 +29,18 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
             'two_factor_confirmed_at' => 'datetime',
+            'menu_access' => 'array',
         ];
+    }
+
+    public function isSuperAdmin(): bool
+    {
+        return $this->role === 'super_admin';
     }
 
     public function isAdmin(): bool
     {
-        return $this->role === 'admin';
+        return $this->role === 'admin' || $this->role === 'super_admin';
     }
 
     /** Tamu hanya boleh melihat; tidak boleh menambah maupun mengubah apa pun. */
@@ -54,7 +60,7 @@ class User extends Authenticatable
      */
     public function canDeleteRecords(): bool
     {
-        return $this->isAdmin();
+        return $this->isSuperAdmin();
     }
 
     /** Tamu tidak boleh menulis apa pun. */

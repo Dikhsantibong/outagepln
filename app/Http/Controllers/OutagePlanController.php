@@ -6,6 +6,8 @@ use Illuminate\Http\Request;
 
 use Inertia\Inertia;
 use App\Models\OutagePlan;
+use App\Support\DailyRingkas;
+use App\Support\LaporanHarianData;
 use App\Support\OutagePhotos;
 use App\Support\SCurveChartRenderer;
 use App\Support\TahunFilter;
@@ -223,6 +225,424 @@ class OutagePlanController extends Controller
     }
 
     /**
+     * Laporan Kegiatan Harian: lembar kegiatan + lembar dokumentasi (portrait).
+     *
+     * Laporannya per hari, bukan per outage plan — satu berkas untuk satu
+     * tanggal, mengikuti formulir yang dipakai di lapangan.
+     */
+    public function laporanHarianPdf(Request $request, OutagePlan $outagePlan, string $tanggal)
+    {
+        [$hari, $hariKe] = $this->cariHari($request, $outagePlan, $tanggal);
+        $data = new LaporanHarianData($outagePlan, $hari, $hariKe);
+
+        // 1. Generate Laporan Harian (Portrait)
+        $pdfHarian = Pdf::loadView('exports.laporan-harian', [
+            'info' => $data->info(),
+            'hari' => $data->hari(),
+            'pekerjaan' => $data->pekerjaan(),
+            'spareParts' => $data->spareParts(),
+            'dokumentasi' => $data->dokumentasi(),
+            'ttd' => $data->ttd(),
+            'logoPln' => $this->logoDataUri(),
+            'logoVendor' => null,
+            'chartImage' => null,
+        ])->setPaper('a4', 'portrait')->output();
+
+        // 2. Generate Kurva S (Landscape)
+        $pdfKurva = Pdf::loadView('exports.laporan-kurva-s', [
+            'info' => $data->info(),
+            'kontrak' => $data->kontrak(),
+            'wbs' => $data->wbs(),
+            'wbsTotal' => $data->wbsTotal(),
+            'chartImage' => SCurveChartRenderer::renderDataUri($outagePlan),
+            'logoPln' => $this->logoDataUri(),
+            'logoVendor' => null,
+        ])->setPaper('a4', 'landscape')->output();
+
+        // 3. Merge them using FPDI
+        $fpdi = new \setasign\Fpdi\Fpdi();
+
+        // Add pages from Laporan Harian
+        $pageCount1 = $fpdi->setSourceFile(\setasign\Fpdi\PdfParser\StreamReader::createByString($pdfHarian));
+        for ($pageNo = 1; $pageNo <= $pageCount1; $pageNo++) {
+            $templateId = $fpdi->importPage($pageNo);
+            $size = $fpdi->getTemplateSize($templateId);
+            $fpdi->AddPage($size['orientation'], $size);
+            $fpdi->useTemplate($templateId);
+        }
+
+        // Add pages from Kurva S
+        $pageCount2 = $fpdi->setSourceFile(\setasign\Fpdi\PdfParser\StreamReader::createByString($pdfKurva));
+        for ($pageNo = 1; $pageNo <= $pageCount2; $pageNo++) {
+            $templateId = $fpdi->importPage($pageNo);
+            $size = $fpdi->getTemplateSize($templateId);
+            $fpdi->AddPage($size['orientation'], $size);
+            $fpdi->useTemplate($templateId);
+        }
+
+        $mergedPdf = $fpdi->Output('S');
+
+        $filename = $this->laporanFilename($outagePlan, $hariKe, 'Laporan-Harian', 'pdf');
+
+        return response($mergedPdf, 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+        ]);
+    }
+
+    /**
+     * Laporan Kegiatan Harian dalam bentuk Excel.
+     *
+     * Isinya sama persis dengan versi PDF — dirakit dari LaporanHarianData yang
+     * sama — hanya dipecah per lembar supaya angkanya bisa diolah lebih lanjut.
+     */
+    public function laporanHarianExcel(Request $request, OutagePlan $outagePlan, string $tanggal)
+    {
+        [$hari, $hariKe] = $this->cariHari($request, $outagePlan, $tanggal);
+        $data = new LaporanHarianData($outagePlan, $hari, $hariKe);
+
+        $spreadsheet = new Spreadsheet();
+
+        $this->sheetLaporanHarian($spreadsheet->getActiveSheet(), $data);
+        $this->sheetLaporanFoto($spreadsheet->createSheet(), $data, $hari);
+        $this->sheetLaporanKurvaS($spreadsheet->createSheet(), $data, $outagePlan);
+
+        $spreadsheet->setActiveSheetIndex(0);
+
+        $writer = new Xlsx($spreadsheet);
+        $filename = $this->laporanFilename($outagePlan, $hariKe, 'Laporan-Harian', 'xlsx');
+
+        return response()->streamDownload(function () use ($writer) {
+            $writer->save('php://output');
+        }, $filename, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        ]);
+    }
+
+    /** Kop laporan harian, dipakai bersama seluruh lembarnya. */
+    private function kopLaporan($sheet, array $info, array $hari, string $judulLembar): int
+    {
+        $logoPath = public_path('sidebar-logo.png');
+        if (is_file($logoPath)) {
+            $drawing = new \PhpOffice\PhpSpreadsheet\Worksheet\Drawing();
+            $drawing->setName('Logo');
+            $drawing->setDescription('Logo');
+            $drawing->setPath($logoPath);
+            $drawing->setHeight(60);
+            $drawing->setCoordinates('E1');
+            $drawing->setOffsetX(20);
+            $drawing->setOffsetY(5);
+            $drawing->setWorksheet($sheet);
+        }
+
+        $sheet->setCellValue('A1', 'LAPORAN KEGIATAN HARIAN ' . $info['jenis_pekerjaan']);
+        $sheet->mergeCells('A1:E1');
+        $sheet->getStyle('A1')->getFont()->setBold(true)->setSize(13);
+        $sheet->getStyle('A1')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+
+        $sheet->setCellValue('A2', $info['mesin']);
+        $sheet->mergeCells('A2:E2');
+        $sheet->getStyle('A2')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+
+        $sheet->setCellValue('A3', $info['lokasi']);
+        $sheet->mergeCells('A3:E3');
+        $sheet->getStyle('A3')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+
+        $sheet->setCellValue('A5', 'HARI KE');
+        $sheet->setCellValue('B5', ': ' . $hari['ke']);
+        $sheet->setCellValue('C5', 'PROGRESS HARI KE ' . $hari['ke']);
+        $sheet->setCellValue('D5', ': ' . $hari['progress'] . ' %');
+
+        $sheet->setCellValue('A6', 'TANGGAL');
+        $sheet->setCellValue('B6', ': ' . $hari['tanggal']);
+        $sheet->setCellValue('C6', 'LEMBAR');
+        $sheet->setCellValue('D6', ': ' . $judulLembar);
+
+        $sheet->getStyle('A5:A6')->getFont()->setBold(true);
+        $sheet->getStyle('C5:C6')->getFont()->setBold(true);
+
+        return 8;
+    }
+
+    /** Lembar 1: uraian pekerjaan berpoin, material, dan tanda tangan. */
+    private function sheetLaporanHarian($sheet, LaporanHarianData $data): void
+    {
+        $sheet->setTitle('Laporan Harian');
+
+        $row = $this->kopLaporan($sheet, $data->info(), $data->hari(), 'Kegiatan');
+
+        // ── Uraian pekerjaan ────────────────────────────────────────────
+        $sheet->setCellValue("A{$row}", 'URAIAN PEKERJAAN');
+        $sheet->mergeCells("A{$row}:E{$row}");
+        $sheet->getStyle("A{$row}")->getFont()->setBold(true);
+        $row++;
+
+        $headerRow = $row;
+        $this->tulisHeader($sheet, ['NO.', 'URAIAN PEKERJAAN', 'PENANGGUNG JAWAB', 'PROGRESS (%)'], $headerRow);
+        $row++;
+
+        $adaPekerjaan = false;
+        foreach ($data->pekerjaan() as $grup) {
+            if ($grup['kategori'] !== '') {
+                $sheet->setCellValue("B{$row}", $grup['kategori']);
+                $sheet->getStyle("B{$row}")->getFont()->setBold(true);
+                $row++;
+            }
+
+            foreach ($grup['items'] as $i => $item) {
+                $adaPekerjaan = true;
+                $sheet->setCellValue("A{$row}", $i + 1);
+                $sheet->setCellValue("B{$row}", $item['uraian']);
+                $sheet->setCellValue("C{$row}", $item['penanggung_jawab'] ?? '');
+                // Ditulis sebagai angka, bukan teks, supaya bisa dihitung.
+                $sheet->setCellValue("D{$row}", $item['progress'] ?? '');
+                $sheet->getStyle("A{$row}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                $sheet->getStyle("D{$row}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                $row++;
+            }
+        }
+
+        if (! $adaPekerjaan) {
+            $sheet->setCellValue("B{$row}", 'Belum ada poin pekerjaan pada hari ini.');
+            $sheet->getStyle("B{$row}")->getFont()->setItalic(true);
+            $row++;
+        }
+
+        $this->beriGaris($sheet, "A{$headerRow}:D" . ($row - 1));
+        $row += 2;
+
+        // ── Spare part ──────────────────────────────────────────────────
+        $sheet->setCellValue("A{$row}", 'SPARE PART YANG DIGANTI');
+        $sheet->mergeCells("A{$row}:E{$row}");
+        $sheet->getStyle("A{$row}")->getFont()->setBold(true);
+        $row++;
+
+        $headerRow = $row;
+        $this->tulisHeader($sheet, ['NO.', 'NAMA SPARE PART', 'PART NUMBER', 'QTY', 'KETERANGAN'], $headerRow);
+        $row++;
+
+        $parts = $data->spareParts();
+
+        if ($parts === []) {
+            $sheet->setCellValue("B{$row}", 'Tidak ada penggantian spare part.');
+            $sheet->getStyle("B{$row}")->getFont()->setItalic(true);
+            $row++;
+        } else {
+            foreach ($parts as $i => $sp) {
+                $sheet->setCellValue("A{$row}", $i + 1);
+                $sheet->setCellValue("B{$row}", $sp['nama']);
+                $sheet->setCellValue("C{$row}", $sp['part_number']);
+                $sheet->setCellValue("D{$row}", $sp['qty'] ?? '');
+                $sheet->setCellValue("E{$row}", $sp['keterangan'] ?? '');
+                $sheet->getStyle("A{$row}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                $sheet->getStyle("D{$row}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                $row++;
+            }
+        }
+
+        $this->beriGaris($sheet, "A{$headerRow}:E" . ($row - 1));
+        $row += 2;
+
+        // ── Tanda tangan ────────────────────────────────────────────────
+        $ttd = $data->ttd();
+        $sheet->setCellValue("A{$row}", 'Mengetahui,');
+        $sheet->setCellValue("D{$row}", 'Dibuat Oleh,');
+        $row++;
+        $sheet->setCellValue("A{$row}", $ttd['pihak_pertama']);
+        $sheet->setCellValue("D{$row}", $ttd['pihak_kedua']);
+        $row += 4;
+
+        // Empat penandatangan, kolomnya mengikuti urutan pada lembar cetak.
+        // Jumlahnya dibaca dari data, bukan dipatok, supaya PDF dan Excel tidak
+        // pernah menampilkan penandatangan yang berbeda.
+        foreach (['A', 'B', 'C', 'D'] as $i => $kol) {
+            $nama = $ttd['nama_' . ($i + 1)] ?? null;
+            $jabatan = $ttd['jabatan_' . ($i + 1)] ?? null;
+
+            if ($nama === null && $jabatan === null) {
+                continue;
+            }
+
+            $sheet->setCellValue("{$kol}{$row}", $nama ?? '');
+            $sheet->getStyle("{$kol}{$row}")->getFont()->setBold(true)->setUnderline(true);
+            $sheet->setCellValue("{$kol}" . ($row + 1), $jabatan ?? '');
+        }
+
+        $sheet->getColumnDimension('A')->setWidth(8);
+        $sheet->getColumnDimension('B')->setWidth(52);
+        $sheet->getColumnDimension('C')->setWidth(24);
+        $sheet->getColumnDimension('D')->setWidth(18);
+        $sheet->getColumnDimension('E')->setWidth(28);
+    }
+
+    /** Lembar 2: dokumentasi foto hari itu. */
+    private function sheetLaporanFoto($sheet, LaporanHarianData $data, $hari): void
+    {
+        $sheet->setTitle('Dokumentasi');
+
+        $row = $this->kopLaporan($sheet, $data->info(), $data->hari(), 'Dokumentasi');
+
+        $fotos = OutagePhotos::paths($hari->photos);
+
+        if ($fotos === []) {
+            $sheet->setCellValue("A{$row}", 'Belum ada dokumentasi foto untuk hari ini.');
+            $sheet->getStyle("A{$row}")->getFont()->setItalic(true);
+
+            return;
+        }
+
+        $uraian = DailyRingkas::pekerjaan($hari);
+
+        if ($uraian !== '') {
+            $sheet->setCellValue("A{$row}", $uraian);
+            $sheet->mergeCells("A{$row}:D{$row}");
+            $sheet->getStyle("A{$row}")->getAlignment()->setWrapText(true)
+                ->setVertical(Alignment::VERTICAL_TOP);
+            $sheet->getRowDimension($row)->setRowHeight(60);
+            $row += 2;
+        }
+
+        // Dua foto per baris, mengikuti tata letak lembar cetaknya.
+        foreach (array_chunk($fotos, 2) as $pasangan) {
+            $sheet->getRowDimension($row)->setRowHeight(150);
+
+            foreach ($pasangan as $i => $path) {
+                $drawing = new \PhpOffice\PhpSpreadsheet\Worksheet\Drawing();
+                $drawing->setName('Foto Dokumentasi');
+                $drawing->setDescription('Foto Dokumentasi');
+                $drawing->setPath($path);
+                $drawing->setHeight(140);
+                $drawing->setOffsetX(6);
+                $drawing->setOffsetY(4);
+                $drawing->setCoordinates(($i === 0 ? 'A' : 'C') . $row);
+                $drawing->setWorksheet($sheet);
+            }
+
+            $row += 2;
+        }
+
+        foreach (['A', 'B', 'C', 'D'] as $col) {
+            $sheet->getColumnDimension($col)->setWidth(30);
+        }
+    }
+
+    /** Lembar 3: rincian bobot pekerjaan dan grafik kurva S. */
+    private function sheetLaporanKurvaS($sheet, LaporanHarianData $data, OutagePlan $outagePlan): void
+    {
+        $sheet->setTitle('Kurva S');
+
+        $row = $this->kopLaporan($sheet, $data->info(), $data->hari(), 'Kurva S');
+
+        $kontrak = $data->kontrak();
+        $info = $data->info();
+
+        foreach ([
+            ['MESIN', $info['tipe_mesin'], 'D/O NOMOR', $kontrak['do_nomor']],
+            ['NO. SERI', $info['nomor_seri'], 'TANGGAL', $kontrak['do_tanggal']],
+            ['UNIT', $info['unit'], 'NO. SURAT PENUNJUKAN', $kontrak['surat_nomor']],
+            ['ULPLTD', $info['ulpltd'], 'TANGGAL', $kontrak['surat_tanggal']],
+        ] as $baris) {
+            $sheet->setCellValue("A{$row}", $baris[0]);
+            $sheet->setCellValue("B{$row}", ': ' . $baris[1]);
+            $sheet->setCellValue("C{$row}", $baris[2]);
+            $sheet->setCellValue("D{$row}", ': ' . $baris[3]);
+            $sheet->getStyle("A{$row}")->getFont()->setBold(true);
+            $sheet->getStyle("C{$row}")->getFont()->setBold(true);
+            $row++;
+        }
+
+        $row++;
+
+        // ── Rincian bobot (WBS) ─────────────────────────────────────────
+        $headerRow = $row;
+        $this->tulisHeader(
+            $sheet,
+            ['NO.', 'URAIAN PEKERJAAN', 'BOBOT (%)', 'PROGRESS (%)', 'BOBOT PROGRESS (%)'],
+            $headerRow,
+        );
+        $row++;
+
+        $wbs = $data->wbs();
+
+        if ($wbs === []) {
+            $sheet->setCellValue("B{$row}", 'Belum ada rincian bobot pekerjaan (WBS).');
+            $sheet->getStyle("B{$row}")->getFont()->setItalic(true);
+            $row++;
+        } else {
+            foreach ($wbs as $baris) {
+                $sheet->setCellValue("A{$row}", $baris['no']);
+                $sheet->setCellValue("B{$row}", $baris['uraian']);
+                $sheet->setCellValue("C{$row}", $baris['bobot'] ?? '');
+                $sheet->setCellValue("D{$row}", $baris['progress'] ?? '');
+                $sheet->setCellValue("E{$row}", $baris['bobot_progress'] ?? '');
+                $row++;
+            }
+
+            $total = $data->wbsTotal();
+            $sheet->setCellValue("B{$row}", 'TOTAL');
+            $sheet->setCellValue("C{$row}", $total['bobot']);
+            $sheet->setCellValue("E{$row}", $total['bobot_progress']);
+            $sheet->getStyle("A{$row}:E{$row}")->getFont()->setBold(true);
+            $row++;
+        }
+
+        $this->beriGaris($sheet, "A{$headerRow}:E" . ($row - 1));
+        $row += 2;
+
+        // ── Grafik ──────────────────────────────────────────────────────
+        $sheet->setCellValue("A{$row}", 'KURVA S - PLAN VS ACTUAL');
+        $sheet->getStyle("A{$row}")->getFont()->setBold(true);
+        $row++;
+
+        $chart = SCurveChartRenderer::buildImage($outagePlan, 900, 360);
+
+        if ($chart !== null) {
+            $drawing = new MemoryDrawing();
+            $drawing->setName('Kurva S');
+            $drawing->setImageResource($chart);
+            $drawing->setRenderingFunction(MemoryDrawing::RENDERING_PNG);
+            $drawing->setMimeType(MemoryDrawing::MIMETYPE_PNG);
+            $drawing->setCoordinates("A{$row}");
+            $drawing->setWorksheet($sheet);
+        }
+
+        $sheet->getColumnDimension('A')->setWidth(10);
+        $sheet->getColumnDimension('B')->setWidth(48);
+        foreach (['C', 'D', 'E'] as $col) {
+            $sheet->getColumnDimension($col)->setWidth(18);
+        }
+    }
+
+    /**
+     * Baris harian pada tanggal tertentu, beserta nomor harinya.
+     *
+     * @return array{0: \App\Models\OutagePlanProgress, 1: int}
+     */
+    private function cariHari(Request $request, OutagePlan $outagePlan, string $tanggal): array
+    {
+        abort_unless(
+            OutagePlan::visibleTo($request->user())->whereKey($outagePlan->id)->exists(),
+            403,
+        );
+
+        $outagePlan->load('dailyProgresses');
+
+        $index = $outagePlan->dailyProgresses
+            ->search(fn ($dp) => $dp->tanggal->toDateString() === $tanggal);
+
+        abort_if($index === false, 404, 'Tidak ada progress harian pada tanggal tersebut.');
+
+        return [$outagePlan->dailyProgresses[$index], $index + 1];
+    }
+
+    private function laporanFilename(OutagePlan $outagePlan, int $hariKe, string $jenis, string $ext): string
+    {
+        $slug = \Illuminate\Support\Str::slug($outagePlan->mesin_pembangkit ?: 'outage');
+
+        return "{$jenis}-{$slug}-hari-{$hariKe}.{$ext}";
+    }
+
+    /**
      * Ekspor Excel, dipecah menjadi tiga lembar sesuai topiknya.
      *
      * Satu lembar berisi sembilan kolom membuat uraian dan foto berdesakan
@@ -390,7 +810,7 @@ class OutagePlanController extends Controller
         $headerRow = 4;
         $kolomAkhir = $this->tulisHeader(
             $sheet,
-            ['Day', 'Tanggal', 'Part Number', 'Nama Material', 'Uraian Pekerjaan', 'Keterangan'],
+            ['Day', 'Tanggal', 'Uraian Pekerjaan', 'Material Digunakan', 'Keterangan'],
             $headerRow,
         );
 
@@ -398,15 +818,14 @@ class OutagePlanController extends Controller
         foreach ($outagePlan->dailyProgresses as $idx => $dp) {
             $sheet->setCellValue("A{$row}", 'Day ' . ($idx + 1));
             $sheet->setCellValue("B{$row}", $this->tgl($dp->tanggal));
-            $sheet->setCellValue("C{$row}", $dp->material_part_number ?: '-');
-            $sheet->setCellValue("D{$row}", $dp->material_nama ?: '-');
-            $sheet->setCellValue("E{$row}", $dp->uraian_pekerjaan ?: '-');
-            $sheet->setCellValue("F{$row}", $dp->keterangan ?: '-');
+            $sheet->setCellValue("C{$row}", DailyRingkas::pekerjaan($dp) ?: '-');
+            $sheet->setCellValue("D{$row}", DailyRingkas::material($dp) ?: '-');
+            $sheet->setCellValue("E{$row}", $dp->keterangan ?: '-');
             $sheet->getStyle("A{$row}:B{$row}")->getAlignment()
                 ->setHorizontal(Alignment::HORIZONTAL_CENTER);
-            // Uraian dan keterangan bisa panjang: dibungkus, bukan melebar.
-            $sheet->getStyle("E{$row}:F{$row}")->getAlignment()->setWrapText(true);
-            $sheet->getStyle("A{$row}:F{$row}")->getAlignment()
+            // Daftar berpoin dan keterangan bisa panjang: dibungkus, bukan melebar.
+            $sheet->getStyle("C{$row}:E{$row}")->getAlignment()->setWrapText(true);
+            $sheet->getStyle("A{$row}:E{$row}")->getAlignment()
                 ->setVertical(Alignment::VERTICAL_TOP);
             $row++;
         }
@@ -416,13 +835,14 @@ class OutagePlanController extends Controller
             $this->beriGaris($sheet, "A{$headerRow}:{$kolomAkhir}{$lastRow}");
         }
 
-        foreach (['A', 'B', 'C', 'D'] as $col) {
+        foreach (['A', 'B'] as $col) {
             $sheet->getColumnDimension($col)->setAutoSize(true);
         }
 
         // Lebar tetap: autoSize pada teks panjang menghasilkan kolom raksasa.
-        $sheet->getColumnDimension('E')->setWidth(52);
-        $sheet->getColumnDimension('F')->setWidth(32);
+        $sheet->getColumnDimension('C')->setWidth(52);
+        $sheet->getColumnDimension('D')->setWidth(40);
+        $sheet->getColumnDimension('E')->setWidth(30);
     }
 
     /**
@@ -459,7 +879,7 @@ class OutagePlanController extends Controller
             $sheet->getRowDimension($row)->setRowHeight(110);
             $sheet->setCellValue("A{$row}", 'Day ' . ($idx + 1));
             $sheet->setCellValue("B{$row}", $this->tgl($dp->tanggal));
-            $sheet->setCellValue("C{$row}", $dp->uraian_pekerjaan ?: '-');
+            $sheet->setCellValue("C{$row}", DailyRingkas::pekerjaan($dp) ?: '-');
             $sheet->getStyle("A{$row}:B{$row}")->getAlignment()
                 ->setHorizontal(Alignment::HORIZONTAL_CENTER);
             $sheet->getStyle("C{$row}")->getAlignment()->setWrapText(true)
@@ -497,6 +917,38 @@ class OutagePlanController extends Controller
         $sheet->getColumnDimension('C')->setWidth(40);
         // Cukup lebar untuk MAKS_PER_HARI foto berjajar.
         $sheet->getColumnDimension('D')->setWidth(85);
+    }
+
+    /**
+     * Membuang baris daftar yang tidak berisi apa pun.
+     *
+     * Sebuah baris dianggap kosong bila seluruh kolom penentunya kosong —
+     * progres saja tanpa uraian bukan data yang berguna.
+     *
+     * @param  array<int, array<string, mixed>>  $daftar
+     * @param  array<int, string>  $kolomPenentu
+     * @return array<int, array<string, mixed>>|null
+     */
+    private function bersihkanDaftar($daftar, array $kolomPenentu): ?array
+    {
+        if (! is_array($daftar)) {
+            return null;
+        }
+
+        $bersih = array_values(array_filter(
+            $daftar,
+            function ($baris) use ($kolomPenentu) {
+                foreach ($kolomPenentu as $kolom) {
+                    if (filled($baris[$kolom] ?? null)) {
+                        return true;
+                    }
+                }
+
+                return false;
+            },
+        ));
+
+        return $bersih === [] ? null : $bersih;
     }
 
     /**
@@ -583,6 +1035,16 @@ class OutagePlanController extends Controller
             'daily_progress.*.material_nama' => 'nullable|string|max:255',
             'daily_progress.*.uraian_pekerjaan' => 'nullable|string',
             'daily_progress.*.keterangan' => 'nullable|string|max:255',
+            // Poin pekerjaan: tiap poin punya progresnya sendiri.
+            'daily_progress.*.work_items' => 'nullable|array',
+            'daily_progress.*.work_items.*.uraian' => 'nullable|string|max:500',
+            'daily_progress.*.work_items.*.progress' => 'nullable|numeric|min:0|max:100',
+            // Material yang dipakai, beserta jumlahnya.
+            'daily_progress.*.spare_parts' => 'nullable|array',
+            'daily_progress.*.spare_parts.*.nama' => 'nullable|string|max:255',
+            'daily_progress.*.spare_parts.*.part_number' => 'nullable|string|max:100',
+            'daily_progress.*.spare_parts.*.qty' => 'nullable|string|max:50',
+            'daily_progress.*.spare_parts.*.keterangan' => 'nullable|string|max:255',
             'daily_progress.*.new_photos.*' => 'nullable|image|max:5120',
             'daily_progress.*.retained_photos' => 'nullable|array',
             'daily_progress.*.retained_photos.*' => 'nullable|string',
@@ -624,6 +1086,17 @@ class OutagePlanController extends Controller
                         'material_nama' => $row['material_nama'] ?? null,
                         'uraian_pekerjaan' => $row['uraian_pekerjaan'] ?? null,
                         'keterangan' => $row['keterangan'] ?? null,
+                        // Baris yang seluruh kolomnya kosong dibuang, supaya
+                        // menambah poin lalu membatalkannya tidak meninggalkan
+                        // baris hampa di laporan.
+                        'work_items' => $this->bersihkanDaftar(
+                            $row['work_items'] ?? [],
+                            ['uraian'],
+                        ),
+                        'spare_parts' => $this->bersihkanDaftar(
+                            $row['spare_parts'] ?? [],
+                            ['nama', 'part_number', 'qty'],
+                        ),
                         'photos' => array_values($photos),
                     ]
                 );

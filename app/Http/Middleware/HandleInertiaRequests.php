@@ -50,6 +50,8 @@ class HandleInertiaRequests extends Middleware
                     'write' => (bool) $request->user()?->canWrite(),
                     'viewMeetings' => (bool) $request->user()?->canViewMeetings(),
                 ],
+                'menu_access' => $request->user()?->menu_access,
+                'is_super_admin' => (bool) $request->user()?->isSuperAdmin(),
             ],
             'flash' => [
                 'success' => fn () => $request->session()->get('success'),

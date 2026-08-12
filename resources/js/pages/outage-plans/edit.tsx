@@ -12,6 +12,10 @@ import {
 } from 'lucide-react';
 import type { FormEventHandler, KeyboardEvent } from 'react';
 import { useMemo, useState } from 'react';
+import {
+    SparePartsInput,
+    WorkItemsInput,
+} from '@/components/daily-list-input';
 import { DailyPhotoCell } from '@/components/daily-photo-cell';
 import type { FotoItem } from '@/components/daily-photo-cell';
 import { Button } from '@/components/ui/button';
@@ -54,7 +58,11 @@ import {
     statusBadgeClass,
     validateDailyProgress,
 } from '@/lib/outage-progress';
-import type { DailyProgressRow } from '@/lib/outage-progress';
+import type {
+    DailyProgressRow,
+    SparePart,
+    WorkItem,
+} from '@/lib/outage-progress';
 
 type OutagePlan = {
     id: number;
@@ -119,7 +127,7 @@ function AutoTextarea({
                 atur(e.currentTarget);
                 onChange(e.target.value);
             }}
-            className="min-h-8 w-full resize-none rounded-md border border-input bg-transparent px-3 py-1.5 text-xs shadow-xs transition-[color,box-shadow] outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+            className="min-h-8 w-full resize-none rounded-md border border-input bg-transparent px-3 py-1.5 text-[16px] md:text-xs shadow-xs transition-[color,box-shadow] outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
         />
     );
 }
@@ -330,6 +338,19 @@ export default function OutagePlanEdit({ outagePlan }: { outagePlan: OutagePlan 
         );
     };
 
+    /** Mengganti seluruh daftar poin pekerjaan atau material pada satu hari. */
+    const updateDailyList = (
+        tanggal: string,
+        field: 'work_items' | 'spare_parts',
+        items: WorkItem[] | SparePart[],
+    ) => {
+        setRows(
+            dailyRows.map((row) =>
+                row.tanggal === tanggal ? { ...row, [field]: items } : row,
+            ),
+        );
+    };
+
     /**
      * Isi Rencana merata 0→100 sepanjang hari yang ada.
      *
@@ -425,6 +446,20 @@ export default function OutagePlanEdit({ outagePlan }: { outagePlan: OutagePlan 
             formData.append(`daily_progress[${i}][material_nama]`, row.material_nama);
             formData.append(`daily_progress[${i}][uraian_pekerjaan]`, row.uraian_pekerjaan);
             formData.append(`daily_progress[${i}][keterangan]`, row.keterangan);
+
+            // Daftar berpoin dikirim per field, bukan sebagai JSON, supaya
+            // aturan validasi Laravel bisa memeriksa tiap poinnya.
+            row.work_items.forEach((item, j) => {
+                formData.append(`daily_progress[${i}][work_items][${j}][uraian]`, item.uraian);
+                formData.append(`daily_progress[${i}][work_items][${j}][progress]`, item.progress);
+            });
+
+            row.spare_parts.forEach((item, j) => {
+                formData.append(`daily_progress[${i}][spare_parts][${j}][nama]`, item.nama);
+                formData.append(`daily_progress[${i}][spare_parts][${j}][part_number]`, item.part_number);
+                formData.append(`daily_progress[${i}][spare_parts][${j}][qty]`, item.qty);
+                formData.append(`daily_progress[${i}][spare_parts][${j}][keterangan]`, item.keterangan);
+            });
 
             // Append retained photos for this row
             const retained = retainedPhotos[row.tanggal] || [];
@@ -751,29 +786,26 @@ export default function OutagePlanEdit({ outagePlan }: { outagePlan: OutagePlan 
                                         tetap terbaca pada outage yang panjang. */}
                                     <TableHeader className="sticky top-0 z-20 bg-background shadow-sm">
                                         <TableRow className="bg-muted/40">
-                                            <TableHead className="w-20 px-3 text-center font-bold">
+                                            <TableHead className="min-w-[80px] w-20 px-3 text-center font-bold">
                                                 Day
                                             </TableHead>
-                                            <TableHead className="w-28 px-3 text-center font-bold">
+                                            <TableHead className="min-w-[110px] w-28 px-3 text-center font-bold">
                                                 Tanggal
                                             </TableHead>
-                                            <TableHead className="w-40 px-3 text-center font-bold">
+                                            <TableHead className="min-w-[140px] w-40 px-3 text-center font-bold">
                                                 Plan (%)
                                             </TableHead>
-                                            <TableHead className="w-40 px-3 text-center font-bold">
+                                            <TableHead className="min-w-[140px] w-40 px-3 text-center font-bold">
                                                 Actual (%)
                                             </TableHead>
-                                            <TableHead className="w-28 px-3 text-center font-bold">
+                                            <TableHead className="min-w-[110px] w-28 px-3 text-center font-bold">
                                                 Status
                                             </TableHead>
-                                            <TableHead className="min-w-[150px] px-3 font-bold">
-                                                Part Number
-                                            </TableHead>
-                                            <TableHead className="min-w-[200px] px-3 font-bold">
-                                                Nama Material
-                                            </TableHead>
-                                            <TableHead className="min-w-[280px] px-3 font-bold">
+                                            <TableHead className="min-w-[380px] px-3 font-bold">
                                                 Uraian Pekerjaan
+                                            </TableHead>
+                                            <TableHead className="min-w-[380px] px-3 font-bold">
+                                                Material Digunakan
                                             </TableHead>
                                             <TableHead className="min-w-[200px] px-3 font-bold">
                                                 Dokumentasi Foto
@@ -832,14 +864,14 @@ export default function OutagePlanEdit({ outagePlan }: { outagePlan: OutagePlan 
                                                         ] as const
                                                     ).map(([field, cell]) => (
                                                         <TableCell key={field} className="px-3">
-                                                            <div className="flex items-center gap-1">
+                                                            <div className="flex w-full items-center gap-1">
                                                                 <Input
                                                                     type="number"
                                                                     min={0}
                                                                     max={100}
                                                                     step="0.01"
                                                                     data-cell={`${cell}-${idx}`}
-                                                                    className="h-8 text-center text-xs"
+                                                                    className="h-8 flex-1 text-center text-[16px] md:text-xs"
                                                                     value={row[field]}
                                                                     onChange={(e) =>
                                                                         updateDailyRow(
@@ -875,47 +907,29 @@ export default function OutagePlanEdit({ outagePlan }: { outagePlan: OutagePlan 
                                                             {status}
                                                         </span>
                                                     </TableCell>
-                                                    {/* Material masih diketik manual; nanti dipilih
-                                                        dari data master. */}
-                                                    <TableCell className="px-3">
-                                                        <Input
-                                                            type="text"
-                                                            className="h-8 font-mono text-xs"
-                                                            placeholder="cth: 1234-5678"
-                                                            value={row.material_part_number}
-                                                            onChange={(e) =>
-                                                                updateDailyRow(
+                                                    {/* Uraian pekerjaan berpoin: progres tiap poin
+                                                        diisi di sebelahnya, bukan dititipkan di
+                                                        kolom Keterangan. */}
+                                                    <TableCell className="px-3 align-top">
+                                                        <WorkItemsInput
+                                                            items={row.work_items}
+                                                            onChange={(items) =>
+                                                                updateDailyList(
                                                                     row.tanggal,
-                                                                    'material_part_number',
-                                                                    e.target.value,
+                                                                    'work_items',
+                                                                    items,
                                                                 )
                                                             }
                                                         />
                                                     </TableCell>
-                                                    <TableCell className="px-3">
-                                                        <Input
-                                                            type="text"
-                                                            className="h-8 text-xs"
-                                                            placeholder="cth: Gasket cylinder head"
-                                                            value={row.material_nama}
-                                                            onChange={(e) =>
-                                                                updateDailyRow(
+                                                    <TableCell className="px-3 align-top">
+                                                        <SparePartsInput
+                                                            items={row.spare_parts}
+                                                            onChange={(items) =>
+                                                                updateDailyList(
                                                                     row.tanggal,
-                                                                    'material_nama',
-                                                                    e.target.value,
-                                                                )
-                                                            }
-                                                        />
-                                                    </TableCell>
-                                                    <TableCell className="px-3">
-                                                        <AutoTextarea
-                                                            placeholder="Uraian pekerjaan hari ini..."
-                                                            value={row.uraian_pekerjaan}
-                                                            onChange={(v) =>
-                                                                updateDailyRow(
-                                                                    row.tanggal,
-                                                                    'uraian_pekerjaan',
-                                                                    v,
+                                                                    'spare_parts',
+                                                                    items,
                                                                 )
                                                             }
                                                         />

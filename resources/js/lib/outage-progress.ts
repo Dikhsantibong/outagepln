@@ -1,8 +1,35 @@
+/** Satu poin pekerjaan beserta progres poin itu sendiri. */
+export type WorkItem = {
+    uraian: string;
+    progress: string;
+};
+
+/** Satu material yang dipakai, beserta jumlahnya. */
+export type SparePart = {
+    nama: string;
+    part_number: string;
+    qty: string;
+    keterangan: string;
+};
+
+export const emptyWorkItem = (): WorkItem => ({ uraian: '', progress: '' });
+
+export const emptySparePart = (): SparePart => ({
+    nama: '',
+    part_number: '',
+    qty: '',
+    keterangan: '',
+});
+
 export type DailyProgressRow = {
     tanggal: string;
     plan_progress: string;
     actual_progress: string;
-    /** Diketik manual dulu; menyusul dipilih dari data master material. */
+    /** Uraian pekerjaan sebagai daftar berpoin, tiap poin punya progresnya. */
+    work_items: WorkItem[];
+    /** Material yang dipakai hari itu. */
+    spare_parts: SparePart[];
+    /** Kolom lama; dipertahankan agar data sebelum migrasi tetap terbaca. */
     material_part_number: string;
     material_nama: string;
     uraian_pekerjaan: string;
@@ -26,6 +53,8 @@ export type DailyProgressRecord = {
     /** null = hari tersebut belum diisi. */
     plan_progress: number | string | null;
     actual_progress: number | string | null;
+    work_items?: WorkItem[] | null;
+    spare_parts?: SparePart[] | null;
     material_part_number?: string | null;
     material_nama?: string | null;
     uraian_pekerjaan?: string | null;
@@ -105,6 +134,9 @@ function hasData(row: DailyProgressRecord): boolean {
     return (
         filled(row.plan_progress) ||
         filled(row.actual_progress) ||
+        (row.work_items?.length ?? 0) > 0 ||
+        (row.spare_parts?.length ?? 0) > 0 ||
+        (row.photos?.length ?? 0) > 0 ||
         filled(row.material_part_number) ||
         filled(row.material_nama) ||
         filled(row.uraian_pekerjaan) ||
@@ -235,6 +267,20 @@ export function buildDailyRows(
                 found?.actual_progress !== null
                     ? String(found.actual_progress)
                     : '',
+            // Nilai numerik dari server dijadikan string, karena input HTML
+            // selalu bekerja dengan string.
+            work_items: (found?.work_items ?? []).map((w) => ({
+                uraian: w.uraian ?? '',
+                progress: w.progress === null || w.progress === undefined
+                    ? ''
+                    : String(w.progress),
+            })),
+            spare_parts: (found?.spare_parts ?? []).map((s) => ({
+                nama: s.nama ?? '',
+                part_number: s.part_number ?? '',
+                qty: s.qty === null || s.qty === undefined ? '' : String(s.qty),
+                keterangan: s.keterangan ?? '',
+            })),
             material_part_number: found?.material_part_number ?? '',
             material_nama: found?.material_nama ?? '',
             uraian_pekerjaan: found?.uraian_pekerjaan ?? '',
@@ -250,6 +296,8 @@ export function emptyDailyRow(tanggal: string): DailyProgressRow {
         tanggal,
         plan_progress: '',
         actual_progress: '',
+        work_items: [],
+        spare_parts: [],
         material_part_number: '',
         material_nama: '',
         uraian_pekerjaan: '',

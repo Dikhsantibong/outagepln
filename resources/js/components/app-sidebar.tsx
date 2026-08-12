@@ -35,53 +35,67 @@ const rapatOutageNav: NavItem = {
     icon: MessageSquare,
 };
 
-const footerNavItems: NavItem[] = [
-    {
+const getFooterNavItems = (canAccess: (m: string) => boolean) => [
+    ...(canAccess('team-outage') ? [{
         title: 'Team Outage',
         href: '/team-outage',
         icon: Users,
-    },
+    }] : []),
 ];
 
 export function AppSidebar() {
     const { auth } = usePage<any>().props;
 
+    const canAccess = (menuKey: string) => {
+        if (auth?.is_super_admin) return true;
+        if (!auth?.menu_access) return true; // null means allow by default
+        return auth.menu_access.includes(menuKey);
+    };
+
     // Rapat dikoordinasi terpusat, jadi menunya tidak untuk pengelola.
     const pelaksanaan: NavItem[] = [
-        {
+        ...(canAccess('outage-plans') ? [{
             title: 'Perencanaan dan Jadwal Outage',
             href: '/outage-plans',
             icon: Calendar,
-        },
-        ...((auth?.can?.viewMeetings ?? true) ? [rapatOutageNav] : []),
-        {
+        }] : []),
+        ...((auth?.can?.viewMeetings ?? true) && canAccess('rapat-outage') ? [rapatOutageNav] : []),
+        ...(canAccess('rapat-outage') ? [{
             title: 'Daily Meeting',
             href: '/daily-meeting',
             icon: CalendarDays,
-        },
+        }] : []),
     ];
 
     // Kelompok datar menggantikan dropdown: seluruh menu langsung terlihat.
     const groups: NavGroup[] = [
-        {
+        ...(canAccess('dashboard') ? [{
             label: 'Monitoring',
             items: [{ title: 'Dashboard', href: dashboard(), icon: LayoutGrid }],
-        },
-        {
+        }] : []),
+        ...(pelaksanaan.length > 0 ? [{
             label: 'Perencanaan & Pelaksanaan',
             items: pelaksanaan,
-        },
+        }] : []),
         {
             label: 'Kinerja Outage',
             items: [
-                { title: 'On Quality', href: '/kinerja/on-quality', icon: ShieldCheck },
-                { title: 'On Time', href: '/kinerja/on-time', icon: Clock },
-                { title: 'On Cost', href: '/kinerja/on-cost', icon: DollarSign },
-                { title: 'On Scope', href: '/kinerja/on-scope', icon: Crosshair },
-                { title: 'On Safety', href: '/kinerja/on-safety', icon: HeartPulse },
+                ...(canAccess('kinerja.on-quality') ? [{ title: 'On Quality', href: '/kinerja/on-quality', icon: ShieldCheck }] : []),
+                ...(canAccess('kinerja.on-time') ? [{ title: 'On Time', href: '/kinerja/on-time', icon: Clock }] : []),
+                ...(canAccess('kinerja.on-cost') ? [{ title: 'On Cost', href: '/kinerja/on-cost', icon: DollarSign }] : []),
+                ...(canAccess('kinerja.on-scope') ? [{ title: 'On Scope', href: '/kinerja/on-scope', icon: Crosshair }] : []),
+                ...(canAccess('kinerja.on-safety') ? [{ title: 'On Safety', href: '/kinerja/on-safety', icon: HeartPulse }] : []),
             ],
         },
-    ];
+        ...(auth?.is_super_admin ? [{
+            label: 'Data Master',
+            items: [
+                { title: 'Users & Hak Akses', href: '/master/users', icon: Users },
+                { title: 'Data Unit & Mesin', href: '/master/units', icon: LayoutGrid },
+                { title: 'Data Material', href: '/master/materials', icon: Crosshair },
+            ],
+        }] : []),
+    ].filter(g => g.items.length > 0);
 
     return (
         <Sidebar collapsible="icon" variant="inset">
@@ -110,7 +124,7 @@ export function AppSidebar() {
             </SidebarContent>
 
             <SidebarFooter>
-                <NavFooter items={footerNavItems} className="mt-auto" />
+                <NavFooter items={getFooterNavItems(canAccess)} className="mt-auto" />
                 <NavUser />
             </SidebarFooter>
         </Sidebar>

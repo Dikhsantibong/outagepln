@@ -15,11 +15,13 @@ import {
     Pencil,
     Plus,
     Eye,
+    CalendarDays,
     Download,
     FileText,
     FileSpreadsheet,
     Filter,
     X,
+    Loader2,
 } from 'lucide-react';
 import type { FormEventHandler } from 'react';
 import { useState, useMemo } from 'react';
@@ -38,6 +40,7 @@ import {
     DropdownMenu,
     DropdownMenuContent,
     DropdownMenuItem,
+    DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
@@ -109,6 +112,158 @@ function TanggalPelaksanaan({
     return <span className="text-[11px] text-muted-foreground">-</span>;
 }
 
+/**
+ * Pemilih hari untuk Laporan Kegiatan Harian.
+ *
+ * Laporannya satu berkas per tanggal — mengikuti formulir lapangan yang
+ * berjudul "HARI KE" — sedangkan tombol unduh ada di baris outage plan. Dialog
+ * ini menjembatani keduanya: pilih harinya dulu, baru berkasnya terbentuk.
+ */
+function PilihHariDialog({
+    plan,
+    onClose,
+}: {
+    plan: any | null;
+    onClose: () => void;
+}) {
+    const hari = plan?.daily_progresses ?? [];
+    // Kunci berjalan: "tanggal|jenis", supaya menekan PDF tidak ikut menonaktifkan
+    // tombol Excel pada baris yang sama.
+    const [downloading, setDownloading] = useState<string | null>(null);
+
+    const unduh = async (tanggal: string, jenis: 'pdf' | 'excel') => {
+        const kunci = `${tanggal}|${jenis}`;
+        const ext = jenis === 'excel' ? 'xlsx' : 'pdf';
+
+        setDownloading(kunci);
+
+        try {
+            const response = await fetch(
+                `/outage-plans/${plan.id}/laporan-harian/${tanggal}/${jenis}`,
+            );
+
+            if (!response.ok) {
+                throw new Error(`Gagal mengunduh (${response.status})`);
+            }
+
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            const mesin =
+                plan?.mesin_pembangkit?.replace(/[^a-z0-9]/gi, '_') || 'outage';
+
+            a.href = url;
+            a.download = `Laporan-Harian-${mesin}-${tanggal}.${ext}`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            window.URL.revokeObjectURL(url);
+        } catch (error) {
+            console.error(error);
+        } finally {
+            setDownloading(null);
+        }
+    };
+
+    /** Satu tombol unduh; ikonnya berganti jadi pemutar saat berkas dirakit. */
+    const TombolUnduh = ({
+        tanggal,
+        jenis,
+        label,
+        judul,
+        icon: Icon,
+        warna,
+    }: {
+        tanggal: string;
+        jenis: 'pdf' | 'excel';
+        label: string;
+        judul: string;
+        icon: typeof FileText;
+        warna: string;
+    }) => {
+        const sedang = downloading === `${tanggal}|${jenis}`;
+
+        return (
+            <Button
+                variant="outline"
+                size="sm"
+                className="h-7 gap-1.5 text-xs"
+                title={judul}
+                onClick={() => unduh(tanggal, jenis)}
+                disabled={downloading !== null}
+            >
+                {sedang ? (
+                    <Loader2 className={`h-3.5 w-3.5 animate-spin ${warna}`} />
+                ) : (
+                    <Icon className={`h-3.5 w-3.5 ${warna}`} />
+                )}
+                {sedang ? 'Memproses...' : label}
+            </Button>
+        );
+    };
+
+    return (
+        <Dialog open={plan !== null} onOpenChange={(o) => !o && onClose()}>
+            <DialogContent className="max-h-[80vh] overflow-y-auto sm:max-w-xl">
+                <DialogHeader>
+                    <DialogTitle>Laporan Kegiatan Harian</DialogTitle>
+                    <DialogDescription>
+                        {plan?.mesin_pembangkit} &middot; pilih hari yang akan dicetak.
+                        Kegiatan, dokumentasi, dan kurva S tergabung dalam satu berkas.
+                    </DialogDescription>
+                </DialogHeader>
+
+                {hari.length > 0 ? (
+                    <div className="space-y-1.5">
+                        {hari.map((h: any, i: number) => (
+                            <div
+                                key={h.tanggal}
+                                className="flex items-center gap-3 rounded-lg border p-2.5"
+                            >
+                                <div className="min-w-0 flex-1">
+                                    <p className="text-xs font-semibold">
+                                        Hari ke-{i + 1}
+                                        <span className="ml-2 font-mono font-normal text-muted-foreground">
+                                            {formatDMY(h.tanggal)}
+                                        </span>
+                                    </p>
+                                    <p className="text-[10px] text-muted-foreground">
+                                        Progres:{' '}
+                                        {h.actual_progress === null
+                                            ? 'belum diisi'
+                                            : `${h.actual_progress}%`}
+                                    </p>
+                                </div>
+                                <TombolUnduh
+                                    tanggal={h.tanggal}
+                                    jenis="pdf"
+                                    label="PDF"
+                                    judul="Laporan lengkap: kegiatan, dokumentasi, dan kurva S (PDF)"
+                                    icon={FileText}
+                                    warna="text-red-500"
+                                />
+                                <TombolUnduh
+                                    tanggal={h.tanggal}
+                                    jenis="excel"
+                                    label="Excel"
+                                    judul="Laporan lengkap: kegiatan, dokumentasi, dan kurva S (Excel, 3 lembar)"
+                                    icon={FileSpreadsheet}
+                                    warna="text-emerald-600"
+                                />
+                            </div>
+                        ))}
+                    </div>
+                ) : (
+                    <p className="py-10 text-center text-sm text-muted-foreground italic">
+                        Belum ada progress harian pada jadwal ini. Isi lewat halaman
+                        Edit terlebih dahulu.
+                    </p>
+                )}
+            </DialogContent>
+        </Dialog>
+    );
+}
+
 function FilterSelect({
     label,
     value,
@@ -163,6 +318,8 @@ export default function OutagePlansIndex({
     // di /outage-plans/{id}/edit karena progress harian butuh ruang penuh.
     const [dialogOpen, setDialogOpen] = useState(false);
     const [searchTerm, setSearchTerm] = useState(filters?.search || '');
+    // Jadwal yang sedang dipilih untuk dicetak laporan hariannya.
+    const [laporanPlan, setLaporanPlan] = useState<any | null>(null);
 
     const opts: FilterOptions = filterOptions ?? {
         tahun: [],
@@ -551,6 +708,7 @@ export default function OutagePlansIndex({
                                                                 </Button>
                                                             </DropdownMenuTrigger>
                                                             <DropdownMenuContent align="start">
+                                                                {/* Rekap seluruh outage. */}
                                                                 <DropdownMenuItem
                                                                     onClick={() =>
                                                                         window.open(
@@ -560,7 +718,7 @@ export default function OutagePlansIndex({
                                                                     }
                                                                 >
                                                                     <FileText className="h-3.5 w-3.5 text-red-500" />
-                                                                    Unduh PDF
+                                                                    Rekap PDF
                                                                 </DropdownMenuItem>
                                                                 <DropdownMenuItem
                                                                     onClick={() =>
@@ -571,7 +729,18 @@ export default function OutagePlansIndex({
                                                                     }
                                                                 >
                                                                     <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-600" />
-                                                                    Unduh Excel
+                                                                    Rekap Excel
+                                                                </DropdownMenuItem>
+                                                                <DropdownMenuSeparator />
+                                                                {/* Formulir harian: satu berkas per tanggal,
+                                                                    jadi harinya dipilih dulu. */}
+                                                                <DropdownMenuItem
+                                                                    onClick={() =>
+                                                                        setLaporanPlan(plan)
+                                                                    }
+                                                                >
+                                                                    <CalendarDays className="h-3.5 w-3.5 text-blue-500" />
+                                                                    Laporan Harian...
                                                                 </DropdownMenuItem>
                                                             </DropdownMenuContent>
                                                         </DropdownMenu>
@@ -702,6 +871,11 @@ export default function OutagePlansIndex({
                     )}
                 </Card>
             </div>
+
+            <PilihHariDialog
+                plan={laporanPlan}
+                onClose={() => setLaporanPlan(null)}
+            />
 
             {/* Dialog Popup for Add / Edit Form */}
             <Dialog

@@ -81,10 +81,45 @@
         table.rapat { font-size: 8.5px; }
         table.rapat th, table.rapat td { padding: 3px 5px; }
 
-        /* Dokumentasi foto: sel dibiarkan tinggi agar gambarnya terbaca. */
-        td.foto { text-align: center; padding: 4px; }
-        td.foto img { max-height: 110px; max-width: 150px; }
-        .foto-kosong { font-size: 8px; color: #94a3b8; font-style: italic; }
+        /*
+         * Dokumentasi foto sengaja TIDAK memakai baris tabel.
+         *
+         * dompdf tidak bisa memecah satu baris tabel yang lebih tinggi dari sisa
+         * halaman: barisnya dipindahkan utuh ke halaman berikutnya dan halaman
+         * sebelumnya ditinggalkan kosong. Karena itu tiap hari dibuat sebagai
+         * blok tersendiri yang boleh berpindah halaman secara wajar.
+         */
+        .foto-page { page-break-before: always; }
+        .foto-hari {
+            border: 1px solid #cbd5e1;
+            margin-bottom: 10px;
+            page-break-inside: avoid;
+        }
+        .foto-hari-head {
+            background-color: #f1f5f9;
+            border-bottom: 1px solid #cbd5e1;
+            padding: 4px 8px;
+            font-size: 9.5px;
+            font-weight: bold;
+        }
+        .foto-hari-uraian {
+            padding: 5px 8px;
+            font-size: 8.5px;
+            color: #334155;
+            white-space: pre-line;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        /* Grid dua kolom: lebar sel yang menentukan ukuran foto, sehingga
+           gambar tidak pernah meluber melewati batas tabel. */
+        table.foto-grid { width: 100%; border-collapse: collapse; }
+        table.foto-grid td {
+            width: 50%;
+            text-align: center;
+            padding: 5px;
+            vertical-align: top;
+        }
+        table.foto-grid img { width: 100%; height: auto; }
+        .foto-kosong { font-size: 9px; color: #94a3b8; font-style: italic; padding: 8px 0; }
 
         .footer { margin-top: 8px; font-size: 8.5px; color: #94a3b8; text-align: center; }
     </style>
@@ -213,9 +248,8 @@
             <tr>
                 <th style="width: 8%;">Day</th>
                 <th style="width: 12%;">Tanggal</th>
-                <th style="width: 14%;">Part Number</th>
-                <th style="width: 20%;">Nama Material</th>
-                <th style="width: 27%;">Uraian Pekerjaan</th>
+                <th style="width: 30%;">Uraian Pekerjaan</th>
+                <th style="width: 26%;">Material Digunakan</th>
                 <th>Keterangan</th>
             </tr>
         </thead>
@@ -224,9 +258,8 @@
                 <tr>
                     <td>Day {{ $idx + 1 }}</td>
                     <td>{{ \Carbon\Carbon::parse($dp->tanggal)->format('d-m-Y') }}</td>
-                    <td class="left">{{ $dp->material_part_number ?: '-' }}</td>
-                    <td class="left">{{ $dp->material_nama ?: '-' }}</td>
-                    <td class="left nowrap-pre">{{ $dp->uraian_pekerjaan ?: '-' }}</td>
+                    <td class="left nowrap-pre">{{ \App\Support\DailyRingkas::pekerjaan($dp) ?: '-' }}</td>
+                    <td class="left nowrap-pre">{{ \App\Support\DailyRingkas::material($dp) ?: '-' }}</td>
                     <td class="left nowrap-pre">{{ $dp->keterangan ?: '-' }}</td>
                 </tr>
             @empty
@@ -237,43 +270,58 @@
         </tbody>
     </table>
 
-    {{-- 3. Dokumentasi foto. Hanya hari yang berfoto yang ditampilkan supaya
-         tabelnya tidak berisi baris kosong berderet. --}}
-    <div class="section-title">Dokumentasi Foto</div>
-    <table class="data rapat">
-        <thead>
-            <tr>
-                <th style="width: 8%;">Day</th>
-                <th style="width: 12%;">Tanggal</th>
-                <th style="width: 25%;">Uraian Pekerjaan</th>
-                <th>Foto</th>
-            </tr>
-        </thead>
-        <tbody>
-            @php $adaFoto = false; @endphp
-            @foreach ($outagePlan->dailyProgresses as $idx => $dp)
-                @php $fotos = \App\Support\OutagePhotos::dataUris($dp->photos); @endphp
-                @if ($fotos)
-                    @php $adaFoto = true; @endphp
-                    <tr>
-                        <td>Day {{ $idx + 1 }}</td>
-                        <td>{{ \Carbon\Carbon::parse($dp->tanggal)->format('d-m-Y') }}</td>
-                        <td class="left nowrap-pre">{{ $dp->uraian_pekerjaan ?: '-' }}</td>
-                        <td class="foto">
-                            @foreach ($fotos as $foto)
-                                <img src="{{ $foto }}" style="margin: 2px;">
-                            @endforeach
-                        </td>
-                    </tr>
+    {{-- 3. Dokumentasi foto — dimulai di lembar sendiri.
+
+         Tiap hari jadi satu blok, bukan satu baris tabel: baris tabel yang
+         tinggi tidak bisa dipecah dompdf dan menyisakan halaman kosong. --}}
+    <div class="foto-page">
+        <div class="section-title">Dokumentasi Foto</div>
+
+        @php
+            // Hanya hari berfoto yang ditampilkan, supaya lembarnya tidak
+            // berisi blok kosong berderet.
+            $hariBerfoto = $outagePlan->dailyProgresses
+                ->map(fn ($dp, $i) => ['no' => $i + 1, 'dp' => $dp, 'fotos' => \App\Support\OutagePhotos::dataUris($dp->photos)])
+                ->filter(fn ($r) => $r['fotos'] !== [])
+                ->values();
+        @endphp
+
+        @forelse ($hariBerfoto as $baris)
+            <div class="foto-hari">
+                <div class="foto-hari-head">
+                    Day {{ $baris['no'] }}
+                    &nbsp;&middot;&nbsp;
+                    {{ \Carbon\Carbon::parse($baris['dp']->tanggal)->format('d-m-Y') }}
+                    @php $material = \App\Support\DailyRingkas::material($baris['dp']); @endphp
+                    @if ($material)
+                        &nbsp;&middot;&nbsp; {{ str_replace("
+", ' · ', $material) }}
+                    @endif
+                </div>
+
+                @php $uraian = \App\Support\DailyRingkas::pekerjaan($baris['dp']); @endphp
+                @if ($uraian)
+                    <div class="foto-hari-uraian">{{ $uraian }}</div>
                 @endif
-            @endforeach
-            @if (! $adaFoto)
-                <tr>
-                    <td colspan="4" class="foto-kosong">Belum ada dokumentasi foto yang diunggah.</td>
-                </tr>
-            @endif
-        </tbody>
-    </table>
+
+                <table class="foto-grid">
+                    @foreach (array_chunk($baris['fotos'], 2) as $pasangan)
+                        <tr>
+                            @foreach ($pasangan as $foto)
+                                <td><img src="{{ $foto }}"></td>
+                            @endforeach
+                            {{-- Sel penyeimbang agar foto ganjil tidak melar selebar tabel. --}}
+                            @if (count($pasangan) === 1)
+                                <td></td>
+                            @endif
+                        </tr>
+                    @endforeach
+                </table>
+            </div>
+        @empty
+            <p class="foto-kosong">Belum ada dokumentasi foto yang diunggah.</p>
+        @endforelse
+    </div>
 
     <div class="footer">Dokumen ini dibuat otomatis oleh sistem Outage Monitoring PT PLN Nusantara Power UP Kendari.</div>
 </body>

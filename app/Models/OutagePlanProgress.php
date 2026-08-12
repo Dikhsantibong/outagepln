@@ -13,7 +13,11 @@ class OutagePlanProgress extends Model
         'tanggal',
         'plan_progress',
         'actual_progress',
-        // Diketik manual dulu; menyusul dari data master material.
+        // Daftar berpoin: uraian pekerjaan dengan progres tiap poin, dan
+        // material dengan jumlahnya.
+        'work_items',
+        'spare_parts',
+        // Kolom lama, dipertahankan agar data sebelum migrasi tetap terbaca.
         'material_part_number',
         'material_nama',
         'uraian_pekerjaan',
@@ -25,6 +29,8 @@ class OutagePlanProgress extends Model
         'tanggal' => 'date:Y-m-d',
         'plan_progress' => 'float',
         'actual_progress' => 'float',
+        'work_items' => 'array',
+        'spare_parts' => 'array',
         'photos' => 'array',
     ];
 

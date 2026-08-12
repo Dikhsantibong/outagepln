@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use Carbon\Carbon;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
@@ -32,6 +33,14 @@ class AppServiceProvider extends ServiceProvider
     protected function configureDefaults(): void
     {
         Date::use(CarbonImmutable::class);
+
+        // Nama bulan dan hari ditulis dalam bahasa Indonesia di seluruh
+        // aplikasi: laporan cetak, notulen, dan halaman publik. Sebelumnya
+        // translatedFormat() mengikuti APP_LOCALE=en sehingga menghasilkan
+        // "9 AUGUST 2026". Locale aplikasi sendiri tidak diubah, supaya pesan
+        // validasi bawaan Laravel tidak kehilangan terjemahannya.
+        Carbon::setLocale('id');
+        CarbonImmutable::setLocale('id');
 
         DB::prohibitDestructiveCommands(
             app()->isProduction(),

@@ -11,6 +11,9 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\KinerjaQualityController;
 use App\Http\Controllers\KinerjaTimeController;
 use App\Http\Controllers\KinerjaCostController;
+use App\Http\Controllers\Master\UserController as MasterUserController;
+use App\Http\Controllers\Master\UnitController as MasterUnitController;
+use App\Http\Controllers\Master\MaterialController as MasterMaterialController;
 
 Route::get('/', [WelcomeController::class, 'index'])->name('home');
 
@@ -18,6 +21,11 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('dashboard', [DashboardController::class, 'index'])->name('dashboard');
     Route::resource('outage-plans', OutagePlanController::class)->only(['index', 'show', 'edit', 'store', 'update', 'destroy']);
     Route::get('outage-plans/{outage_plan}/detail-json', [OutagePlanController::class, 'detailJson'])->name('outage-plans.detail-json');
+    // Laporan Kegiatan Harian: satu berkas per tanggal, bukan per outage plan.
+    // Kurva S terpisah karena dicetak landscape — dompdf hanya mengenal satu
+    // ukuran halaman per dokumen.
+    Route::get('outage-plans/{outage_plan}/laporan-harian/{tanggal}/pdf', [OutagePlanController::class, 'laporanHarianPdf'])->name('outage-plans.laporan-harian');
+    Route::get('outage-plans/{outage_plan}/laporan-harian/{tanggal}/excel', [OutagePlanController::class, 'laporanHarianExcel'])->name('outage-plans.laporan-harian-excel');
     Route::get('outage-plans/{outage_plan}/export-pdf', [OutagePlanController::class, 'exportPdf'])->name('outage-plans.export-pdf');
     Route::get('outage-plans/{outage_plan}/export-excel', [OutagePlanController::class, 'exportExcel'])->name('outage-plans.export-excel');
     Route::get('team-outage', function() {
@@ -59,6 +67,22 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('kinerja/on-cost', [KinerjaCostController::class, 'store'])->name('kinerja.on-cost.store');
     Route::get('kinerja/on-scope', fn() => inertia('kinerja/on-scope'))->name('kinerja.on-scope');
     Route::get('kinerja/on-safety', fn() => inertia('kinerja/on-safety'))->name('kinerja.on-safety');
+
+    // Data Master (Super Admin Only)
+    Route::middleware([\App\Http\Middleware\EnsureSuperAdmin::class])->prefix('master')->name('master.')->group(function () {
+        Route::resource('users', MasterUserController::class)->except(['create', 'show', 'edit']);
+        
+        Route::get('units', [MasterUnitController::class, 'index'])->name('units.index');
+        Route::post('units', [MasterUnitController::class, 'storeUnit'])->name('units.store');
+        Route::put('units/{unit}', [MasterUnitController::class, 'updateUnit'])->name('units.update');
+        Route::delete('units/{unit}', [MasterUnitController::class, 'destroyUnit'])->name('units.destroy');
+
+        Route::post('units/{unit}/mesins', [MasterUnitController::class, 'storeMesin'])->name('mesins.store');
+        Route::put('mesins/{mesin}', [MasterUnitController::class, 'updateMesin'])->name('mesins.update');
+        Route::delete('mesins/{mesin}', [MasterUnitController::class, 'destroyMesin'])->name('mesins.destroy');
+
+        Route::resource('materials', MasterMaterialController::class)->except(['create', 'show', 'edit']);
+    });
 });
 
 // Public attendance routes (no auth - scanned via QR on phone)

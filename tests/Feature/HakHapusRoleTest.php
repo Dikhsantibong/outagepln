@@ -80,12 +80,13 @@ class HakHapusRoleTest extends TestCase
         $this->assertSame('Selesai', $plan->fresh()->ket_realisasi);
     }
 
-    public function test_admin_tetap_boleh_menghapus(): void
+    /** Hanya super admin yang boleh membuang catatan induk. */
+    public function test_super_admin_tetap_boleh_menghapus(): void
     {
         $plan = $this->plan();
         $meeting = DailyMeeting::where('outage_plan_id', $plan->id)->firstOrFail();
 
-        $this->actingAs(User::factory()->create(['role' => 'admin']));
+        $this->actingAs(User::factory()->create(['role' => 'super_admin']));
 
         $this->delete("/daily-meetings/{$meeting->id}")->assertRedirect();
         $this->assertDatabaseMissing('daily_meetings', ['id' => $meeting->id]);
@@ -110,7 +111,7 @@ class HakHapusRoleTest extends TestCase
         $milikOrangLain = $this->plan('PLTD WUA-WUA #01 (CUMMINS)');
 
         $this->actingAs(User::factory()->create([
-            'role' => 'admin',
+            'role' => 'super_admin',
             'merek' => 'MIRRLEES',
         ]));
 
@@ -129,7 +130,7 @@ class HakHapusRoleTest extends TestCase
             // Rapat dikoordinasi terpusat, jadi menunya tidak untuk pengelola.
             ->where('auth.can.viewMeetings', false));
 
-        $this->actingAs(User::factory()->create(['role' => 'admin']));
+        $this->actingAs(User::factory()->create(['role' => 'super_admin']));
 
         $this->get(route('dashboard'))->assertInertia(fn ($page) => $page
             ->where('auth.can.delete', true)
