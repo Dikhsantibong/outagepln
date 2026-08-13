@@ -43,7 +43,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('daily-briefings/{dailyBriefing}/issues', [\App\Http\Controllers\DailyBriefingController::class, 'storeIssue'])->name('daily-briefings.issues.store');
         Route::post('daily-briefings/{dailyBriefing}/issues/{issue}', [\App\Http\Controllers\DailyBriefingController::class, 'updateIssue'])->name('daily-briefings.issues.update');
         Route::delete('daily-briefings/{dailyBriefing}/issues/{issue}', [\App\Http\Controllers\DailyBriefingController::class, 'destroyIssue'])->name('daily-briefings.issues.destroy');
+        Route::post('daily-briefings/{dailyBriefing}/photo', [\App\Http\Controllers\DailyBriefingController::class, 'uploadPhoto'])->name('daily-briefings.photo.store');
         Route::get('daily-briefings/{dailyBriefing}/export-pdf', [\App\Http\Controllers\DailyBriefingController::class, 'exportPdf'])->name('daily-briefings.export-pdf');
+        Route::get('daily-briefings/{dailyBriefing}/export-excel', [\App\Http\Controllers\DailyBriefingController::class, 'exportExcel'])->name('daily-briefings.export-excel');
 
         // Rapat Outage routes
         Route::resource('daily-meetings', DailyMeetingController::class)->only(['index', 'store', 'show', 'destroy']);

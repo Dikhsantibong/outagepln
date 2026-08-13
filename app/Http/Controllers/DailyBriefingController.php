@@ -177,7 +177,7 @@ class DailyBriefingController extends Controller
 
     public function attendForm(string $token)
     {
-        $briefing = DailyBriefing::where('token', $token)->firstOrFail();
+        $briefing = DailyBriefing::with('attendees')->where('token', $token)->firstOrFail();
 
         return Inertia::render('daily-briefings/attend', [
             'briefing' => $briefing,
@@ -195,6 +195,8 @@ class DailyBriefingController extends Controller
 
         $validated = $request->validate([
             'nama' => 'required|string|max:255',
+            'nid' => 'nullable|string|max:255',
+            'instansi' => 'nullable|string|max:255',
             'divisi' => 'nullable|string|max:255',
             'jabatan' => 'nullable|string|max:255',
             'signature' => 'nullable|string',
@@ -203,6 +205,8 @@ class DailyBriefingController extends Controller
         DailyBriefingAttendee::create([
             'daily_briefing_id' => $briefing->id,
             'nama' => $validated['nama'],
+            'nid' => $validated['nid'] ?? null,
+            'instansi' => $validated['instansi'] ?? null,
             'divisi' => $validated['divisi'] ?? null,
             'jabatan' => $validated['jabatan'] ?? null,
             'signature' => $validated['signature'] ?? null,
@@ -210,6 +214,24 @@ class DailyBriefingController extends Controller
         ]);
 
         return redirect()->back()->with('success', 'Kehadiran berhasil tercatat. Terima kasih!');
+    }
+
+    public function uploadPhoto(Request $request, DailyBriefing $dailyBriefing)
+    {
+        $request->validate([
+            'foto_dokumentasi' => 'required|image|max:5120',
+        ]);
+
+        if ($request->hasFile('foto_dokumentasi')) {
+            if ($dailyBriefing->foto_dokumentasi) {
+                \Illuminate\Support\Facades\Storage::disk('public')->delete($dailyBriefing->foto_dokumentasi);
+            }
+            
+            $path = $request->file('foto_dokumentasi')->store('daily_briefings', 'public');
+            $dailyBriefing->update(['foto_dokumentasi' => $path]);
+        }
+
+        return redirect()->back()->with('success', 'Foto dokumentasi berhasil diunggah.');
     }
 
     public function exportPdf(DailyBriefing $dailyBriefing)
@@ -224,5 +246,15 @@ class DailyBriefingController extends Controller
         $pdf->setPaper('A4', 'landscape');
 
         return $pdf->download("Daily-Meeting-{$dailyBriefing->id}.pdf");
+    }
+
+    public function exportExcel(DailyBriefing $dailyBriefing)
+    {
+        $dailyBriefing->load(['attendees', 'issues']);
+        
+        return \Maatwebsite\Excel\Facades\Excel::download(
+            new \App\Exports\DailyBriefingExport($dailyBriefing), 
+            "Daily-Meeting-{$dailyBriefing->id}.xlsx"
+        );
     }
 }

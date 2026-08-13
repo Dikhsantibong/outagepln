@@ -18,7 +18,7 @@
         }
         .header-table {
             margin-bottom: 10px;
-            border: 2px solid #000;
+            border: 1px solid #000;
         }
         .header-table td, .header-table th {
             border: 1px solid #000;
@@ -30,7 +30,8 @@
             vertical-align: middle;
         }
         .logo-cell img {
-            max-width: 90px;
+            max-width: 150px;
+            height: auto;
         }
         .title-cell {
             text-align: center;
@@ -42,7 +43,7 @@
             width: 30%;
         }
         .content-table {
-            border: 2px solid #000;
+            border: 1px solid #000;
             margin-bottom: 20px;
         }
         .content-table th, .content-table td {
@@ -98,7 +99,7 @@
     <table class="header-table">
         <tr>
             <td class="logo-cell" rowspan="3">
-                <img src="{{ public_path('logo.png') }}" alt="Logo PLN">
+                <img src="{{ public_path('sidebar-logo.png') }}" alt="Logo PLN">
             </td>
             <td class="title-cell" colspan="2">PT PLN NUSANTARA POWER</td>
             <td class="meta-cell">No. Dokumen: {{ $briefing->nomor_dokumen }}</td>
@@ -108,7 +109,7 @@
             <td class="meta-cell">No. Revisi: {{ $briefing->revisi }}</td>
         </tr>
         <tr>
-            <td class="title-cell" colspan="2">FORMULIR RAPAT PERSIAPAN OUTAGE [{{ $briefing->rapat_framework }}]</td>
+            <td class="title-cell" colspan="2">FORMULIR RAPAT PERSIAPAN OUTAGE {{ $briefing->rapat_framework ? '[' . $briefing->rapat_framework . ']' : '' }}</td>
             <td class="meta-cell">Tanggal Terbit: {{ $briefing->tanggal_terbit ? \Carbon\Carbon::parse($briefing->tanggal_terbit)->format('d/m/Y') : '' }}</td>
         </tr>
     </table>
@@ -185,17 +186,52 @@
     <table class="ttd-table">
         <tr>
             <td>
-                Mengetahui,<br><br>
-                <div class="ttd-nama">{{ $briefing->nama_mengetahui }}</div>
-                <div class="ttd-jabatan">{{ $briefing->jabatan_mengetahui }}</div>
+                Menyetujui,<br><br>
+                <div class="ttd-nama">{{ strtoupper($briefing->nama_mengetahui ?: 'ABDUL RAHMAN KADIR') }}</div>
+                <div class="ttd-jabatan">{{ strtoupper($briefing->jabatan_mengetahui ?: 'TEAM LEADER OUTAGE MANAGEMENT') }}</div>
             </td>
             <td>
                 Kendari, {{ \Carbon\Carbon::parse($briefing->tanggal)->translatedFormat('d F Y') }}<br><br>
-                <div class="ttd-nama">{{ $briefing->nama_disetujui }}</div>
-                <div class="ttd-jabatan">{{ $briefing->jabatan_disetujui }}</div>
+                <div class="ttd-nama">{{ strtoupper($briefing->nama_disetujui ?: 'FIRMANSYAH') }}</div>
+                <div class="ttd-jabatan">{{ strtoupper($briefing->jabatan_disetujui ?: 'OF OUTAGE MANAGEMENT') }}</div>
             </td>
         </tr>
     </table>
+
+    <!-- Lembar Dokumentasi & Link Absensi -->
+    <div style="page-break-before: always;">
+        <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
+            <tr>
+                <td style="text-align: center; font-weight: bold; font-size: 14px; background-color: #f2f2f2; border: 1px solid #000; padding: 10px;">
+                    DOKUMENTASI RAPAT & LINK ABSENSI
+                </td>
+            </tr>
+        </table>
+        
+        <div style="text-align: center; margin-bottom: 40px;">
+            @if($briefing->foto_dokumentasi)
+                <div style="border: 1px solid #000; padding: 10px; display: inline-block; background: #fff;">
+                    <img src="{{ public_path('storage/' . $briefing->foto_dokumentasi) }}" style="max-width: 90%; max-height: 500px;" alt="Dokumentasi">
+                </div>
+            @else
+                <div style="padding: 100px; border: 1px solid #000; color: #555; background-color: #f9f9f9;">Belum ada foto dokumentasi yang diunggah.</div>
+            @endif
+        </div>
+
+        <table style="width: 100%; border-collapse: collapse;">
+            <tr>
+                <td style="border: 1px solid #000; padding: 15px; text-align: center; background-color: #f9f9f9;">
+                    <div style="font-weight: bold; font-size: 13px; margin-bottom: 8px;">LINK ABSENSI MANUAL PESERTA RAPAT</div>
+                    <div style="margin-bottom: 8px; font-size: 11px; color: #333;">Silakan akses tautan di bawah ini melalui peramban (browser) untuk mengisi daftar hadir:</div>
+                    <div style="word-wrap: break-word; word-break: break-all;">
+                        <a href="{{ url('/daily-briefings/attend/' . $briefing->token) }}" style="color: #0056b3; text-decoration: underline; font-size: 13px; font-weight: bold;">
+                            {{ url('/daily-briefings/attend/' . $briefing->token) }}
+                        </a>
+                    </div>
+                </td>
+            </tr>
+        </table>
+    </div>
 
 </body>
 </html>

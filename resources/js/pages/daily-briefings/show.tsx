@@ -1,6 +1,6 @@
 import { Head, router, usePage, Link } from '@inertiajs/react';
 import { useForm } from '@inertiajs/react';
-import { Calendar, Users, QrCode, FileText, CheckCircle2, ChevronLeft, Plus, Edit, Trash2, Printer } from 'lucide-react';
+import { Calendar, Users, QrCode, FileText, CheckCircle2, ChevronLeft, Plus, Edit, Trash2, Printer, Copy } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -22,6 +22,13 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { ChevronDown } from 'lucide-react';
 
 export default function DailyBriefingsShow({
     briefing,
@@ -46,16 +53,31 @@ export default function DailyBriefingsShow({
         nomor_dokumen: briefing.nomor_dokumen || '',
         revisi: briefing.revisi || '00',
         tanggal_terbit: briefing.tanggal_terbit || '',
-        nama_mengetahui: briefing.nama_mengetahui || '',
-        jabatan_mengetahui: briefing.jabatan_mengetahui || 'MANAJER BAGIAN ...',
-        nama_disetujui: briefing.nama_disetujui || '',
-        jabatan_disetujui: briefing.jabatan_disetujui || 'MANAGER UP ...',
+        nama_mengetahui: briefing.nama_mengetahui || 'Abdul Rahman Jadir',
+        jabatan_mengetahui: briefing.jabatan_mengetahui || 'TEAM LEADER OUTAGE MANAGEMENT',
+        nama_disetujui: briefing.nama_disetujui || 'Firmansyah',
+        jabatan_disetujui: briefing.jabatan_disetujui || 'OF OUTAGE MANAGEMENT',
     });
 
     const submitHeader = (e: React.FormEvent) => {
         e.preventDefault();
         headerForm.put(`/daily-briefings/${briefing.id}`, {
             preserveScroll: true,
+            preserveState: true,
+        });
+    };
+
+    // Photo Form
+    const photoForm = useForm({
+        foto_dokumentasi: null as File | null,
+    });
+
+    const submitPhoto = (e: React.FormEvent) => {
+        e.preventDefault();
+        photoForm.post(`/daily-briefings/${briefing.id}/photo`, {
+            preserveScroll: true,
+            preserveState: true,
+            onSuccess: () => photoForm.reset(),
         });
     };
 
@@ -93,11 +115,13 @@ export default function DailyBriefingsShow({
         if (editingIssue) {
             issueForm.post(`/daily-briefings/${briefing.id}/issues/${editingIssue.id}`, {
                 preserveScroll: true,
+                preserveState: true,
                 onSuccess: () => setIssueModal(false),
             });
         } else {
             issueForm.post(`/daily-briefings/${briefing.id}/issues`, {
                 preserveScroll: true,
+                preserveState: true,
                 onSuccess: () => setIssueModal(false),
             });
         }
@@ -105,7 +129,10 @@ export default function DailyBriefingsShow({
 
     const deleteIssue = (id: number) => {
         if (confirm('Hapus permasalahan ini?')) {
-            router.delete(`/daily-briefings/${briefing.id}/issues/${id}`, { preserveScroll: true });
+            router.delete(`/daily-briefings/${briefing.id}/issues/${id}`, { 
+                preserveScroll: true,
+                preserveState: true, 
+            });
         }
     };
 
@@ -113,11 +140,11 @@ export default function DailyBriefingsShow({
         <>
             <Head title={`Daily Meeting - ${briefing.judul}`} />
 
-            <div className="flex h-full flex-1 flex-col gap-6 p-4 max-w-5xl mx-auto">
-                <div className="flex items-center justify-between">
+            <div className="flex h-full flex-1 flex-col gap-6 p-4">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                     <div className="flex items-center gap-4">
-                        <Button variant="ghost" size="icon" onClick={() => router.visit('/daily-briefings')}>
-                            <ChevronLeft className="h-5 w-5" />
+                        <Button variant="outline" size="icon" onClick={() => router.visit('/daily-briefings')} className="h-9 w-9 shrink-0 shadow-sm">
+                            <ChevronLeft className="h-4 w-4" />
                         </Button>
                         <div>
                             <h1 className="text-2xl font-bold tracking-tight">{briefing.judul}</h1>
@@ -141,35 +168,53 @@ export default function DailyBriefingsShow({
                                 Selesaikan Meeting
                             </Button>
                         )}
-                        <Button
-                            variant="default"
-                            onClick={() => window.open(`/daily-briefings/${briefing.id}/export-pdf`, '_blank')}
-                        >
-                            <Printer className="h-4 w-4 mr-2" />
-                            Cetak Notulen
-                        </Button>
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button variant="default">
+                                    <Printer className="h-4 w-4 mr-2" />
+                                    Cetak Dokumen
+                                    <ChevronDown className="h-4 w-4 ml-2 opacity-50" />
+                                </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={() => window.open(`/daily-briefings/${briefing.id}/export-pdf`, '_blank')}>
+                                    <FileText className="h-4 w-4 mr-2 text-red-500" />
+                                    Cetak PDF
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => window.open(`/daily-briefings/${briefing.id}/export-excel`, '_blank')}>
+                                    <FileText className="h-4 w-4 mr-2 text-green-500" />
+                                    Cetak Excel
+                                </DropdownMenuItem>
+                            </DropdownMenuContent>
+                        </DropdownMenu>
                     </div>
                 </div>
 
                 <div className="w-full">
-                    <div className="grid w-full grid-cols-3 h-12 bg-muted p-1 rounded-lg">
+                    <div className="flex flex-wrap items-center gap-1 bg-muted p-1 rounded-lg w-fit">
                         <button 
                             onClick={() => setActiveTab('header')} 
-                            className={`flex items-center justify-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-all ${activeTab === 'header' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:bg-muted-foreground/10'}`}
+                            className={`flex items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-all ${activeTab === 'header' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:bg-muted-foreground/10'}`}
                         >
                             <FileText className="h-4 w-4" /> Header & Info
                         </button>
                         <button 
                             onClick={() => setActiveTab('issues')} 
-                            className={`flex items-center justify-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-all ${activeTab === 'issues' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:bg-muted-foreground/10'}`}
+                            className={`flex items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-all ${activeTab === 'issues' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:bg-muted-foreground/10'}`}
                         >
                             <CheckCircle2 className="h-4 w-4" /> Permasalahan & Solusi
                         </button>
                         <button 
                             onClick={() => setActiveTab('attendees')} 
-                            className={`flex items-center justify-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-all ${activeTab === 'attendees' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:bg-muted-foreground/10'}`}
+                            className={`flex items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-all ${activeTab === 'attendees' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:bg-muted-foreground/10'}`}
                         >
                             <Users className="h-4 w-4" /> Daftar Hadir ({attendees.length})
+                        </button>
+                        <button 
+                            onClick={() => setActiveTab('dokumentasi')} 
+                            className={`flex items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-all ${activeTab === 'dokumentasi' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:bg-muted-foreground/10'}`}
+                        >
+                            <Plus className="h-4 w-4" /> Dokumentasi
                         </button>
                     </div>
                     
@@ -226,14 +271,14 @@ export default function DailyBriefingsShow({
                                     <hr />
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                         <div className="space-y-2">
-                                            <Label>Nama Mengetahui</Label>
-                                            <Input value={headerForm.data.nama_mengetahui} onChange={e => headerForm.setData('nama_mengetahui', e.target.value)} placeholder="Nama" />
-                                            <Input className="mt-2 text-xs text-muted-foreground" value={headerForm.data.jabatan_mengetahui} onChange={e => headerForm.setData('jabatan_mengetahui', e.target.value)} placeholder="Jabatan" />
+                                            <Label>Nama Menyetujui</Label>
+                                            <Input value={headerForm.data.nama_mengetahui} onChange={e => headerForm.setData('nama_mengetahui', e.target.value)} placeholder="ABDUL RAHMAN KADIR" />
+                                            <Input className="mt-2 text-xs text-muted-foreground" value={headerForm.data.jabatan_mengetahui} onChange={e => headerForm.setData('jabatan_mengetahui', e.target.value)} placeholder="TEAM LEADER OUTAGE MANAGEMENT" />
                                         </div>
                                         <div className="space-y-2">
-                                            <Label>Nama Disetujui</Label>
-                                            <Input value={headerForm.data.nama_disetujui} onChange={e => headerForm.setData('nama_disetujui', e.target.value)} placeholder="Nama" />
-                                            <Input className="mt-2 text-xs text-muted-foreground" value={headerForm.data.jabatan_disetujui} onChange={e => headerForm.setData('jabatan_disetujui', e.target.value)} placeholder="Jabatan" />
+                                            <Label>Nama Staf (Kanan)</Label>
+                                            <Input value={headerForm.data.nama_disetujui} onChange={e => headerForm.setData('nama_disetujui', e.target.value)} placeholder="FIRMANSYAH" />
+                                            <Input className="mt-2 text-xs text-muted-foreground" value={headerForm.data.jabatan_disetujui} onChange={e => headerForm.setData('jabatan_disetujui', e.target.value)} placeholder="OF OUTAGE MANAGEMENT" />
                                         </div>
                                     </div>
 
@@ -322,11 +367,28 @@ export default function DailyBriefingsShow({
                             <CardHeader className="flex flex-row items-center justify-between">
                                 <div>
                                     <CardTitle>Daftar Hadir</CardTitle>
-                                    <CardDescription>Peserta yang memindai QR Code akan muncul di sini otomatis.</CardDescription>
+                                    <CardDescription>Peserta yang telah melakukan absensi.</CardDescription>
                                 </div>
-                                <Button variant="outline" onClick={() => window.open(`/daily-briefings/${briefing.id}/qr`, '_blank')}>
-                                    <QrCode className="h-4 w-4 mr-2" /> Buka Tampilan QR
-                                </Button>
+                                <div className="flex flex-wrap items-center gap-2 justify-end">
+                                    {!isTamu && (
+                                        <>
+                                            <Input 
+                                                readOnly 
+                                                value={`${window.location.origin}/daily-briefings/attend/${briefing.token}`} 
+                                                className="w-[250px] bg-muted hidden xl:flex" 
+                                            />
+                                            <Button variant="outline" onClick={() => {
+                                                navigator.clipboard.writeText(`${window.location.origin}/daily-briefings/attend/${briefing.token}`);
+                                                alert('Link disalin!');
+                                            }}>
+                                                <Copy className="h-4 w-4 mr-2" /> Copy Link
+                                            </Button>
+                                        </>
+                                    )}
+                                    <Button variant="outline" onClick={() => window.open(`/daily-briefings/${briefing.id}/qr`, '_blank')}>
+                                        <QrCode className="h-4 w-4 mr-2" /> Tampilan QR
+                                    </Button>
+                                </div>
                             </CardHeader>
                             <CardContent>
                                 <div className="border rounded-md">
@@ -334,8 +396,10 @@ export default function DailyBriefingsShow({
                                         <TableHeader>
                                             <TableRow>
                                                 <TableHead>Nama</TableHead>
+                                                <TableHead>NID</TableHead>
+                                                <TableHead>Instansi</TableHead>
                                                 <TableHead>Jabatan</TableHead>
-                                                <TableHead>Divisi / Instansi</TableHead>
+                                                <TableHead>Divisi / Unit</TableHead>
                                                 <TableHead>Waktu Hadir</TableHead>
                                             </TableRow>
                                         </TableHeader>
@@ -343,6 +407,8 @@ export default function DailyBriefingsShow({
                                             {attendees.map(a => (
                                                 <TableRow key={a.id}>
                                                     <TableCell className="font-medium">{a.nama}</TableCell>
+                                                    <TableCell>{a.nid || '-'}</TableCell>
+                                                    <TableCell>{a.instansi || '-'}</TableCell>
                                                     <TableCell>{a.jabatan || '-'}</TableCell>
                                                     <TableCell>{a.divisi || '-'}</TableCell>
                                                     <TableCell>{new Date(a.signed_at).toLocaleString('id-ID')}</TableCell>
@@ -350,7 +416,7 @@ export default function DailyBriefingsShow({
                                             ))}
                                             {attendees.length === 0 && (
                                                 <TableRow>
-                                                    <TableCell colSpan={4} className="h-24 text-center text-muted-foreground">
+                                                    <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
                                                         Belum ada peserta yang hadir.
                                                     </TableCell>
                                                 </TableRow>
@@ -358,6 +424,45 @@ export default function DailyBriefingsShow({
                                         </TableBody>
                                     </Table>
                                 </div>
+                            </CardContent>
+                        </Card>
+                        </div>
+                    )}
+
+                    {activeTab === 'dokumentasi' && (
+                        <div className="mt-4">
+                        <Card>
+                            <CardHeader>
+                                <CardTitle>Dokumentasi Rapat</CardTitle>
+                                <CardDescription>Unggah 1 foto dokumentasi rapat untuk ditampilkan di PDF Cetak Notulen.</CardDescription>
+                            </CardHeader>
+                            <CardContent>
+                                {briefing.foto_dokumentasi && (
+                                    <div className="mb-4">
+                                        <img 
+                                            src={`/storage/${briefing.foto_dokumentasi}`} 
+                                            alt="Dokumentasi" 
+                                            className="h-48 w-auto object-cover rounded-md border border-border" 
+                                        />
+                                    </div>
+                                )}
+                                {!isTamu && (
+                                    <form onSubmit={submitPhoto} className="flex flex-col gap-4">
+                                        <div className="space-y-2 max-w-md">
+                                            <Label>Pilih Foto</Label>
+                                            <Input 
+                                                type="file" 
+                                                accept="image/*" 
+                                                onChange={e => photoForm.setData('foto_dokumentasi', e.target.files ? e.target.files[0] : null)} 
+                                            />
+                                        </div>
+                                        <div>
+                                            <Button type="submit" disabled={photoForm.processing || !photoForm.data.foto_dokumentasi}>
+                                                Simpan Foto
+                                            </Button>
+                                        </div>
+                                    </form>
+                                )}
                             </CardContent>
                         </Card>
                         </div>
