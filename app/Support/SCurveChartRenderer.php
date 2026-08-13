@@ -86,10 +86,18 @@ class SCurveChartRenderer
         self::text($im, $font, 17, 0, (int) round($padL + $plotW / 2 - 34), $padT + $plotH + 172, $cText, 'Tanggal');
 
         // --- legend + summary ----------------------------------------------
-        // Progress is cumulative, so the peak value is the current progress
-        // (the last row can still be 0 when later days are not filled in yet).
-        $sumPlan = (float) $rows->max('plan_progress');
-        $sumActual = (float) $rows->max('actual_progress');
+        // Ambil hari terakhir di mana progress aktual sudah diisi (bukan null)
+        $lastRecorded = $rows->last(function ($dp) {
+            return $dp->actual_progress !== null;
+        });
+
+        if ($lastRecorded) {
+            $sumPlan = (float) $lastRecorded->plan_progress;
+            $sumActual = (float) $lastRecorded->actual_progress;
+        } else {
+            $sumPlan = 0.0;
+            $sumActual = 0.0;
+        }
         imagesetthickness($im, 5);
         imageline($im, $padL + 60, 44, $padL + 118, 44, $cPlan);
         imageline($im, $padL + 250, 44, $padL + 308, 44, $cActual);

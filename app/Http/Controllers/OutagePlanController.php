@@ -189,9 +189,18 @@ class OutagePlanController extends Controller
                 ->diffInDays(\Carbon\Carbon::parse($outagePlan->selesai)) + 1;
         }
 
-        // Progress is cumulative, so the highest recorded value is the current progress.
-        $overallPlan = $outagePlan->dailyProgresses->max('plan_progress');
-        $overallActual = $outagePlan->dailyProgresses->max('actual_progress');
+        // Cari hari terakhir di mana progress aktual sudah diisi
+        $lastRecorded = $outagePlan->dailyProgresses->last(function ($dp) {
+            return $dp->actual_progress !== null;
+        });
+
+        if ($lastRecorded) {
+            $overallPlan = $lastRecorded->plan_progress;
+            $overallActual = $lastRecorded->actual_progress;
+        } else {
+            $overallPlan = 0;
+            $overallActual = 0;
+        }
 
         return [
             'totalHari' => $totalHari,
