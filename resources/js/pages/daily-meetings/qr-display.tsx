@@ -23,7 +23,7 @@ export default function QrDisplay({
     const [count, setCount] = useState(initialCount);
     const [time, setTime] = useState(new Date());
 
-    const appUrl = (usePage().props as any).appUrl || window.location.origin;
+    const appUrl = ((usePage().props as any).appUrl || window.location.origin).replace(/\/+$/, '');
     const attendUrl = `${appUrl}/attend/${meeting.token}`;
 
     // Poll attendee count

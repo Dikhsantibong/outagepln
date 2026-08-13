@@ -199,22 +199,23 @@
             <tr>
                 <th style="width: 7%;">Day</th>
                 <th style="width: 13%;">Tanggal</th>
-                <th style="width: 44%;">Uraian Pekerjaan</th>
+                <th style="width: 5%;">No.</th>
+                <th style="width: 42%;">Uraian Pekerjaan</th>
                 <th style="width: 10%;">Progres (%)</th>
-                <th style="width: 26%;">Keterangan</th>
+                <th style="width: 23%;">Keterangan</th>
             </tr>
         </thead>
         <tbody>
             @forelse ($outagePlan->dailyProgresses as $idx => $dp)
                 @php
                     $items = collect($dp->work_items ?? [])->filter(fn ($w) => filled($w['uraian'] ?? null))->values();
-                    $rowspan = $items->count() > 0 ? $items->count() : 1;
                 @endphp
 
                 @if ($items->isEmpty())
                     <tr>
                         <td>Day {{ $idx + 1 }}</td>
                         <td>{{ \Carbon\Carbon::parse($dp->tanggal)->format('d-m-Y') }}</td>
+                        <td></td>
                         <td class="left nowrap-pre">{{ $dp->uraian_pekerjaan ?: '-' }}</td>
                         <td>-</td>
                         <td class="left nowrap-pre">{{ $dp->keterangan ?: '-' }}</td>
@@ -222,23 +223,19 @@
                 @else
                     @foreach ($items as $itemIdx => $w)
                         <tr>
-                            @if ($itemIdx === 0)
-                                <td rowspan="{{ $rowspan }}">Day {{ $idx + 1 }}</td>
-                                <td rowspan="{{ $rowspan }}">{{ \Carbon\Carbon::parse($dp->tanggal)->format('d-m-Y') }}</td>
-                            @endif
-                            
-                            <td class="left nowrap-pre">{{ $itemIdx + 1 }}. {{ $w['uraian'] }}</td>
+                            {{-- Day & Tanggal hanya di baris pertama, sisanya dikosongkan --}}
+                            <td>{{ $itemIdx === 0 ? 'Day ' . ($idx + 1) : '' }}</td>
+                            <td>{{ $itemIdx === 0 ? \Carbon\Carbon::parse($dp->tanggal)->format('d-m-Y') : '' }}</td>
+                            <td>{{ $itemIdx + 1 }}</td>
+                            <td class="left">{{ $w['uraian'] }}</td>
                             <td>{{ filled($w['progress'] ?? null) ? number_format((float) $w['progress'], 2, ',', '.') . '%' : '-' }}</td>
-
-                            @if ($itemIdx === 0)
-                                <td class="left nowrap-pre" rowspan="{{ $rowspan }}">{{ $dp->keterangan ?: '-' }}</td>
-                            @endif
+                            <td class="left nowrap-pre">{{ $itemIdx === 0 ? ($dp->keterangan ?: '-') : '' }}</td>
                         </tr>
                     @endforeach
                 @endif
             @empty
                 <tr>
-                    <td colspan="5">Belum ada data progress harian.</td>
+                    <td colspan="6">Belum ada data progress harian.</td>
                 </tr>
             @endforelse
         </tbody>

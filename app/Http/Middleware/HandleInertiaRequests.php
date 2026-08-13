@@ -39,7 +39,7 @@ class HandleInertiaRequests extends Middleware
         return [
             ...parent::share($request),
             'name' => config('app.name'),
-            'appUrl' => config('app.url'),
+            'appUrl' => rtrim(config('app.url'), '/'),
             'auth' => [
                 'user' => $request->user(),
                 // Izin dikirim sebagai boolean, bukan dibiarkan UI menebak dari
