@@ -41,6 +41,10 @@ export type DailyProgress = {
     uraian_pekerjaan?: string | null;
     keterangan: string | null;
     status: ProgressStatus;
+    work_items?: {
+        uraian: string | null;
+        progress: number | string | null;
+    }[];
 };
 
 const WARNA_PLAN = '#4472C4';
@@ -359,8 +363,14 @@ export function OutageDailyTable({ rows }: { rows: DailyProgress[] }) {
                                 <TableHead className="min-w-[180px] px-4 font-bold">
                                     Nama Material
                                 </TableHead>
+                                <TableHead className="w-10 px-4 text-center font-bold">
+                                    No.
+                                </TableHead>
                                 <TableHead className="min-w-[260px] px-4 font-bold">
                                     Uraian Pekerjaan
+                                </TableHead>
+                                <TableHead className="min-w-[100px] px-4 text-center font-bold">
+                                    Progres (%)
                                 </TableHead>
                                 <TableHead className="min-w-[180px] px-4 font-bold">
                                     Keterangan
@@ -369,51 +379,103 @@ export function OutageDailyTable({ rows }: { rows: DailyProgress[] }) {
                         </TableHeader>
                         <TableBody>
                             {rows.length > 0 ? (
-                                rows.map((row, idx) => (
-                                    <TableRow key={row.id ?? row.tanggal} className="hover:bg-muted/30">
-                                        <TableCell className="px-4 text-center font-mono text-xs whitespace-nowrap text-muted-foreground">
-                                            Day {idx + 1}
-                                        </TableCell>
-                                        <TableCell className="px-4 text-center font-mono text-[11px] whitespace-nowrap text-muted-foreground">
-                                            {formatDMY(row.tanggal)}
-                                        </TableCell>
-                                        <TableCell className="px-4 text-center text-xs font-semibold">
-                                            {row.plan_progress === null
-                                                ? '-'
-                                                : `${row.plan_progress}%`}
-                                        </TableCell>
-                                        <TableCell className="px-4 text-center text-xs font-semibold">
-                                            {row.actual_progress === null
-                                                ? '-'
-                                                : `${row.actual_progress}%`}
-                                        </TableCell>
-                                        <TableCell className="px-4 text-center">
-                                            <span
-                                                className={`inline-flex items-center rounded px-2 py-0.5 text-[10px] font-bold whitespace-nowrap uppercase ${statusBadgeClass(row.status)}`}
-                                            >
-                                                {row.status}
-                                            </span>
-                                        </TableCell>
-                                        <TableCell className="px-4 font-mono text-[11px] text-muted-foreground">
-                                            {row.material_part_number || '-'}
-                                        </TableCell>
-                                        <TableCell className="px-4 text-xs">
-                                            {row.material_nama || '-'}
-                                        </TableCell>
-                                        {/* Uraian bisa panjang: dibiarkan membungkus,
-                                            bukan dipotong seperti kolom lain. */}
-                                        <TableCell className="px-4 text-xs whitespace-pre-line">
-                                            {row.uraian_pekerjaan || '-'}
-                                        </TableCell>
-                                        <TableCell className="px-4 text-xs whitespace-pre-line text-muted-foreground">
-                                            {row.keterangan || '-'}
-                                        </TableCell>
-                                    </TableRow>
-                                ))
+                                rows.flatMap((row, idx) => {
+                                    const items = Array.isArray(row.work_items)
+                                        ? row.work_items.filter((w) => w && w.uraian)
+                                        : [];
+
+                                    if (items.length === 0) {
+                                        return [
+                                            <TableRow key={row.id ?? row.tanggal} className="hover:bg-muted/30 border-b">
+                                                <TableCell className="px-4 text-center font-mono text-xs whitespace-nowrap text-muted-foreground border-r">
+                                                    Day {idx + 1}
+                                                </TableCell>
+                                                <TableCell className="px-4 text-center font-mono text-[11px] whitespace-nowrap text-muted-foreground border-r">
+                                                    {formatDMY(row.tanggal)}
+                                                </TableCell>
+                                                <TableCell className="px-4 text-center text-xs font-semibold border-r">
+                                                    {row.plan_progress === null ? '-' : `${row.plan_progress}%`}
+                                                </TableCell>
+                                                <TableCell className="px-4 text-center text-xs font-semibold border-r">
+                                                    {row.actual_progress === null ? '-' : `${row.actual_progress}%`}
+                                                </TableCell>
+                                                <TableCell className="px-4 text-center border-r">
+                                                    <span className={`inline-flex items-center rounded px-2 py-0.5 text-[10px] font-bold whitespace-nowrap uppercase ${statusBadgeClass(row.status)}`}>
+                                                        {row.status}
+                                                    </span>
+                                                </TableCell>
+                                                <TableCell className="px-4 font-mono text-[11px] text-muted-foreground border-r">
+                                                    {row.material_part_number || '-'}
+                                                </TableCell>
+                                                <TableCell className="px-4 text-xs border-r">
+                                                    {row.material_nama || '-'}
+                                                </TableCell>
+                                                <TableCell className="px-4 text-center text-xs text-muted-foreground border-r">
+                                                    -
+                                                </TableCell>
+                                                <TableCell className="px-4 text-xs whitespace-pre-line text-muted-foreground">
+                                                    {row.uraian_pekerjaan || '-'}
+                                                </TableCell>
+                                                <TableCell className="px-4 text-center text-xs text-muted-foreground border-x">
+                                                    -
+                                                </TableCell>
+                                                <TableCell className="px-4 text-xs whitespace-pre-line text-muted-foreground">
+                                                    {row.keterangan || '-'}
+                                                </TableCell>
+                                            </TableRow>
+                                        ];
+                                    }
+
+                                    return items.map((w, itemIdx) => (
+                                        <TableRow key={`${row.id ?? row.tanggal}-${itemIdx}`} className={itemIdx === items.length - 1 ? 'border-b hover:bg-muted/30' : 'border-b-0 hover:bg-muted/30'}>
+                                            {itemIdx === 0 && (
+                                                <>
+                                                    <TableCell rowSpan={items.length} className="px-4 text-center font-mono text-xs whitespace-nowrap text-muted-foreground border-r">
+                                                        Day {idx + 1}
+                                                    </TableCell>
+                                                    <TableCell rowSpan={items.length} className="px-4 text-center font-mono text-[11px] whitespace-nowrap text-muted-foreground border-r">
+                                                        {formatDMY(row.tanggal)}
+                                                    </TableCell>
+                                                    <TableCell rowSpan={items.length} className="px-4 text-center text-xs font-semibold border-r">
+                                                        {row.plan_progress === null ? '-' : `${row.plan_progress}%`}
+                                                    </TableCell>
+                                                    <TableCell rowSpan={items.length} className="px-4 text-center text-xs font-semibold border-r">
+                                                        {row.actual_progress === null ? '-' : `${row.actual_progress}%`}
+                                                    </TableCell>
+                                                    <TableCell rowSpan={items.length} className="px-4 text-center border-r">
+                                                        <span className={`inline-flex items-center rounded px-2 py-0.5 text-[10px] font-bold whitespace-nowrap uppercase ${statusBadgeClass(row.status)}`}>
+                                                            {row.status}
+                                                        </span>
+                                                    </TableCell>
+                                                    <TableCell rowSpan={items.length} className="px-4 font-mono text-[11px] text-muted-foreground border-r">
+                                                        {row.material_part_number || '-'}
+                                                    </TableCell>
+                                                    <TableCell rowSpan={items.length} className="px-4 text-xs border-r">
+                                                        {row.material_nama || '-'}
+                                                    </TableCell>
+                                                </>
+                                            )}
+                                            <TableCell className="px-4 text-center text-xs font-medium border-r">
+                                                {itemIdx + 1}
+                                            </TableCell>
+                                            <TableCell className="px-4 text-xs whitespace-pre-line">
+                                                {w.uraian}
+                                            </TableCell>
+                                            <TableCell className="px-4 text-center text-xs whitespace-nowrap font-semibold border-x">
+                                                {w.progress ? `${Number(w.progress).toLocaleString('id-ID')}%` : '-'}
+                                            </TableCell>
+                                            {itemIdx === 0 && (
+                                                <TableCell rowSpan={items.length} className="px-4 text-xs whitespace-pre-line text-muted-foreground">
+                                                    {row.keterangan || '-'}
+                                                </TableCell>
+                                            )}
+                                        </TableRow>
+                                    ));
+                                })
                             ) : (
                                 <TableRow>
                                     <TableCell
-                                        colSpan={9}
+                                        colSpan={11}
                                         className="h-24 text-center text-muted-foreground"
                                     >
                                         Belum ada data progress harian.
