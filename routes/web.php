@@ -32,29 +32,30 @@ Route::middleware(['auth', 'verified'])->group(function () {
         return inertia('team-outage');
     })->name('team-outage');
 
-    // Menu Daily Meeting yang baru — masih placeholder. Rute jamak di bawah
-    // (daily-meetings) adalah fitur Rapat Outage yang sudah berjalan.
-    Route::get('daily-meeting', fn () => inertia('daily-meeting'))->name('daily-meeting');
+    // Menu Daily Meeting dan Rapat Outage (tidak boleh diakses pengelola)
+    Route::middleware(['can:viewMeetings'])->group(function () {
+        Route::get('daily-meeting', fn () => inertia('daily-meeting'))->name('daily-meeting');
 
-    // Rapat Outage routes
-    Route::resource('daily-meetings', DailyMeetingController::class)->only(['index', 'store', 'show', 'destroy']);
-    Route::get('daily-meetings/{dailyMeeting}/qr', [DailyMeetingController::class, 'qrDisplay'])->name('daily-meetings.qr');
-    Route::post('daily-meetings/{dailyMeeting}/minutes', [DailyMeetingController::class, 'storeMinutes'])->name('daily-meetings.minutes');
-    Route::post('daily-meetings/{dailyMeeting}/complete', [DailyMeetingController::class, 'complete'])->name('daily-meetings.complete');
-    Route::get('daily-meetings/{dailyMeeting}/attendees-json', [DailyMeetingController::class, 'attendeesJson'])->name('daily-meetings.attendees-json');
+        // Rapat Outage routes
+        Route::resource('daily-meetings', DailyMeetingController::class)->only(['index', 'store', 'show', 'destroy']);
+        Route::get('daily-meetings/{dailyMeeting}/qr', [DailyMeetingController::class, 'qrDisplay'])->name('daily-meetings.qr');
+        Route::post('daily-meetings/{dailyMeeting}/minutes', [DailyMeetingController::class, 'storeMinutes'])->name('daily-meetings.minutes');
+        Route::post('daily-meetings/{dailyMeeting}/complete', [DailyMeetingController::class, 'complete'])->name('daily-meetings.complete');
+        Route::get('daily-meetings/{dailyMeeting}/attendees-json', [DailyMeetingController::class, 'attendeesJson'])->name('daily-meetings.attendees-json');
 
-    // Notulen Temuan (material temuan overhaul)
-    Route::post('daily-meetings/{dailyMeeting}/findings', [DailyMeetingController::class, 'storeFinding'])->name('daily-meetings.findings.store');
-    Route::post('daily-meetings/{dailyMeeting}/findings/{finding}', [DailyMeetingController::class, 'updateFinding'])->name('daily-meetings.findings.update');
-    Route::delete('daily-meetings/{dailyMeeting}/findings/{finding}', [DailyMeetingController::class, 'destroyFinding'])->name('daily-meetings.findings.destroy');
-    Route::get('daily-meetings/{dailyMeeting}/findings/export-pdf', [DailyMeetingController::class, 'exportFindingsPdf'])->name('daily-meetings.findings.export-pdf');
-    Route::get('daily-meetings/{dailyMeeting}/findings/export-excel', [DailyMeetingController::class, 'exportFindingsExcel'])->name('daily-meetings.findings.export-excel');
+        // Notulen Temuan (material temuan overhaul)
+        Route::post('daily-meetings/{dailyMeeting}/findings', [DailyMeetingController::class, 'storeFinding'])->name('daily-meetings.findings.store');
+        Route::post('daily-meetings/{dailyMeeting}/findings/{finding}', [DailyMeetingController::class, 'updateFinding'])->name('daily-meetings.findings.update');
+        Route::delete('daily-meetings/{dailyMeeting}/findings/{finding}', [DailyMeetingController::class, 'destroyFinding'])->name('daily-meetings.findings.destroy');
+        Route::get('daily-meetings/{dailyMeeting}/findings/export-pdf', [DailyMeetingController::class, 'exportFindingsPdf'])->name('daily-meetings.findings.export-pdf');
+        Route::get('daily-meetings/{dailyMeeting}/findings/export-excel', [DailyMeetingController::class, 'exportFindingsExcel'])->name('daily-meetings.findings.export-excel');
 
-    // Notulen Kick Off Meeting (rapat P3)
-    Route::post('daily-meetings/{dailyMeeting}/kickoff', [DailyMeetingController::class, 'storeKickoff'])->name('daily-meetings.kickoff.store');
-    Route::post('daily-meetings/{dailyMeeting}/kickoff/photos', [DailyMeetingController::class, 'storeKickoffPhoto'])->name('daily-meetings.kickoff.photos.store');
-    Route::delete('daily-meetings/{dailyMeeting}/kickoff/photos/{photo}', [DailyMeetingController::class, 'destroyKickoffPhoto'])->name('daily-meetings.kickoff.photos.destroy');
-    Route::get('daily-meetings/{dailyMeeting}/kickoff/export-pdf', [DailyMeetingController::class, 'exportKickoffPdf'])->name('daily-meetings.kickoff.export-pdf');
+        // Notulen Kick Off Meeting (rapat P3)
+        Route::post('daily-meetings/{dailyMeeting}/kickoff', [DailyMeetingController::class, 'storeKickoff'])->name('daily-meetings.kickoff.store');
+        Route::post('daily-meetings/{dailyMeeting}/kickoff/photos', [DailyMeetingController::class, 'storeKickoffPhoto'])->name('daily-meetings.kickoff.photos.store');
+        Route::delete('daily-meetings/{dailyMeeting}/kickoff/photos/{photo}', [DailyMeetingController::class, 'destroyKickoffPhoto'])->name('daily-meetings.kickoff.photos.destroy');
+        Route::get('daily-meetings/{dailyMeeting}/kickoff/export-pdf', [DailyMeetingController::class, 'exportKickoffPdf'])->name('daily-meetings.kickoff.export-pdf');
+    });
 
     // Kinerja Outage routes
     Route::get('kinerja/on-quality', [KinerjaQualityController::class, 'index'])->name('kinerja.on-quality');

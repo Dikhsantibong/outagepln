@@ -42,6 +42,10 @@ class AppServiceProvider extends ServiceProvider
         Carbon::setLocale('id');
         CarbonImmutable::setLocale('id');
 
+        \Illuminate\Support\Facades\Gate::define('viewMeetings', function (\App\Models\User $user) {
+            return $user->canViewMeetings();
+        });
+
         DB::prohibitDestructiveCommands(
             app()->isProduction(),
         );

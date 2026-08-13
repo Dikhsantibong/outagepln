@@ -55,12 +55,12 @@ export function AppSidebar() {
     // Rapat dikoordinasi terpusat, jadi menunya tidak untuk pengelola.
     const pelaksanaan: NavItem[] = [
         ...(canAccess('outage-plans') ? [{
-            title: 'Perencanaan dan Jadwal Outage',
+            title: 'Perencanaan dan Jadwal',
             href: '/outage-plans',
             icon: Calendar,
         }] : []),
         ...((auth?.can?.viewMeetings ?? true) && canAccess('rapat-outage') ? [rapatOutageNav] : []),
-        ...(canAccess('rapat-outage') ? [{
+        ...((auth?.can?.viewMeetings ?? true) && canAccess('rapat-outage') ? [{
             title: 'Daily Meeting',
             href: '/daily-meeting',
             icon: CalendarDays,
