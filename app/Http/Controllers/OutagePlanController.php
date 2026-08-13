@@ -178,6 +178,15 @@ class OutagePlanController extends Controller
     }
 
     /**
+     * Hitung tinggi dinamis untuk grafik Kurva S agar proporsional dengan tabel WBS.
+     */
+    private function getDynamicChartHeight(array $wbs): int
+    {
+        $targetHeight = 1600 * ((20 + count($wbs) * 12) / 455);
+        return (int) max(880, min(1600, $targetHeight));
+    }
+
+    /**
      * Compute the total duration and overall plan/actual progress shared by
      * the detail page and the PDF/Excel exports.
      */
@@ -211,18 +220,61 @@ class OutagePlanController extends Controller
 
     public function exportPdf(OutagePlan $outagePlan)
     {
-        set_time_limit(120);
+        if (function_exists('set_time_limit')) {
+            @set_time_limit(120);
+        }
         $outagePlan->load('dailyProgresses');
         $summary = $this->summarize($outagePlan);
 
-        $pdf = Pdf::loadView('exports.outage-plan', [
-            'outagePlan' => $outagePlan,
-            'chartImage' => SCurveChartRenderer::renderDataUri($outagePlan, 800, 440),
-            'logo' => $this->logoDataUri(),
-            ...$summary,
-        ])->setPaper('a4', 'portrait');
+        // Data dummy LaporanHarianData untuk mengambil Kop, WBS, dsb.
+        $lastDp = $outagePlan->dailyProgresses->last() ?? new \App\Models\OutagePlanProgress();
+        $data = new LaporanHarianData($outagePlan, $lastDp, $outagePlan->dailyProgresses->count());
+        $wbs = $data->wbs();
+        $chartHeight = $this->getDynamicChartHeight($wbs);
 
-        return $pdf->download($this->exportFilename($outagePlan, 'pdf'));
+        $pdfPortrait = Pdf::loadView('exports.outage-plan', [
+            'outagePlan' => $outagePlan,
+            'info' => $data->info(),
+            'logoPln' => $this->logoDataUri(),
+            'logoVendor' => null,
+            ...$summary,
+        ])->setPaper('a4', 'portrait')->output();
+
+        $pdfLandscape = Pdf::loadView('exports.laporan-kurva-s', [
+            'info' => $data->info(),
+            'kontrak' => $data->kontrak(),
+            'wbs' => $wbs,
+            'wbsTotal' => $data->wbsTotal(),
+            'chartImage' => SCurveChartRenderer::renderDataUri($outagePlan, 1600, $chartHeight),
+            'logoPln' => $this->logoDataUri(),
+            'logoVendor' => null,
+        ])->setPaper('a4', 'landscape')->output();
+
+        $fpdi = new \setasign\Fpdi\Fpdi();
+
+        $pageCount1 = $fpdi->setSourceFile(\setasign\Fpdi\PdfParser\StreamReader::createByString($pdfPortrait));
+        for ($pageNo = 1; $pageNo <= $pageCount1; $pageNo++) {
+            $templateId = $fpdi->importPage($pageNo);
+            $size = $fpdi->getTemplateSize($templateId);
+            $fpdi->AddPage($size['orientation'], [$size['width'], $size['height']]);
+            $fpdi->useTemplate($templateId);
+        }
+
+        $pageCount2 = $fpdi->setSourceFile(\setasign\Fpdi\PdfParser\StreamReader::createByString($pdfLandscape));
+        for ($pageNo = 1; $pageNo <= $pageCount2; $pageNo++) {
+            $templateId = $fpdi->importPage($pageNo);
+            $size = $fpdi->getTemplateSize($templateId);
+            $fpdi->AddPage($size['orientation'], [$size['width'], $size['height']]);
+            $fpdi->useTemplate($templateId);
+        }
+
+        $mergedPdf = $fpdi->Output('S');
+        $filename = $this->exportFilename($outagePlan, 'pdf');
+
+        return response($mergedPdf, 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+        ]);
     }
 
     private function logoDataUri(): ?string
@@ -244,7 +296,9 @@ class OutagePlanController extends Controller
      */
     public function laporanHarianPdf(Request $request, OutagePlan $outagePlan, string $tanggal)
     {
-        set_time_limit(120);
+        if (function_exists('set_time_limit')) {
+            @set_time_limit(120);
+        }
         [$hari, $hariKe] = $this->cariHari($request, $outagePlan, $tanggal);
         $data = new LaporanHarianData($outagePlan, $hari, $hariKe);
 
@@ -262,12 +316,15 @@ class OutagePlanController extends Controller
         ])->setPaper('a4', 'portrait')->output();
 
         // 2. Generate Kurva S (Landscape)
+        $wbs = $data->wbs();
+        $chartHeight = $this->getDynamicChartHeight($wbs);
+
         $pdfKurva = Pdf::loadView('exports.laporan-kurva-s', [
             'info' => $data->info(),
             'kontrak' => $data->kontrak(),
-            'wbs' => $data->wbs(),
+            'wbs' => $wbs,
             'wbsTotal' => $data->wbsTotal(),
-            'chartImage' => SCurveChartRenderer::renderDataUri($outagePlan, 800, 440),
+            'chartImage' => SCurveChartRenderer::renderDataUri($outagePlan, 1600, $chartHeight),
             'logoPln' => $this->logoDataUri(),
             'logoVendor' => null,
         ])->setPaper('a4', 'landscape')->output();
@@ -608,16 +665,21 @@ class OutagePlanController extends Controller
         $sheet->getStyle("A{$row}")->getFont()->setBold(true);
         $row++;
 
-        // Generate chart at high resolution so padding doesn't squash the plot area
-        $chart = $this->chartDrawing($outagePlan, 1600, 880);
+        // Generate chart with dynamic height
+        $wbs = $data->wbs();
+        $chartHeight = $this->getDynamicChartHeight($wbs);
+        $chart = $this->chartDrawing($outagePlan, 1600, $chartHeight);
 
         if ($chart !== null) {
             $chart->setCoordinates("A{$row}");
-            // Scale it down for Excel display (400 pixels high)
-            $chart->setHeight(400);
+            // Scale it down for Excel display proportionally
+            $displayHeight = (int) ($chartHeight / 2.2);
+            $chart->setHeight($displayHeight);
             $chart->setWorksheet($sheet);
-            // 400 pixels is about 20 standard rows (20px each). Leave 22 rows of space.
-            $row += 22;
+            
+            // Calculate how many rows the chart takes up (approx 20px per row)
+            $rowsTaken = (int) ceil($displayHeight / 20) + 2;
+            $row += $rowsTaken;
         }
 
         // ── Data Kurva S sebagai tabel ──────────────────────────────────
@@ -1053,13 +1115,21 @@ class OutagePlanController extends Controller
     {
         $row = $this->judulBagian($sheet, 'KURVA S - PLAN VS ACTUAL', $row);
 
-        // Generate chart at high resolution so padding doesn't squash the plot area
-        $chart = $this->chartDrawing($outagePlan, 1600, 880);
+        // Calculate dynamic height based on WBS size
+        $lastDp = $outagePlan->dailyProgresses->last() ?? new \App\Models\OutagePlanProgress();
+        $data = new \App\Support\LaporanHarianData($outagePlan, $lastDp, $outagePlan->dailyProgresses->count());
+        $wbs = $data->wbs();
+        $chartHeight = $this->getDynamicChartHeight($wbs);
+
+        $chart = $this->chartDrawing($outagePlan, 1600, $chartHeight);
         if ($chart !== null) {
             $chart->setCoordinates("A{$row}");
-            $chart->setHeight(400);
+            $displayHeight = (int) ($chartHeight / 2.2);
+            $chart->setHeight($displayHeight);
             $chart->setWorksheet($sheet);
-            $row += 22; // sisakan ruang setinggi grafik sebelum tabel
+            
+            $rowsTaken = (int) ceil($displayHeight / 20) + 2;
+            $row += $rowsTaken;
         }
 
         $headerRow = $row;

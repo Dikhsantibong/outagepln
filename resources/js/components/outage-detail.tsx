@@ -141,7 +141,7 @@ export function OutageSCurve({
     rows,
     overallPlan,
     overallActual,
-    height = 520,
+    height = 800,
 }: {
     rows: DailyProgress[];
     overallPlan: number | null;
