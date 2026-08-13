@@ -211,12 +211,13 @@ class OutagePlanController extends Controller
 
     public function exportPdf(OutagePlan $outagePlan)
     {
+        set_time_limit(120);
         $outagePlan->load('dailyProgresses');
         $summary = $this->summarize($outagePlan);
 
         $pdf = Pdf::loadView('exports.outage-plan', [
             'outagePlan' => $outagePlan,
-            'chartImage' => SCurveChartRenderer::renderDataUri($outagePlan),
+            'chartImage' => SCurveChartRenderer::renderDataUri($outagePlan, 800, 440),
             'logo' => $this->logoDataUri(),
             ...$summary,
         ])->setPaper('a4', 'portrait');
@@ -243,6 +244,7 @@ class OutagePlanController extends Controller
      */
     public function laporanHarianPdf(Request $request, OutagePlan $outagePlan, string $tanggal)
     {
+        set_time_limit(120);
         [$hari, $hariKe] = $this->cariHari($request, $outagePlan, $tanggal);
         $data = new LaporanHarianData($outagePlan, $hari, $hariKe);
 
@@ -265,7 +267,7 @@ class OutagePlanController extends Controller
             'kontrak' => $data->kontrak(),
             'wbs' => $data->wbs(),
             'wbsTotal' => $data->wbsTotal(),
-            'chartImage' => SCurveChartRenderer::renderDataUri($outagePlan),
+            'chartImage' => SCurveChartRenderer::renderDataUri($outagePlan, 800, 440),
             'logoPln' => $this->logoDataUri(),
             'logoVendor' => null,
         ])->setPaper('a4', 'landscape')->output();
