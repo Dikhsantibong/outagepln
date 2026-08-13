@@ -12,8 +12,9 @@ class UserController extends Controller
 {
     const MENUS = [
         'dashboard' => 'Dashboard',
-        'outage-plans' => 'Perencanaan & Jadwal Outage',
-        'rapat-outage' => 'Rapat Outage & Daily Meeting',
+        'outage-plans' => 'Perencanaan & Jadwal',
+        'rapat-outage' => 'Rapat Outage',
+        'daily-meeting' => 'Daily Meeting',
         'kinerja.on-quality' => 'Kinerja: On Quality',
         'kinerja.on-time' => 'Kinerja: On Time',
         'kinerja.on-cost' => 'Kinerja: On Cost',

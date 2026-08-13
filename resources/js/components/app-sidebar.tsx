@@ -60,9 +60,9 @@ export function AppSidebar() {
             icon: Calendar,
         }] : []),
         ...((auth?.can?.viewMeetings ?? true) && canAccess('rapat-outage') ? [rapatOutageNav] : []),
-        ...((auth?.can?.viewMeetings ?? true) && canAccess('rapat-outage') ? [{
+        ...((auth?.can?.viewMeetings ?? true) && canAccess('daily-meeting') ? [{
             title: 'Daily Meeting',
-            href: '/daily-meeting',
+            href: '/daily-briefings',
             icon: CalendarDays,
         }] : []),
     ];

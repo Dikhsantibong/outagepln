@@ -30,7 +30,9 @@ class CheckMenuAccess
             $menu = 'dashboard';
         } elseif (str_starts_with($routeName, 'outage-plans')) {
             $menu = 'outage-plans';
-        } elseif (str_starts_with($routeName, 'daily-meeting')) {
+        } elseif ($routeName === 'daily-meeting') {
+            $menu = 'daily-meeting';
+        } elseif (str_starts_with($routeName, 'daily-meetings')) {
             $menu = 'rapat-outage';
         } elseif (str_starts_with($routeName, 'kinerja.on-quality')) {
             $menu = 'kinerja.on-quality';

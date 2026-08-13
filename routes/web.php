@@ -34,7 +34,16 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     // Menu Daily Meeting dan Rapat Outage (tidak boleh diakses pengelola)
     Route::middleware(['can:viewMeetings'])->group(function () {
-        Route::get('daily-meeting', fn () => inertia('daily-meeting'))->name('daily-meeting');
+        
+        // Daily Meeting (Manual Briefing) routes
+        Route::resource('daily-briefings', \App\Http\Controllers\DailyBriefingController::class)->parameters(['daily-briefings' => 'dailyBriefing']);
+        Route::post('daily-briefings/{dailyBriefing}/complete', [\App\Http\Controllers\DailyBriefingController::class, 'complete'])->name('daily-briefings.complete');
+        Route::get('daily-briefings/{dailyBriefing}/qr', [\App\Http\Controllers\DailyBriefingController::class, 'qrDisplay'])->name('daily-briefings.qr');
+        Route::get('daily-briefings/{dailyBriefing}/attendees-json', [\App\Http\Controllers\DailyBriefingController::class, 'attendeesJson'])->name('daily-briefings.attendees-json');
+        Route::post('daily-briefings/{dailyBriefing}/issues', [\App\Http\Controllers\DailyBriefingController::class, 'storeIssue'])->name('daily-briefings.issues.store');
+        Route::post('daily-briefings/{dailyBriefing}/issues/{issue}', [\App\Http\Controllers\DailyBriefingController::class, 'updateIssue'])->name('daily-briefings.issues.update');
+        Route::delete('daily-briefings/{dailyBriefing}/issues/{issue}', [\App\Http\Controllers\DailyBriefingController::class, 'destroyIssue'])->name('daily-briefings.issues.destroy');
+        Route::get('daily-briefings/{dailyBriefing}/export-pdf', [\App\Http\Controllers\DailyBriefingController::class, 'exportPdf'])->name('daily-briefings.export-pdf');
 
         // Rapat Outage routes
         Route::resource('daily-meetings', DailyMeetingController::class)->only(['index', 'store', 'show', 'destroy']);
@@ -89,5 +98,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
 // Public attendance routes (no auth - scanned via QR on phone)
 Route::get('attend/{token}', [DailyMeetingController::class, 'attendForm'])->name('attend.form');
 Route::post('attend/{token}', [DailyMeetingController::class, 'submitAttendance'])->name('attend.submit');
+
+Route::get('daily-briefings/attend/{token}', [\App\Http\Controllers\DailyBriefingController::class, 'attendForm'])->name('daily-briefings.attend.form');
+Route::post('daily-briefings/attend/{token}', [\App\Http\Controllers\DailyBriefingController::class, 'submitAttendance'])->name('daily-briefings.attend.submit');
 
 require __DIR__.'/settings.php';
