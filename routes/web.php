@@ -50,7 +50,6 @@ Route::middleware(['auth', 'verified'])->group(function () {
         // Rapat Outage routes
         Route::resource('daily-meetings', DailyMeetingController::class)->only(['index', 'store', 'show', 'destroy']);
         Route::get('daily-meetings/{dailyMeeting}/qr', [DailyMeetingController::class, 'qrDisplay'])->name('daily-meetings.qr');
-        Route::post('daily-meetings/{dailyMeeting}/minutes', [DailyMeetingController::class, 'storeMinutes'])->name('daily-meetings.minutes');
         Route::post('daily-meetings/{dailyMeeting}/complete', [DailyMeetingController::class, 'complete'])->name('daily-meetings.complete');
         Route::get('daily-meetings/{dailyMeeting}/attendees-json', [DailyMeetingController::class, 'attendeesJson'])->name('daily-meetings.attendees-json');
 
@@ -66,6 +65,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('daily-meetings/{dailyMeeting}/kickoff/photos', [DailyMeetingController::class, 'storeKickoffPhoto'])->name('daily-meetings.kickoff.photos.store');
         Route::delete('daily-meetings/{dailyMeeting}/kickoff/photos/{photo}', [DailyMeetingController::class, 'destroyKickoffPhoto'])->name('daily-meetings.kickoff.photos.destroy');
         Route::get('daily-meetings/{dailyMeeting}/kickoff/export-pdf', [DailyMeetingController::class, 'exportKickoffPdf'])->name('daily-meetings.kickoff.export-pdf');
+        Route::get('daily-meetings/{dailyMeeting}/kickoff/export-excel', [DailyMeetingController::class, 'exportKickoffExcel'])->name('daily-meetings.kickoff.export-excel');
     });
 
     // Kinerja Outage routes

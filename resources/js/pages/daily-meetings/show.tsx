@@ -1,8 +1,7 @@
 import { Head, useForm, router, usePage } from '@inertiajs/react';
-import { Users, FileText, QrCode, CheckCircle2, Clock, MapPin, Calendar, Printer, Info, Video, ClipboardList, Plus, Pencil, Trash2, FileSpreadsheet, ImageOff, Handshake, Link2, Images } from 'lucide-react';
+import { Users, FileText, QrCode, CheckCircle2, Clock, MapPin, Calendar, Video, ClipboardList, Plus, Pencil, Trash2, FileSpreadsheet, ImageOff, Handshake, Link2, Images } from 'lucide-react';
 import type { FormEventHandler} from 'react';
 import { useState, useEffect } from 'react';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -41,15 +40,6 @@ type Attendee = {
     signature: string | null;
     signed_at: string;
 };
-
-type Minutes = {
-    id: number;
-    meeting_id: number;
-    agenda: string | null;
-    latar_belakang: string | null;
-    pembahasan: string | null;
-    hasil_kesepakatan: string | null;
-} | null;
 
 type Meeting = {
     id: number;
@@ -128,7 +118,6 @@ const emptyFinding = {
 export default function DailyMeetingShow({
     meeting,
     attendees: initialAttendees,
-    minutes,
     findings = [],
     findingInfo,
     kickoff = null,
@@ -137,7 +126,6 @@ export default function DailyMeetingShow({
 }: {
     meeting: Meeting;
     attendees: Attendee[];
-    minutes: Minutes;
     findings?: Finding[];
     findingInfo?: FindingInfo;
     kickoff?: Kickoff;
@@ -147,10 +135,12 @@ export default function DailyMeetingShow({
     const { auth } = usePage<any>().props;
     const isTamu = auth?.user?.role === 'tamu';
 
-    // Rapat P3 uses the Kick Off notulen; every other type uses Notulen Temuan.
+    // Notulen Kick Off (FORMULIR NOTULEN RAPAT) kini tersedia untuk SEMUA tipe
+    // rapat. Flag P3 dipertahankan hanya untuk menentukan apakah Notulen Temuan
+    // masih ditampilkan (rapat non-P3 tetap punya lembar temuan).
     const isKickoffMeeting = (meeting.tipe_rapat || '').toUpperCase() === 'RAPAT P3';
 
-    const [activeTab, setActiveTab] = useState<'hadir' | 'notulen' | 'temuan' | 'kickoff'>('hadir');
+    const [activeTab, setActiveTab] = useState<'hadir' | 'temuan' | 'kickoff'>('hadir');
     const [attendees, setAttendees] = useState<Attendee[]>(initialAttendees);
     const [findingDialogOpen, setFindingDialogOpen] = useState(false);
     const [editingFinding, setEditingFinding] = useState<Finding | null>(null);
@@ -221,9 +211,9 @@ export default function DailyMeetingShow({
         penyampaian_mitra: kickoff?.penyampaian_mitra ?? '',
         hasil_kesepakatan: kickoff?.hasil_kesepakatan ?? '',
         link_absensi: kickoff?.link_absensi ?? '',
-        pimpinan_nama: kickoff?.pimpinan_nama ?? '',
+        pimpinan_nama: kickoff?.pimpinan_nama ?? d.pimpinan_nama ?? '',
         pimpinan_jabatan: kickoff?.pimpinan_jabatan ?? d.pimpinan_jabatan ?? '',
-        notulis_nama: kickoff?.notulis_nama ?? '',
+        notulis_nama: kickoff?.notulis_nama ?? d.notulis_nama ?? '',
         notulis_jabatan: kickoff?.notulis_jabatan ?? d.notulis_jabatan ?? '',
         kota_ttd: kickoff?.kota_ttd ?? d.kota_ttd ?? '',
         tanggal_ttd: kickoff?.tanggal_ttd ?? '',
@@ -273,308 +263,6 @@ return;
         return () => clearInterval(interval);
     }, [meeting.id, meeting.status]);
 
-    const minutesForm = useForm({
-        agenda: minutes?.agenda || '',
-        latar_belakang: minutes?.latar_belakang || '',
-        pembahasan: minutes?.pembahasan || '',
-        hasil_kesepakatan: minutes?.hasil_kesepakatan || '',
-    });
-
-    const submitMinutes: FormEventHandler = (e) => {
-        e.preventDefault();
-        minutesForm.post(`/daily-meetings/${meeting.id}/minutes`);
-    };
-
-    const printNotulen = () => {
-        const tanggalFormatted = new Date(meeting.tanggal).toLocaleDateString('id-ID', {
-            weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
-        });
-        const waktuStr = meeting.waktu_mulai
-            ? `${meeting.waktu_mulai.slice(0, 5)} Wita${meeting.waktu_selesai ? ' - ' + meeting.waktu_selesai.slice(0, 5) + ' Wita' : ' - Selesai'}`
-            : '';
-
-        const nl2br = (text: string | null | undefined) => {
-            if (!text) {
-return '-';
-}
-
-            return text.replace(/\n/g, '<br/>');
-        };
-
-        const attendeeRows = attendees.map((att, idx) =>
-            `<tr>
-                <td style="border:1px solid #000;padding:6px 10px;text-align:center;">${idx + 1}</td>
-                <td style="border:1px solid #000;padding:6px 10px;">${att.nama}</td>
-                <td style="border:1px solid #000;padding:6px 10px;">${att.divisi || '-'}</td>
-                <td style="border:1px solid #000;padding:6px 10px;">${att.jabatan || '-'}</td>
-                <td style="border:1px solid #000;padding:6px 10px;text-align:center;">
-                    ${att.signature ? `<img src="${att.signature}" style="height:35px;width:auto;" />` : '-'}
-                </td>
-            </tr>`
-        ).join('');
-
-        const currentMinutes = minutesForm.data;
-
-        const html = `<!DOCTYPE html>
-<html>
-<head>
-    <title>Notulen Rapat - ${meeting.judul}</title>
-    <style>
-        @page {
-            size: A4;
-            margin: 0;
-        }
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: 'Times New Roman', Times, serif;
-            font-size: 11pt;
-            color: #000;
-            line-height: 1.4;
-            background-color: #fff;
-        }
-        .page {
-            width: 210mm;
-            min-height: 297mm;
-            padding: 15mm 20mm 25mm 20mm;
-            margin: 0 auto;
-            position: relative;
-            background: white;
-        }
-        .header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding-bottom: 10px;
-            border-bottom: 2.5px solid #003d7a;
-            margin-bottom: 25px;
-        }
-        .header-left {
-            font-size: 10pt;
-            font-weight: bold;
-            color: #c00000;
-            line-height: 1.2;
-            text-transform: uppercase;
-        }
-        .header-right img {
-            height: 45px;
-            width: auto;
-        }
-        .title {
-            font-size: 14pt;
-            font-weight: bold;
-            text-decoration: underline;
-            margin-bottom: 20px;
-            text-align: left;
-        }
-        .info-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-bottom: 25px;
-            font-size: 11pt;
-        }
-        .info-table td {
-            padding: 3px 0;
-            vertical-align: top;
-        }
-        .info-table .label {
-            width: 180px;
-        }
-        .info-table .sep {
-            width: 20px;
-            text-align: center;
-        }
-        .section-title {
-            font-size: 11pt;
-            font-weight: bold;
-            margin: 15px 0 5px 0;
-            display: flex;
-        }
-        .section-title span { margin-right: 10px; }
-        .section-content {
-            margin-left: 28px;
-            margin-bottom: 15px;
-            font-size: 11pt;
-            text-align: justify;
-            min-height: 20px;
-        }
-        .attendance-table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 10pt;
-            margin-top: 15px;
-        }
-        .attendance-table th, .attendance-table td {
-            border: 1px solid #000;
-            padding: 8px 10px;
-        }
-        .attendance-table th {
-            background-color: #f1f5f9;
-            font-weight: bold;
-            text-align: center;
-        }
-        .attendance-table td {
-            vertical-align: middle;
-        }
-        .footer-bar {
-            position: absolute;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            background-color: #003d7a;
-            color: white;
-            padding: 5px 20mm;
-            font-size: 8.5pt;
-            font-weight: bold;
-            height: 35px;
-        }
-        .footer-bar img {
-            height: 22px;
-            width: auto;
-            filter: brightness(0) invert(1);
-        }
-        .confidential {
-            position: absolute;
-            bottom: 45px;
-            left: 20mm;
-            font-size: 8pt;
-            font-style: italic;
-            color: #666;
-        }
-        .page-break { page-break-before: always; }
-        @media print {
-            body { background: none; }
-            .page { border: none; box-shadow: none; margin: 0; }
-            .footer-bar { position: fixed; }
-        }
-    </style>
-</head>
-<body>
-    <div class="page">
-        <!-- Header -->
-        <div class="header">
-            <div class="header-left">
-                PT PLN NUSANTARA POWER<br/>UP KENDARI
-            </div>
-            <div class="header-right">
-                <img src="/sidebar-logo.png" alt="Logo PLN" />
-            </div>
-        </div>
-
-        <!-- Title -->
-        <div class="title">NOTULA RAPAT</div>
-
-        <!-- Info Table -->
-        <table class="info-table">
-            <tr>
-                <td class="label">Hari, Tanggal / Waktu</td>
-                <td class="sep">:</td>
-                <td>${tanggalFormatted}${waktuStr ? ' / ' + waktuStr : ''}</td>
-            </tr>
-            <tr>
-                <td class="label">Tempat</td>
-                <td class="sep">:</td>
-                <td>${meeting.lokasi || '-'}</td>
-            </tr>
-            <tr>
-                <td class="label">Perihal</td>
-                <td class="sep">:</td>
-                <td>${meeting.judul}</td>
-            </tr>
-            <tr>
-                <td class="label">Lampiran</td>
-                <td class="sep">:</td>
-                <td>1. &nbsp;Daftar Hadir</td>
-            </tr>
-        </table>
-
-        <!-- 1. DAFTAR PESERTA -->
-        <div class="section-title"><span>1.</span> DAFTAR PESERTA</div>
-        <div class="section-content">Terlampir</div>
-
-        <!-- 2. AGENDA RAPAT -->
-        <div class="section-title"><span>2.</span> AGENDA RAPAT</div>
-        <div class="section-content">${nl2br(currentMinutes.agenda)}</div>
-
-        <!-- 3. LATAR BELAKANG -->
-        <div class="section-title"><span>3.</span> LATAR BELAKANG</div>
-        <div class="section-content">${nl2br(currentMinutes.latar_belakang)}</div>
-
-        <!-- 4. PEMBAHASAN -->
-        <div class="section-title"><span>4.</span> PEMBAHASAN</div>
-        <div class="section-content">${nl2br(currentMinutes.pembahasan)}</div>
-
-        <!-- 5. HASIL KESEPAKATAN -->
-        <div class="section-title"><span>5.</span> HASIL KESEPAKATAN</div>
-        <div class="section-content">${nl2br(currentMinutes.hasil_kesepakatan)}</div>
-
-        <div class="confidential">Confidential</div>
-
-        <!-- Footer Bar -->
-        <div class="footer-bar">
-            <span>PT PLN NUSANTARA POWER UP KENDARI</span>
-            <img src="/sidebar-logo.png" alt="Logo PLN" />
-        </div>
-    </div>
-
-    <!-- Page 2: Daftar Hadir -->
-    <div class="page-break"></div>
-    <div class="page">
-        <div class="header">
-            <div class="header-left">
-                PT PLN NUSANTARA POWER<br/>UP KENDARI
-            </div>
-            <div class="header-right">
-                <img src="/sidebar-logo.png" alt="Logo PLN" />
-            </div>
-        </div>
-
-        <div class="title">LAMPIRAN - DAFTAR HADIR</div>
-        <p style="margin-bottom:10px;font-size:11pt;">
-            <strong>${meeting.judul}</strong><br/>
-            ${tanggalFormatted}${waktuStr ? ' | ' + waktuStr : ''}${meeting.lokasi ? ' | ' + meeting.lokasi : ''}
-        </p>
-
-        <table class="attendance-table">
-            <thead>
-                <tr>
-                    <th style="width:40px;">No</th>
-                    <th>Nama</th>
-                    <th>Divisi</th>
-                    <th>Jabatan</th>
-                    <th style="width:120px;">Tanda Tangan</th>
-                </tr>
-            </thead>
-            <tbody>
-                ${attendeeRows || '<tr><td colspan="5" style="padding:20px;text-align:center;color:#999;">Belum ada peserta</td></tr>'}
-            </tbody>
-        </table>
-
-        <div class="confidential">Confidential</div>
-
-        <!-- Footer Bar -->
-        <div class="footer-bar">
-            <span>PT PLN NUSANTARA POWER UP KENDARI</span>
-            <img src="/sidebar-logo.png" alt="Logo PLN" />
-        </div>
-    </div>
-
-    <script>
-        window.onload = function() { window.print(); };
-    </script>
-</body>
-</html>`;
-
-        const printWindow = window.open('', '_blank');
-
-        if (printWindow) {
-            printWindow.document.write(html);
-            printWindow.document.close();
-        }
-    };
-
     const completeMeeting = () => {
         if (confirm('Selesaikan meeting ini?')) {
             router.post(`/daily-meetings/${meeting.id}/complete`);
@@ -583,10 +271,10 @@ return '-';
 
     const tabs = [
         { key: 'hadir' as const, label: 'Daftar Hadir', icon: Users, count: attendees.length },
-        { key: 'notulen' as const, label: 'Notulen Rapat', icon: FileText },
-        isKickoffMeeting
-            ? { key: 'kickoff' as const, label: 'Notulen Kick Off Meeting', icon: Handshake }
-            : { key: 'temuan' as const, label: 'Notulen Temuan', icon: ClipboardList, count: findings.length },
+        { key: 'kickoff' as const, label: 'Notulen Kick Off Meeting', icon: Handshake },
+        ...(!isKickoffMeeting
+            ? [{ key: 'temuan' as const, label: 'Notulen Temuan', icon: ClipboardList, count: findings.length }]
+            : []),
     ];
 
     return (
@@ -651,10 +339,6 @@ return '-';
                                         Join Zoom Meeting
                                     </Button>
                                 )}
-                                <Button variant="outline" size="sm" className="gap-2 h-9" onClick={printNotulen}>
-                                    <Printer className="h-4 w-4" />
-                                    Print Notulen
-                                </Button>
                                 {['active', 'berlangsung'].includes(meeting.status) && !isTamu && (
                                     <>
                                         <Button
@@ -770,102 +454,6 @@ return '-';
                                         )}
                                     </TableBody>
                                 </Table>
-                            </CardContent>
-                        </Card>
-                    )}
-
-                    {activeTab === 'notulen' && (
-                        <Card>
-                            <CardHeader>
-                                <div className="flex items-center justify-between">
-                                    <div>
-                                        <CardTitle>Notulen Rapat</CardTitle>
-                                        <CardDescription>Catatan pembahasan dan hasil kesepakatan rapat</CardDescription>
-                                    </div>
-                                    <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground bg-muted px-3 py-1 rounded-full">
-                                        <Users className="h-3 w-3" />
-                                        {attendees.length} Peserta
-                                    </div>
-                                </div>
-                                {meeting.status === 'completed' && (
-                                    <Alert className="mt-4 bg-blue-50 border-blue-200 dark:bg-blue-950/20 dark:border-blue-900">
-                                        <Info className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                                        <AlertTitle className="text-blue-800 dark:text-blue-300">Rapat Telah Selesai</AlertTitle>
-                                        <AlertDescription className="text-blue-700 dark:text-blue-400/80">
-                                            Notulen ini telah dikunci dan tidak dapat diedit kembali. Silakan cetak notulen untuk arsip resmi.
-                                        </AlertDescription>
-                                    </Alert>
-                                )}
-                            </CardHeader>
-                            <CardContent>
-                                <form onSubmit={submitMinutes} className="space-y-8">
-                                    <div className="grid gap-6">
-                                        <div className="space-y-2">
-                                            <Label htmlFor="agenda" className="text-xs font-bold uppercase tracking-[0.1em] text-primary/80">
-                                                Agenda Rapat
-                                            </Label>
-                                            <Textarea
-                                                id="agenda"
-                                                value={minutesForm.data.agenda}
-                                                onChange={(e) => minutesForm.setData('agenda', e.target.value)}
-                                                placeholder="Sebutkan poin-poin agenda rapat..."
-                                                className="min-h-[100px] resize-none focus-visible:ring-primary/20"
-                                                disabled={meeting.status === 'completed' || isTamu}
-                                            />
-                                        </div>
-
-                                        <div className="space-y-2">
-                                            <Label htmlFor="latar_belakang" className="text-xs font-bold uppercase tracking-[0.1em] text-primary/80">
-                                                Latar Belakang
-                                            </Label>
-                                            <Textarea
-                                                id="latar_belakang"
-                                                value={minutesForm.data.latar_belakang}
-                                                onChange={(e) => minutesForm.setData('latar_belakang', e.target.value)}
-                                                placeholder="Latar belakang diadakannya rapat ini..."
-                                                className="min-h-[120px] resize-none focus-visible:ring-primary/20"
-                                                disabled={meeting.status === 'completed'}
-                                            />
-                                        </div>
-
-                                        <div className="space-y-2">
-                                            <Label htmlFor="pembahasan" className="text-xs font-bold uppercase tracking-[0.1em] text-primary/80">
-                                                Pembahasan
-                                            </Label>
-                                            <Textarea
-                                                id="pembahasan"
-                                                value={minutesForm.data.pembahasan}
-                                                onChange={(e) => minutesForm.setData('pembahasan', e.target.value)}
-                                                placeholder="Rincian pembahasan rapat..."
-                                                className="min-h-[200px] resize-none focus-visible:ring-primary/20"
-                                                disabled={meeting.status === 'completed' || isTamu}
-                                            />
-                                        </div>
-
-                                        <div className="space-y-2">
-                                            <Label htmlFor="hasil_kesepakatan" className="text-xs font-bold uppercase tracking-[0.1em] text-primary/80">
-                                                Hasil Kesepakatan
-                                            </Label>
-                                            <Textarea
-                                                id="hasil_kesepakatan"
-                                                value={minutesForm.data.hasil_kesepakatan}
-                                                onChange={(e) => minutesForm.setData('hasil_kesepakatan', e.target.value)}
-                                                placeholder="Poin-poin kesepakatan akhir..."
-                                                className="min-h-[120px] resize-none focus-visible:ring-primary/20"
-                                                disabled={meeting.status === 'completed'}
-                                            />
-                                        </div>
-                                    </div>
-
-                                    {['active', 'berlangsung'].includes(meeting.status) && !isTamu && (
-                                        <div className="flex justify-end pt-4 border-t">
-                                            <Button type="submit" disabled={minutesForm.processing} className="gap-2 px-8">
-                                                <FileText className="h-4 w-4" />
-                                                Simpan Notulen
-                                            </Button>
-                                        </div>
-                                    )}
-                                </form>
                             </CardContent>
                         </Card>
                     )}
@@ -1032,15 +620,26 @@ return '-';
                                     <CardTitle>Notulen Kick Off Meeting</CardTitle>
                                     <CardDescription>Formulir notulen rapat kick off pelaksanaan pekerjaan overhaul</CardDescription>
                                 </div>
-                                <Button
-                                    variant="outline"
-                                    size="sm"
-                                    className="gap-2 h-9 shrink-0"
-                                    onClick={() => window.open(`/daily-meetings/${meeting.id}/kickoff/export-pdf`, '_blank')}
-                                >
-                                    <FileText className="h-4 w-4 text-red-500" />
-                                    Export PDF
-                                </Button>
+                                <div className="flex shrink-0 gap-2">
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="gap-2 h-9"
+                                        onClick={() => window.open(`/daily-meetings/${meeting.id}/kickoff/export-pdf`, '_blank')}
+                                    >
+                                        <FileText className="h-4 w-4 text-red-500" />
+                                        Export PDF
+                                    </Button>
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="gap-2 h-9"
+                                        onClick={() => window.open(`/daily-meetings/${meeting.id}/kickoff/export-excel`, '_blank')}
+                                    >
+                                        <FileSpreadsheet className="h-4 w-4 text-emerald-600" />
+                                        Export Excel
+                                    </Button>
+                                </div>
                             </CardHeader>
                             <CardContent className="space-y-8">
                                 <form onSubmit={submitKickoff} className="space-y-8">
@@ -1405,7 +1004,7 @@ return '-';
 DailyMeetingShow.layout = {
     breadcrumbs: [
         {
-            title: 'Rapat Outage',
+            title: 'Daily Meeting',
             href: '/daily-meetings',
         },
         {

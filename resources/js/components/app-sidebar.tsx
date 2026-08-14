@@ -28,9 +28,9 @@ import {
 import { dashboard } from '@/routes';
 import type { NavItem } from '@/types';
 
-/** Rapat Outage — dulu bernama "Daily Meeting"; rutenya tetap /daily-meetings. */
-const rapatOutageNav: NavItem = {
-    title: 'Rapat Outage',
+/** Menu rute /daily-meetings — kini ditampilkan sebagai "Daily Meeting". */
+const dailyMeetingsNav: NavItem = {
+    title: 'Daily Meeting',
     href: '/daily-meetings',
     icon: MessageSquare,
 };
@@ -59,9 +59,9 @@ export function AppSidebar() {
             href: '/outage-plans',
             icon: Calendar,
         }] : []),
-        ...((auth?.can?.viewMeetings ?? true) && canAccess('rapat-outage') ? [rapatOutageNav] : []),
+        ...((auth?.can?.viewMeetings ?? true) && canAccess('rapat-outage') ? [dailyMeetingsNav] : []),
         ...((auth?.can?.viewMeetings ?? true) && canAccess('daily-meeting') ? [{
-            title: 'Daily Meeting',
+            title: 'Rapat Outage',
             href: '/daily-briefings',
             icon: CalendarDays,
         }] : []),

@@ -74,14 +74,7 @@ class TahunFilterTest extends TestCase
             ->where('outagePlans.total', 1));
     }
 
-    public function test_daily_meeting_juga_terbuka_di_tahun_berjalan(): void
-    {
-        $tahunIni = $this->seedPlans();
-
-        // Rapat dibuat otomatis oleh OutagePlan; buat satu yang punya tanggal.
-        OutagePlan::first()->update(['rapat_r2' => "{$tahunIni}-04-01"]);
-
-        $this->get('/daily-meetings')->assertInertia(fn ($page) => $page
-            ->where('filters.tahun', (string) $tahunIni));
-    }
+    // Catatan: halaman /daily-meetings kini beralih ke alur berpandu (pilih mesin
+    // dulu, bukan daftar rapat berfilter tahun), jadi asersi filter tahun untuk
+    // halaman itu dihapus — perilakunya memang sudah tidak berlaku di sana.
 }

@@ -768,7 +768,7 @@ export default function Dashboard({
                     <CardHeader className="pb-3">
                         <CardTitle className="flex items-center gap-2 text-base">
                             <Calendar className="h-4 w-4 text-blue-500" />
-                            Jadwal Rapat Outage
+                            Jadwal Daily Meeting
                         </CardTitle>
                         <CardDescription>Rapat hari ini dan yang akan datang</CardDescription>
                     </CardHeader>

@@ -188,12 +188,12 @@ export default function DailyBriefingsIndex({
 
     return (
         <>
-            <Head title="Daily Meeting" />
+            <Head title="Rapat Outage" />
 
             <div className="flex h-full flex-1 flex-col gap-6 p-4">
                 <div className="flex items-center justify-between">
                     <div>
-                        <h1 className="text-2xl font-bold tracking-tight">Daily Meeting</h1>
+                        <h1 className="text-2xl font-bold tracking-tight">Rapat Outage</h1>
                         <p className="text-sm text-muted-foreground mt-1">Kelola rapat harian manual (notulen format P1)</p>
                     </div>
                     <div className="flex items-center gap-2">
@@ -223,7 +223,7 @@ export default function DailyBriefingsIndex({
                                 </DialogTrigger>
                                 <DialogContent>
                                     <DialogHeader>
-                                        <DialogTitle>Buat Daily Meeting Baru</DialogTitle>
+                                        <DialogTitle>Buat Rapat Outage Baru</DialogTitle>
                                         <DialogDescription>Masukkan detail awal meeting untuk mulai mencatat absensi dan notulen.</DialogDescription>
                                     </DialogHeader>
                                     <form onSubmit={handleCreate} className="space-y-4">
@@ -433,7 +433,7 @@ export default function DailyBriefingsIndex({
 DailyBriefingsIndex.layout = {
     breadcrumbs: [
         {
-            title: 'Daily Meeting',
+            title: 'Rapat Outage',
             href: '/daily-briefings',
         },
     ],

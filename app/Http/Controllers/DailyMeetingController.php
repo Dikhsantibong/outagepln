@@ -7,10 +7,10 @@ use App\Models\MeetingAttendee;
 use App\Models\MeetingFinding;
 use App\Models\MeetingKickoff;
 use App\Models\MeetingKickoffPhoto;
-use App\Models\MeetingMinute;
-use App\Support\TahunFilter;
+use App\Models\OutagePlan;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
@@ -21,112 +21,66 @@ use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
 class DailyMeetingController extends Controller
 {
-    /** Filter keys accepted by the meeting listing. */
-    private const FILTER_KEYS = [
-        'search', 'tipe_rapat', 'status', 'tahun', 'bulan', 'dari', 'sampai', 'lokasi',
-    ];
-
+    /**
+     * Halaman depan Daily Meeting: alur berpandu, bukan daftar semua rapat.
+     *
+     * Sebelumnya seluruh rapat (ribuan) ditumpahkan sekaligus. Kini pengguna
+     * memilih mesin dulu (langkah 1); setelah itu lima jadwal rapat mesin
+     * tersebut (P1–P3, R2, R3) ditampilkan untuk dipilih lalu dimulai (langkah 2).
+     */
     public function index(Request $request)
     {
-        $query = DailyMeeting::withCount('attendees');
-
-        // Meetings follow the machine they belong to: an account only sees the
-        // meetings of the brand it manages.
         $user = $request->user();
-        if ($user && filled($user->merek)) {
-            $query->whereHas('outagePlan', fn ($q) => $q->where('merek', $user->merek));
+        // Akun pengelola merek hanya melihat mesin merek yang dikelolanya.
+        $merek = $user && filled($user->merek) ? $user->merek : null;
+
+        // Langkah 1 — daftar mesin: satu kartu per outage plan yang punya rapat,
+        // dikelompokkan agar halaman tidak menumpahkan seluruh rapat sekaligus.
+        $machines = DB::table('daily_meetings as dm')
+            ->join('outage_plans as op', 'dm.outage_plan_id', '=', 'op.id')
+            ->when($merek, fn ($q) => $q->where('op.merek', $merek))
+            ->groupBy('op.id', 'op.mesin_pembangkit', 'op.scope', 'op.jenis_pembangkit')
+            ->orderBy('op.mesin_pembangkit')
+            ->get([
+                'op.id as plan_id',
+                'op.mesin_pembangkit as mesin',
+                'op.scope as scope',
+                'op.jenis_pembangkit as jenis',
+                DB::raw('COUNT(dm.id) as jumlah'),
+                DB::raw('MIN(dm.tanggal) as mulai'),
+                DB::raw("SUM(CASE WHEN dm.status = 'completed' THEN 1 ELSE 0 END) as selesai"),
+            ]);
+
+        // Langkah 2 — mesin terpilih beserta jadwal rapatnya, terurut P1→R3.
+        $selected = null;
+        if ($request->filled('plan')) {
+            $plan = OutagePlan::find($request->input('plan'));
+
+            if ($plan && (! $merek || $plan->merek === $merek)) {
+                // Diurutkan di PHP (lima baris) agar tidak bergantung FIELD() yang
+                // hanya ada di MySQL — SQLite dipakai pada test.
+                $urutan = ['RAPAT P1' => 1, 'RAPAT P2' => 2, 'RAPAT P3' => 3, 'RAPAT R2' => 4, 'RAPAT R3' => 5];
+
+                $meetings = DailyMeeting::where('outage_plan_id', $plan->id)
+                    ->withCount('attendees')
+                    ->get()
+                    ->sortBy(fn ($m) => $urutan[$m->tipe_rapat] ?? 99)
+                    ->values();
+
+                $selected = [
+                    'plan_id' => $plan->id,
+                    'mesin' => $plan->mesin_pembangkit,
+                    'scope' => $plan->scope,
+                    'jenis' => $plan->jenis_pembangkit,
+                    'meetings' => $meetings,
+                ];
+            }
         }
-
-        if ($request->filled('search')) {
-            $search = $request->input('search');
-            $query->where(function ($q) use ($search) {
-                $q->where('judul', 'like', "%{$search}%")
-                    ->orWhere('lokasi', 'like', "%{$search}%")
-                    ->orWhere('tipe_rapat', 'like', "%{$search}%");
-            });
-        }
-
-        if ($request->filled('tipe_rapat')) {
-            $query->where('tipe_rapat', $request->input('tipe_rapat'));
-        }
-
-        if ($request->filled('lokasi')) {
-            $query->where('lokasi', $request->input('lokasi'));
-        }
-
-        // Mirrors the badges shown in the UI: a meeting scheduled for today and
-        // not yet completed is "berlangsung", anything else active is upcoming.
-        match ($request->input('status')) {
-            'berlangsung' => $query->where('status', 'active')->whereDate('tanggal', today()),
-            'akan_datang' => $query->where('status', 'active')->whereDate('tanggal', '!=', today()),
-            'selesai' => $query->where('status', 'completed'),
-            default => null,
-        };
-
-        // Tanpa parameter, listing terbuka di tahun berjalan — bukan seluruh tahun.
-        $tahunOptions = $this->tahunOptions($user);
-        $tahun = TahunFilter::resolve($request->input('tahun'), $tahunOptions);
-
-        if ($tahun !== null) {
-            $query->whereYear('tanggal', $tahun);
-        }
-
-        if ($request->filled('bulan')) {
-            $query->whereMonth('tanggal', $request->input('bulan'));
-        }
-
-        if ($request->filled('dari')) {
-            $query->whereDate('tanggal', '>=', $request->input('dari'));
-        }
-
-        if ($request->filled('sampai')) {
-            $query->whereDate('tanggal', '<=', $request->input('sampai'));
-        }
-
-        // Ongoing first, then upcoming (soonest first), then the rest (newest first).
-        // Tanggal hari ini ditulis dari PHP, bukan CURDATE(): fungsi itu hanya ada
-        // di MySQL sehingga query ini gagal di SQLite yang dipakai test.
-        $hariIni = today()->toDateString();
-        $prio = "CASE WHEN status = 'active' AND DATE(tanggal) = '{$hariIni}' THEN 1"
-            . " WHEN status = 'active' THEN 2 ELSE 3 END";
-
-        $meetings = $query
-            ->orderByRaw($prio)
-            ->orderByRaw("CASE WHEN {$prio} = 2 THEN tanggal END ASC")
-            ->orderByRaw("CASE WHEN {$prio} <> 2 THEN tanggal END DESC")
-            ->paginate(12)
-            ->withQueryString();
 
         return Inertia::render('daily-meetings/index', [
-            'meetings' => $meetings,
-            'filters' => array_merge(
-                $request->only(self::FILTER_KEYS),
-                ['tahun' => TahunFilter::label($tahun)],
-            ),
-            'filterOptions' => [
-                'tipe_rapat' => DailyMeeting::whereNotNull('tipe_rapat')
-                    ->distinct()->orderBy('tipe_rapat')->pluck('tipe_rapat')->values(),
-                'lokasi' => DailyMeeting::whereNotNull('lokasi')->where('lokasi', '!=', '')
-                    ->distinct()->orderBy('lokasi')->pluck('lokasi')->values(),
-                'tahun' => $tahunOptions,
-            ],
+            'machines' => $machines,
+            'selected' => $selected,
         ]);
-    }
-
-    /**
-     * Tahun rapat yang boleh dilihat akun ini.
-     *
-     * @return array<int, string>
-     */
-    private function tahunOptions($user): array
-    {
-        $query = DailyMeeting::query();
-
-        if ($user && filled($user->merek)) {
-            $query->whereHas('outagePlan', fn ($q) => $q->where('merek', $user->merek));
-        }
-
-        return TahunFilter::options($query, 'tanggal');
     }
 
     public function store(Request $request)
@@ -147,12 +101,11 @@ class DailyMeetingController extends Controller
 
     public function show(DailyMeeting $dailyMeeting)
     {
-        $dailyMeeting->load(['attendees', 'minutes', 'findings', 'outagePlan', 'kickoff', 'kickoffPhotos']);
+        $dailyMeeting->load(['attendees', 'findings', 'outagePlan', 'kickoff', 'kickoffPhotos']);
 
         return Inertia::render('daily-meetings/show', [
             'meeting' => $dailyMeeting,
             'attendees' => $dailyMeeting->attendees,
-            'minutes' => $dailyMeeting->minutes,
             'findings' => $dailyMeeting->findings,
             'findingInfo' => $this->findingInfo($dailyMeeting),
             'kickoff' => $dailyMeeting->kickoff,
@@ -179,7 +132,10 @@ class DailyMeetingController extends Controller
             'waktu' => ($dailyMeeting->waktu_mulai ? substr($dailyMeeting->waktu_mulai, 0, 5) : '09.00') . ' WITA - Selesai',
             'agenda' => trim("Kick Off Meeting Pelaksanaan Pekerjaan OH {$scope} {$mesin}"),
             'peserta' => '(Daftar peserta terlampir)',
+            // Penanda tangan tetap: Pimpinan Rapat (TL) dan Notulis (OF).
+            'pimpinan_nama' => 'ABDUL RAHMAN KADIR',
             'pimpinan_jabatan' => 'TL Outage Management',
+            'notulis_nama' => 'FIRMANSYAH',
             'notulis_jabatan' => 'OF Outage Management',
             'kota_ttd' => 'Kendari',
         ];
@@ -267,6 +223,28 @@ class DailyMeetingController extends Controller
         $slug = \Illuminate\Support\Str::slug($dailyMeeting->outagePlan->mesin_pembangkit ?? $dailyMeeting->judul);
 
         return $pdf->download("Notulen-Kick-Off-{$slug}-{$dailyMeeting->id}.pdf");
+    }
+
+    /**
+     * Notulen Kick Off versi Excel — isi dan tata letaknya mengikuti versi PDF
+     * (FORMULIR NOTULEN RAPAT), hanya berformat spreadsheet.
+     */
+    public function exportKickoffExcel(DailyMeeting $dailyMeeting)
+    {
+        $dailyMeeting->load(['kickoff', 'kickoffPhotos', 'attendees', 'outagePlan']);
+
+        $slug = \Illuminate\Support\Str::slug($dailyMeeting->outagePlan->mesin_pembangkit ?? $dailyMeeting->judul);
+
+        return \Maatwebsite\Excel\Facades\Excel::download(
+            new \App\Exports\MeetingKickoffExport(
+                $dailyMeeting,
+                $dailyMeeting->kickoff,
+                $dailyMeeting->kickoffPhotos,
+                $dailyMeeting->attendees,
+                $this->kickoffDefaults($dailyMeeting),
+            ),
+            "Notulen-Kick-Off-{$slug}-{$dailyMeeting->id}.xlsx",
+        );
     }
 
     /**
@@ -432,27 +410,6 @@ class DailyMeetingController extends Controller
         ]);
 
         return redirect()->back()->with('success', 'Kehadiran berhasil tercatat. Terima kasih!');
-    }
-
-    public function storeMinutes(Request $request, DailyMeeting $dailyMeeting)
-    {
-        if ($dailyMeeting->status === 'completed') {
-            return redirect()->back()->with('error', 'Rapat sudah selesai. Notulen tidak dapat diedit.');
-        }
-
-        $validated = $request->validate([
-            'agenda' => 'nullable|string',
-            'latar_belakang' => 'nullable|string',
-            'pembahasan' => 'nullable|string',
-            'hasil_kesepakatan' => 'nullable|string',
-        ]);
-
-        MeetingMinute::updateOrCreate(
-            ['meeting_id' => $dailyMeeting->id],
-            $validated
-        );
-
-        return redirect()->back()->with('success', 'Notulen berhasil disimpan.');
     }
 
     public function exportFindingsPdf(DailyMeeting $dailyMeeting)

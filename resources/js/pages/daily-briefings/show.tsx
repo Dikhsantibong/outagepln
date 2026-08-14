@@ -138,7 +138,7 @@ export default function DailyBriefingsShow({
 
     return (
         <>
-            <Head title={`Daily Meeting - ${briefing.judul}`} />
+            <Head title={`Rapat Outage - ${briefing.judul}`} />
 
             <div className="flex h-full flex-1 flex-col gap-6 p-4">
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
@@ -527,7 +527,7 @@ export default function DailyBriefingsShow({
 
 DailyBriefingsShow.layout = {
     breadcrumbs: [
-        { title: 'Daily Meeting', href: '/daily-briefings' },
+        { title: 'Rapat Outage', href: '/daily-briefings' },
         { title: 'Detail', href: '#' },
     ],
 };
