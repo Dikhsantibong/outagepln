@@ -10,7 +10,7 @@ import { edit } from '@/routes/profile';
 import { edit as editSecurity } from '@/routes/security';
 import type { NavItem } from '@/types';
 
-const sidebarNavItems: NavItem[] = [
+const getSidebarNavItems = (): NavItem[] => [
     {
         title: 'Profile',
         href: edit(),
@@ -29,6 +29,7 @@ const sidebarNavItems: NavItem[] = [
 ];
 
 export default function SettingsLayout({ children }: PropsWithChildren) {
+    const sidebarNavItems = getSidebarNavItems();
     const { isCurrentOrParentUrl } = useCurrentUrl();
 
     return (

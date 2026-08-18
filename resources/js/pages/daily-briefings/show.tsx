@@ -328,12 +328,7 @@ export default function DailyBriefingsShow({
                             <Handshake className="h-4 w-4" /> Notulen
                         </button>
 
-                        <button 
-                            onClick={() => setActiveTab('dokumentasi')} 
-                            className={`flex items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-all ${activeTab === 'dokumentasi' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:bg-muted-foreground/10'}`}
-                        >
-                            <Plus className="h-4 w-4" /> Dokumentasi
-                        </button>
+
                     </div>
                     
                     {activeTab === 'header' && (
@@ -488,21 +483,7 @@ export default function DailyBriefingsShow({
                                     <CardDescription>Peserta yang telah melakukan absensi.</CardDescription>
                                 </div>
                                 <div className="flex flex-wrap items-center gap-2 justify-end">
-                                    {!isTamu && (
-                                        <>
-                                            <Input 
-                                                readOnly 
-                                                value={`${window.location.origin}/daily-briefings/attend/${briefing.token}`} 
-                                                className="w-[250px] bg-muted hidden xl:flex" 
-                                            />
-                                            <Button variant="outline" onClick={() => {
-                                                navigator.clipboard.writeText(`${window.location.origin}/daily-briefings/attend/${briefing.token}`);
-                                                alert('Link disalin!');
-                                            }}>
-                                                <Copy className="h-4 w-4 mr-2" /> Copy Link
-                                            </Button>
-                                        </>
-                                    )}
+
                                     <Button variant="outline" onClick={() => window.open(`/daily-briefings/${briefing.id}/qr`, '_blank')}>
                                         <QrCode className="h-4 w-4 mr-2" /> Tampilan QR
                                     </Button>
@@ -547,44 +528,7 @@ export default function DailyBriefingsShow({
                         </div>
                     )}
 
-                    {activeTab === 'dokumentasi' && (
-                        <div className="mt-4">
-                        <Card>
-                            <CardHeader>
-                                <CardTitle>Dokumentasi Rapat</CardTitle>
-                                <CardDescription>Unggah 1 foto dokumentasi rapat untuk ditampilkan di PDF Cetak Notulen.</CardDescription>
-                            </CardHeader>
-                            <CardContent>
-                                {briefing.foto_dokumentasi && (
-                                    <div className="mb-4">
-                                        <img 
-                                            src={`/storage/${briefing.foto_dokumentasi}`} 
-                                            alt="Dokumentasi" 
-                                            className="h-48 w-auto object-cover rounded-md border border-border" 
-                                        />
-                                    </div>
-                                )}
-                                {!isTamu && (
-                                    <form onSubmit={submitPhoto} className="flex flex-col gap-4">
-                                        <div className="space-y-2 max-w-md">
-                                            <Label>Pilih Foto</Label>
-                                            <Input 
-                                                type="file" 
-                                                accept="image/*" 
-                                                onChange={e => photoForm.setData('foto_dokumentasi', e.target.files ? e.target.files[0] : null)} 
-                                            />
-                                        </div>
-                                        <div>
-                                            <Button type="submit" disabled={photoForm.processing || !photoForm.data.foto_dokumentasi}>
-                                                Simpan Foto
-                                            </Button>
-                                        </div>
-                                    </form>
-                                )}
-                            </CardContent>
-                        </Card>
-                        </div>
-                    )}
+                    
                 </div>
                     
                     {activeTab === 'temuan' && (
@@ -920,68 +864,7 @@ export default function DailyBriefingsShow({
                                     )}
                                 </form>
 
-                                {/* Dokumentasi rapat - form terpisah agar upload tidak mengganggu form utama */}
-                                <div className="space-y-4 border-t pt-6">
-                                    <h4 className="text-xs font-bold uppercase tracking-[0.1em] text-primary/80 flex items-center gap-1.5">
-                                        <Images className="h-3.5 w-3.5" />
-                                        Dokumentasi Rapat
-                                    </h4>
-
-                                    {!isTamu && (
-                                        <form onSubmit={submitPhoto} className="flex flex-wrap items-end gap-3">
-                                            <div className="space-y-2">
-                                                <Label htmlFor="k_foto">Foto</Label>
-                                                <Input
-                                                    id="k_foto"
-                                                    type="file"
-                                                    accept="image/*"
-                                                    className="w-64"
-                                                    onChange={(e) => photoForm.setData('foto', e.target.files?.[0] ?? null)}
-                                                />
-                                            </div>
-                                            <div className="space-y-2 flex-1 min-w-[200px]">
-                                                <Label htmlFor="k_cap">Keterangan</Label>
-                                                <Input
-                                                    id="k_cap"
-                                                    placeholder="cth: Pembukaan rapat"
-                                                    value={photoForm.data.caption}
-                                                    onChange={(e) => photoForm.setData('caption', e.target.value)}
-                                                />
-                                            </div>
-                                            <Button type="submit" variant="outline" className="gap-2" disabled={photoForm.processing || !photoForm.data.foto}>
-                                                <Plus className="h-4 w-4" />
-                                                Tambah Foto
-                                            </Button>
-                                        </form>
-                                    )}
-
-                                    {kickoffPhotos.length > 0 ? (
-                                        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                                            {kickoffPhotos.map((p) => (
-                                                <div key={p.id} className="group relative rounded-lg border overflow-hidden bg-card">
-                                                    <img src={p.foto} alt={p.caption || 'Dokumentasi'} className="h-40 w-full object-cover" />
-                                                    <div className="p-2 text-xs text-muted-foreground">{p.caption || '-'}</div>
-                                                    {!isTamu && (
-                                                        <Button
-                                                            variant="destructive"
-                                                            size="icon"
-                                                            className="absolute top-2 right-2 h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
-                                                            onClick={() => deletePhoto(p)}
-                                                        >
-                                                            <Trash2 className="h-3.5 w-3.5" />
-                                                        </Button>
-                                                    )}
-                                                </div>
-                                            ))}
-                                        </div>
-                                    ) : (
-                                        <div className="flex flex-col items-center justify-center py-8 text-center rounded-lg border border-dashed">
-                                            <Images className="h-8 w-8 opacity-20 mb-2" />
-                                            <p className="text-sm text-muted-foreground italic">Belum ada dokumentasi rapat.</p>
-                                        </div>
-                                    )}
-                                </div>
-                            </CardContent>
+                                </CardContent>
                         </Card>
                     )}
                 </div>

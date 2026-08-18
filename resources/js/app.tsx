@@ -15,6 +15,7 @@ createInertiaApp({
             case name === 'welcome':
             case name === 'attend':
             case name === 'daily-meetings/qr-display':
+            case name === 'daily-meetings/qr':
             case name === 'daily-briefings/attend':
             case name === 'daily-briefings/qr':
                 return null;

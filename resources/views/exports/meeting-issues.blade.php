@@ -91,6 +91,7 @@
         .ttd-kota {
             margin-bottom: 60px;
         }
+        .page-break { page-break-after: always; }
     </style>
 </head>
 <body>
@@ -150,7 +151,16 @@
         </tr>
     </table>
     
+    
+    <div style="margin-bottom: 15px; font-size: 11px;">
+        <span style="font-weight: bold;">Link Absensi Manual:</span> 
+        <a href="{{ url('/attend/' . $meeting->token) }}" style="color: blue; text-decoration: underline;">
+            {{ url('/attend/' . $meeting->token) }}
+        </a>
+    </div>
+
     <div style="font-weight: bold; margin-bottom: 5px;">NOTULEN RAPAT:</div>
+
 
     <!-- Table Content -->
     <table class="content-table">
@@ -182,6 +192,7 @@
         </tbody>
     </table>
 
+    
     <!-- Tanda Tangan -->
     <table class="ttd-table">
         <tr>
@@ -197,6 +208,26 @@
             </td>
         </tr>
     </table>
+
+    @if(isset($meeting->kickoffPhotos) && $meeting->kickoffPhotos->count() > 0)
+    <div class="page-break"></div>
+    <div style="text-align: center; font-weight: bold; font-size: 14px; margin-bottom: 20px;">DOKUMENTASI FOTO</div>
+    
+    <table style="width: 100%; border-collapse: collapse;">
+        <tr>
+        @foreach($meeting->kickoffPhotos as $index => $photo)
+            @if($index > 0 && $index % 2 == 0)
+                </tr><tr>
+            @endif
+            <td style="width: 50%; padding: 10px; text-align: center; vertical-align: top;">
+                <img src="{{ public_path(str_replace(url('/'), '', $photo->foto)) }}" style="max-width: 90%; height: auto; max-height: 250px; border: 1px solid #ddd; padding: 5px;" alt="Dokumentasi">
+                <div style="margin-top: 5px; font-size: 11px;">{{ $photo->caption ?: 'Dokumentasi ' . ($index + 1) }}</div>
+            </td>
+        @endforeach
+        </tr>
+    </table>
+    @endif
+
 
     <!-- Lembar Dokumentasi & Link Absensi -->
     <div style="page-break-before: always;">
@@ -232,6 +263,29 @@
             </tr>
         </table>
     </div>
+
+
+    <div style="margin-top: 30px; font-size: 11pt;">
+        <strong>Link Absensi Rapat:</strong> <br/>
+        <a href="{{ url('/attend/' . $meeting->token) }}">{{ url('/attend/' . $meeting->token) }}</a>
+    </div>
+
+    @if($meeting->kickoffPhotos->count() > 0)
+    <div class="page-break"></div>
+    <div class="header">
+        <h2>DOKUMENTASI RAPAT</h2>
+        <p><strong>{{ $meeting->judul }}</strong></p>
+    </div>
+    
+    <div style="margin-top: 20px; text-align: center;">
+        @foreach($meeting->kickoffPhotos as $photo)
+            <div style="margin-bottom: 20px; display: inline-block; width: 45%; margin-right: 2%; vertical-align: top;">
+                <img src="{{ public_path(str_replace(url('/'), '', $photo->foto)) }}" style="max-width: 100%; height: auto; max-height: 300px; border: 1px solid #ddd; padding: 5px;" />
+                <p style="font-size: 10pt; margin-top: 5px;">{{ $photo->caption ?? 'Dokumentasi' }}</p>
+            </div>
+        @endforeach
+    </div>
+    @endif
 
 </body>
 </html>

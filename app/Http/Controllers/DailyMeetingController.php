@@ -516,6 +516,56 @@ class DailyMeetingController extends Controller
         return redirect()->back()->with('success', 'Tanggal realisasi berhasil disimpan.');
     }
 
+    
+    public function qrDisplay(\App\Models\DailyMeeting $dailyMeeting)
+    {
+        return \Inertia\Inertia::render('daily-meetings/qr', [
+            'meeting' => $dailyMeeting,
+            'attendUrl' => route('attend.form', $dailyMeeting->token),
+        ]);
+    }
+
+    public function attendForm(string $token)
+    {
+        $meeting = \App\Models\DailyMeeting::with('attendees')->where('token', $token)->firstOrFail();
+
+        return \Inertia\Inertia::render('daily-meetings/attend', [
+            'meeting' => $meeting,
+            'token' => $token,
+        ]);
+    }
+
+    public function submitAttendance(Request $request, string $token)
+    {
+        $meeting = \App\Models\DailyMeeting::where('token', $token)->firstOrFail();
+
+        if ($meeting->status === 'completed') {
+            return redirect()->back()->with('error', 'Rapat sudah selesai. Tidak dapat mendaftar kehadiran.');
+        }
+
+        $validated = $request->validate([
+            'nama' => 'required|string|max:255',
+            'nid' => 'nullable|string|max:255',
+            'instansi' => 'nullable|string|max:255',
+            'divisi' => 'nullable|string|max:255',
+            'jabatan' => 'nullable|string|max:255',
+            'signature' => 'nullable|string',
+        ]);
+
+        $meeting->attendees()->create([
+            'nama' => $validated['nama'],
+            'nid' => $validated['nid'],
+            'instansi' => $validated['instansi'],
+            'divisi' => $validated['divisi'],
+            'jabatan' => $validated['jabatan'],
+            'signature' => $validated['signature'],
+            'signed_at' => now(),
+        ]);
+
+        return redirect()->back()->with('success', 'Kehadiran berhasil dicatat.');
+    }
+
+
     public function attendeesJson(DailyMeeting $dailyMeeting)
     {
         return response()->json([
