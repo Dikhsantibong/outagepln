@@ -161,11 +161,14 @@
 
         <div class="sub-title">A.&nbsp;&nbsp;Daftar Hadir / Absensi</div>
         <div class="lampiran" style="margin-left: 34px;">
-            @if ($k && filled($k->link_absensi))
-                <a href="{{ $k->link_absensi }}">{{ $k->link_absensi }}</a>
-            @else
-                Daftar hadir terlampir ({{ $attendees->count() }} peserta tercatat).
+            {{-- Tautan yang diisi manual didahulukan; kalau kosong dipakai tautan
+                 absensi bawaan rapat ini supaya notulen selalu membawa alamat
+                 yang bisa dibuka peserta. --}}
+            @php($absensi = $k && filled($k->link_absensi) ? $k->link_absensi : ($attendUrl ?? null))
+            @if (filled($absensi))
+                <a href="{{ $absensi }}">{{ $absensi }}</a><br>
             @endif
+            Daftar hadir terlampir ({{ $attendees->count() }} peserta tercatat).
         </div>
 
         <div class="sub-title">B.&nbsp;&nbsp;Dokumentasi Rapat</div>

@@ -21,14 +21,15 @@ use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
  * tanda tangan. Foto dokumentasi (data URI) tertanam lewat <img> di blade,
  * sedangkan logo ditempel sebagai gambar mengambang di sel kop.
  */
-class BriefingKickoffExport implements FromView, WithStyles, WithColumnWidths, WithDrawings
+class BriefingKickoffExport implements FromView, WithColumnWidths, WithDrawings, WithStyles
 {
     public function __construct(
         protected DailyBriefing $meeting,
         protected ?DailyBriefingKickoff $kickoff,
         protected $photos,
         protected $attendees,
-        protected array $defaults
+        protected array $defaults,
+        protected string $attendUrl = ''
     ) {}
 
     public function view(): View
@@ -39,6 +40,7 @@ class BriefingKickoffExport implements FromView, WithStyles, WithColumnWidths, W
             'photos' => $this->photos,
             'attendees' => $this->attendees,
             'defaults' => $this->defaults,
+            'attendUrl' => $this->attendUrl,
         ]);
     }
 
@@ -75,7 +77,7 @@ class BriefingKickoffExport implements FromView, WithStyles, WithColumnWidths, W
 
         // Logo pada kop, mengambang di sel A1 (baris kop dibuat cukup tinggi
         // di blade agar logo tidak turun menimpa isi).
-        $drawing = new Drawing();
+        $drawing = new Drawing;
         $drawing->setName('Logo');
         $drawing->setDescription('Logo PLN');
         $drawing->setPath($logo);

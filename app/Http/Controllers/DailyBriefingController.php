@@ -123,7 +123,19 @@ class DailyBriefingController extends Controller
             'kickoffPhotos' => $dailyBriefing->kickoffPhotos,
             'findingInfo' => $this->findingInfo($dailyBriefing),
             'kickoffDefaults' => $this->kickoffDefaults($dailyBriefing),
+            'attendUrl' => $this->attendUrl($dailyBriefing),
         ]);
+    }
+
+    /**
+     * Tautan absensi mandiri untuk peserta yang tidak memindai QR.
+     *
+     * Halaman yang dituju sekaligus menampilkan siapa saja yang sudah hadir,
+     * dan tautan yang sama ikut dicantumkan pada lampiran notulen.
+     */
+    private function attendUrl(DailyBriefing $dailyBriefing): string
+    {
+        return route('daily-briefings.attend.form', $dailyBriefing->token);
     }
 
     public function update(Request $request, DailyBriefing $dailyBriefing)
@@ -204,7 +216,7 @@ class DailyBriefingController extends Controller
     {
         return Inertia::render('daily-briefings/qr', [
             'briefing' => $dailyBriefing,
-            'attendUrl' => route('daily-briefings.attend.form', $dailyBriefing->token),
+            'attendUrl' => $this->attendUrl($dailyBriefing),
         ]);
     }
 
@@ -657,6 +669,7 @@ class DailyBriefingController extends Controller
             'photos' => $dailyBriefing->kickoffPhotos,
             'attendees' => $dailyBriefing->attendees,
             'defaults' => $this->kickoffDefaults($dailyBriefing),
+            'attendUrl' => $this->attendUrl($dailyBriefing),
             'logo' => is_file($logoPath) ? 'data:image/png;base64,'.base64_encode(file_get_contents($logoPath)) : null,
         ])->setPaper('a4', 'portrait');
 
@@ -676,7 +689,8 @@ class DailyBriefingController extends Controller
                 $dailyBriefing->kickoff,
                 $dailyBriefing->kickoffPhotos,
                 $dailyBriefing->attendees,
-                $this->kickoffDefaults($dailyBriefing)
+                $this->kickoffDefaults($dailyBriefing),
+                $this->attendUrl($dailyBriefing),
             ),
             "Notulen-Kick-Off-{$slug}-{$dailyBriefing->id}.xlsx"
         );

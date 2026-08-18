@@ -9,6 +9,7 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
+use PhpOffice\PhpSpreadsheet\IOFactory;
 use Tests\TestCase;
 
 /**
@@ -311,6 +312,98 @@ class RapatOutageDanDailyMeetingTest extends TestCase
         $this->getJson("/daily-briefings/{$briefing->id}/attendees-json")
             ->assertOk()
             ->assertJsonCount(1);
+    }
+
+    public function test_halaman_daily_meeting_menyediakan_link_absensi_manual(): void
+    {
+        $this->admin();
+        $briefing = $this->briefing();
+
+        $expected = route('daily-briefings.attend.form', $briefing->token);
+
+        $this->get("/daily-briefings/{$briefing->id}")
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page->where('attendUrl', $expected));
+    }
+
+    public function test_link_absensi_manual_bisa_dipakai_absen_dan_menampilkan_yang_sudah_hadir(): void
+    {
+        $briefing = $this->briefing();
+        $url = "/daily-briefings/attend/{$briefing->token}";
+
+        // Tautan terbuka tanpa login — peserta tidak punya akun aplikasi.
+        $this->post($url, ['nama' => 'Peserta Pertama'])->assertRedirect();
+
+        $this->get($url)
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->component('daily-briefings/attend')
+                ->where('briefing.attendees.0.nama', 'Peserta Pertama'));
+    }
+
+    public function test_link_absensi_tercantum_pada_notulen_pdf_dan_excel(): void
+    {
+        $this->admin();
+        $briefing = $this->briefing();
+
+        $url = route('daily-briefings.attend.form', $briefing->token);
+
+        $pdf = $this->get("/daily-briefings/{$briefing->id}/kickoff/export-pdf");
+        $pdf->assertOk();
+        $this->assertStringContainsString('application/pdf', $pdf->headers->get('content-type'));
+
+        // Isi PDF diperiksa lewat blade-nya karena keluaran dompdf terkompresi.
+        $html = view('exports.briefing-kickoff', [
+            'meeting' => $briefing,
+            'kickoff' => null,
+            'photos' => collect(),
+            'attendees' => collect(),
+            'defaults' => [],
+            'attendUrl' => $url,
+            'logo' => null,
+        ])->render();
+
+        $this->assertStringContainsString($url, $html);
+        $this->assertStringContainsString('href="'.$url.'"', $html);
+
+        $excel = $this->get("/daily-briefings/{$briefing->id}/kickoff/export-excel");
+        $excel->assertOk();
+        $this->assertStringContainsString($briefing->token, $this->sheetText($excel->streamedContent()));
+    }
+
+    public function test_link_absensi_manual_kalah_dari_link_yang_diisi_sendiri(): void
+    {
+        $this->admin();
+        $briefing = $this->briefing();
+
+        $this->post("/daily-briefings/{$briefing->id}/kickoff", [
+            'link_absensi' => 'https://absensi.internal/rapat-khusus',
+        ])->assertRedirect();
+
+        $excel = $this->get("/daily-briefings/{$briefing->id}/kickoff/export-excel");
+        $excel->assertOk();
+
+        $teks = $this->sheetText($excel->streamedContent());
+        $this->assertStringContainsString('https://absensi.internal/rapat-khusus', $teks);
+        $this->assertStringNotContainsString($briefing->token, $teks);
+    }
+
+    /** Seluruh teks pada lembar pertama sebuah berkas xlsx. */
+    private function sheetText(string $contents): string
+    {
+        $path = tempnam(sys_get_temp_dir(), 'xlsx').'.xlsx';
+        file_put_contents($path, $contents);
+
+        $sheet = IOFactory::load($path)->getActiveSheet();
+        $teks = '';
+
+        foreach ($sheet->toArray() as $baris) {
+            $teks .= implode(' ', array_map(fn ($sel) => (string) $sel, $baris))."\n";
+        }
+
+        unlink($path);
+
+        return $teks;
     }
 
     public function test_inputan_permasalahan_daily_meeting_bisa_tambah_ubah_hapus(): void

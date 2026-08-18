@@ -1,6 +1,6 @@
 import { Head, router, usePage, Link } from '@inertiajs/react';
 import { useForm } from '@inertiajs/react';
-import { Calendar, Users, QrCode, FileText, CheckCircle2, ChevronLeft, Plus, Edit, Pencil, Trash2, Printer, Copy, FileSpreadsheet, ImageOff, Handshake, Link2, Images, ClipboardList } from 'lucide-react';
+import { Calendar, Users, QrCode, FileText, CheckCircle2, ChevronLeft, Plus, Edit, Pencil, Trash2, Copy, FileSpreadsheet, ImageOff, Handshake, Link2, Images, ClipboardList } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -24,13 +24,6 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
-import {
-    DropdownMenu,
-    DropdownMenuContent,
-    DropdownMenuItem,
-    DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import { ChevronDown } from 'lucide-react';
 
 export default function DailyBriefingsShow({
     briefing,
@@ -41,6 +34,7 @@ export default function DailyBriefingsShow({
     kickoffPhotos = [],
     findingInfo,
     kickoffDefaults,
+    attendUrl = '',
 }: {
     briefing: any;
     attendees: any[];
@@ -50,11 +44,27 @@ export default function DailyBriefingsShow({
     kickoffPhotos?: any[];
     findingInfo?: any;
     kickoffDefaults?: any;
+    attendUrl?: string;
 }) {
 
     const { auth } = usePage<any>().props;
     const isTamu = !(auth?.can?.write ?? false);
-    
+
+    // Link absensi manual — dibagikan ke peserta yang tidak bisa memindai QR.
+    const [linkTersalin, setLinkTersalin] = useState(false);
+
+    const salinLinkAbsensi = async () => {
+        try {
+            await navigator.clipboard.writeText(attendUrl);
+        } catch {
+            // Clipboard API butuh HTTPS/izin; jatuhkan ke seleksi manual.
+            document.getElementById('link-absensi')?.focus();
+            return;
+        }
+        setLinkTersalin(true);
+        setTimeout(() => setLinkTersalin(false), 2000);
+    };
+
     // Header Form
     const headerForm = useForm({
         unit: briefing.unit || '',
@@ -277,25 +287,6 @@ export default function DailyBriefingsShow({
                                 Selesaikan Meeting
                             </Button>
                         )}
-                        <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                                <Button variant="default">
-                                    <Printer className="h-4 w-4 mr-2" />
-                                    Cetak Dokumen
-                                    <ChevronDown className="h-4 w-4 ml-2 opacity-50" />
-                                </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                                <DropdownMenuItem onClick={() => window.open(`/daily-briefings/${briefing.id}/export-pdf`, '_blank')}>
-                                    <FileText className="h-4 w-4 mr-2 text-red-500" />
-                                    Cetak PDF
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => window.open(`/daily-briefings/${briefing.id}/export-excel`, '_blank')}>
-                                    <FileText className="h-4 w-4 mr-2 text-green-500" />
-                                    Cetak Excel
-                                </DropdownMenuItem>
-                            </DropdownMenuContent>
-                        </DropdownMenu>
                     </div>
                 </div>
 
@@ -490,6 +481,32 @@ export default function DailyBriefingsShow({
                                 </div>
                             </CardHeader>
                             <CardContent>
+                                <div className="mb-4 rounded-md border bg-muted/40 p-3">
+                                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                                        <div className="flex min-w-0 flex-1 items-center gap-2">
+                                            <Link2 className="h-4 w-4 shrink-0 text-muted-foreground" />
+                                            <input
+                                                id="link-absensi"
+                                                readOnly
+                                                value={attendUrl}
+                                                onFocus={(e) => e.currentTarget.select()}
+                                                className="w-full min-w-0 bg-transparent text-sm outline-none"
+                                            />
+                                        </div>
+                                        <div className="flex shrink-0 gap-2">
+                                            <Button variant="outline" size="sm" onClick={salinLinkAbsensi}>
+                                                <Copy className="h-3.5 w-3.5 mr-2" />
+                                                {linkTersalin ? 'Tersalin' : 'Salin Link'}
+                                            </Button>
+                                            <Button variant="outline" size="sm" onClick={() => window.open(attendUrl, '_blank')}>
+                                                <Link2 className="h-3.5 w-3.5 mr-2" /> Buka
+                                            </Button>
+                                        </div>
+                                    </div>
+                                    <p className="mt-2 text-xs text-muted-foreground">
+                                        Bagikan tautan ini agar peserta dapat mengisi daftar hadir sendiri dan melihat siapa saja yang sudah absen. Tautan yang sama ikut tercantum pada lampiran notulen.
+                                    </p>
+                                </div>
                                 <div className="border rounded-md">
                                     <Table>
                                         <TableHeader>
@@ -812,7 +829,7 @@ export default function DailyBriefingsShow({
                                             <Input id="k_absensi" type="url" placeholder="https://..." value={kickoffForm.data.link_absensi}
                                                 onChange={(e) => kickoffForm.setData('link_absensi', e.target.value)} disabled={isTamu} />
                                             <p className="text-xs text-muted-foreground">
-                                                Kosongkan untuk memakai daftar hadir yang tercatat di sistem ({attendees.length} peserta).
+                                                Kosongkan untuk memakai link absensi bawaan rapat ini ({attendees.length} peserta tercatat).
                                             </p>
                                         </div>
                                     </div>
