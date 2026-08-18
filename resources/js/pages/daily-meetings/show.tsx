@@ -1,5 +1,5 @@
 import { Head, useForm, router, usePage } from '@inertiajs/react';
-import { Users, FileText, QrCode, CheckCircle2, Clock, MapPin, Calendar, Video, ClipboardList, Plus, Pencil, Trash2, FileSpreadsheet, ImageOff, Handshake, Link2, Images } from 'lucide-react';
+import { Users, FileText, QrCode, CheckCircle2, Clock, MapPin, Calendar, Video, ClipboardList, Plus, Edit, Trash2, FileSpreadsheet, ImageOff, Handshake, Link2, Images } from 'lucide-react';
 import type { FormEventHandler} from 'react';
 import { useState, useEffect } from 'react';
 import { Badge } from '@/components/ui/badge';

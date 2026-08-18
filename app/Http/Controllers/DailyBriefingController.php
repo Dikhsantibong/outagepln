@@ -2,23 +2,32 @@
 
 namespace App\Http\Controllers;
 
+use App\Exports\BriefingKickoffExport;
+use App\Exports\DailyBriefingExport;
 use App\Models\DailyBriefing;
 use App\Models\DailyBriefingAttendee;
-use App\Models\DailyBriefingIssue;
 use App\Models\DailyBriefingFinding;
-use App\Models\DailyBriefingKickoffPhoto;
+use App\Models\DailyBriefingIssue;
 use App\Models\DailyBriefingKickoff;
+use App\Models\DailyBriefingKickoffPhoto;
+use App\Models\OutagePlan;
 use App\Support\TahunFilter;
 use Barryvdh\DomPDF\Facade\Pdf;
-use PhpOffice\PhpSpreadsheet\Spreadsheet;
-use PhpOffice\PhpSpreadsheet\Style\Border;
-use PhpOffice\PhpSpreadsheet\Style\Alignment;
-use PhpOffice\PhpSpreadsheet\Style\Fill;
-use PhpOffice\PhpSpreadsheet\Worksheet\MemoryDrawing;
-use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
-use App\Exports\BriefingKickoffExport;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Inertia\Inertia;
+use Maatwebsite\Excel\Facades\Excel;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Style\Alignment;
+use PhpOffice\PhpSpreadsheet\Style\Border;
+use PhpOffice\PhpSpreadsheet\Style\Fill;
+use PhpOffice\PhpSpreadsheet\Worksheet\Drawing;
+use PhpOffice\PhpSpreadsheet\Worksheet\MemoryDrawing;
+use PhpOffice\PhpSpreadsheet\Worksheet\PageSetup;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
 class DailyBriefingController extends Controller
 {
@@ -55,7 +64,7 @@ class DailyBriefingController extends Controller
 
         $hariIni = today()->toDateString();
         $prio = "CASE WHEN status = 'active' AND DATE(tanggal) = '{$hariIni}' THEN 1"
-            . " WHEN status = 'active' THEN 2 ELSE 3 END";
+            ." WHEN status = 'active' THEN 2 ELSE 3 END";
 
         $briefings = $query
             ->orderByRaw($prio)
@@ -64,7 +73,7 @@ class DailyBriefingController extends Controller
             ->paginate(12)
             ->withQueryString();
 
-        $activeMachines = \App\Models\OutagePlan::where('progress', '>', 0)
+        $activeMachines = OutagePlan::where('progress', '>', 0)
             ->where('progress', '<', 100)
             ->pluck('mesin_pembangkit')
             ->filter()
@@ -143,12 +152,14 @@ class DailyBriefingController extends Controller
     public function complete(DailyBriefing $dailyBriefing)
     {
         $dailyBriefing->update(['status' => 'completed']);
+
         return redirect()->back()->with('success', 'Status meeting ditandai selesai.');
     }
 
     public function destroy(DailyBriefing $dailyBriefing)
     {
         $dailyBriefing->delete();
+
         return redirect()->route('daily-briefings.index')->with('success', 'Meeting dihapus.');
     }
 
@@ -163,6 +174,7 @@ class DailyBriefingController extends Controller
         ]);
 
         $dailyBriefing->issues()->create($validated);
+
         return redirect()->back()->with('success', 'Permasalahan ditambahkan.');
     }
 
@@ -177,12 +189,14 @@ class DailyBriefingController extends Controller
         ]);
 
         $issue->update($validated);
+
         return redirect()->back()->with('success', 'Permasalahan diperbarui.');
     }
 
     public function destroyIssue(DailyBriefing $dailyBriefing, DailyBriefingIssue $issue)
     {
         $issue->delete();
+
         return redirect()->back()->with('success', 'Permasalahan dihapus.');
     }
 
@@ -248,9 +262,9 @@ class DailyBriefingController extends Controller
 
         if ($request->hasFile('foto_dokumentasi')) {
             if ($dailyBriefing->foto_dokumentasi) {
-                \Illuminate\Support\Facades\Storage::disk('public')->delete($dailyBriefing->foto_dokumentasi);
+                Storage::disk('public')->delete($dailyBriefing->foto_dokumentasi);
             }
-            
+
             $path = $request->file('foto_dokumentasi')->store('daily_briefings', 'public');
             $dailyBriefing->update(['foto_dokumentasi' => $path]);
         }
@@ -275,9 +289,9 @@ class DailyBriefingController extends Controller
     public function exportExcel(DailyBriefing $dailyBriefing)
     {
         $dailyBriefing->load(['attendees', 'issues']);
-        
-        return \Maatwebsite\Excel\Facades\Excel::download(
-            new \App\Exports\DailyBriefingExport($dailyBriefing), 
+
+        return Excel::download(
+            new DailyBriefingExport($dailyBriefing),
             "Daily-Meeting-{$dailyBriefing->id}.xlsx"
         );
     }
@@ -287,12 +301,12 @@ class DailyBriefingController extends Controller
     {
         return [
             'judul_rapat' => $dailyBriefing->judul ?: '-',
-            'tipe_rapat' => '-', 
+            'tipe_rapat' => '-',
             'tanggal_rapat' => $dailyBriefing->tanggal
-                ? \Carbon\Carbon::parse($dailyBriefing->tanggal)->translatedFormat('d F Y')
+                ? Carbon::parse($dailyBriefing->tanggal)->translatedFormat('d F Y')
                 : '-',
-            'unit' => $dailyBriefing->judul, 
-            'jenis_inspeksi' => '-', 
+            'unit' => $dailyBriefing->judul,
+            'jenis_inspeksi' => '-',
         ];
     }
 
@@ -350,14 +364,19 @@ class DailyBriefingController extends Controller
     {
         abort_unless($finding->daily_briefing_id === $dailyBriefing->id, 404);
         $finding->delete();
+
         return redirect()->back()->with('success', 'Temuan berhasil dihapus.');
     }
 
-    private function encodePhoto(?\Illuminate\Http\UploadedFile $file): ?string
+    private function encodePhoto(?UploadedFile $file): ?string
     {
-        if (! $file) return null;
+        if (! $file) {
+            return null;
+        }
         $source = @imagecreatefromstring(file_get_contents($file->getRealPath()));
-        if ($source === false) return null;
+        if ($source === false) {
+            return null;
+        }
 
         $maxW = 640;
         $w = imagesx($source);
@@ -376,7 +395,7 @@ class DailyBriefingController extends Controller
         $data = ob_get_clean();
         imagedestroy($source);
 
-        return 'data:image/jpeg;base64,' . base64_encode($data);
+        return 'data:image/jpeg;base64,'.base64_encode($data);
     }
 
     public function exportFindingsPdf(DailyBriefing $dailyBriefing)
@@ -389,11 +408,12 @@ class DailyBriefingController extends Controller
             'findings' => $dailyBriefing->findings,
             'info' => $this->findingInfo($dailyBriefing),
             'logo' => is_file($logoPath)
-                ? 'data:image/png;base64,' . base64_encode(file_get_contents($logoPath))
+                ? 'data:image/png;base64,'.base64_encode(file_get_contents($logoPath))
                 : null,
         ])->setPaper('a4', 'landscape');
 
-        $slug = \Illuminate\Support\Str::slug($dailyBriefing->judul);
+        $slug = Str::slug($dailyBriefing->judul);
+
         return $pdf->download("Material-Temuan-{$slug}-{$dailyBriefing->id}.pdf");
     }
 
@@ -402,7 +422,7 @@ class DailyBriefingController extends Controller
         $dailyBriefing->load(['findings']);
         $info = $this->findingInfo($dailyBriefing);
 
-        $spreadsheet = new Spreadsheet();
+        $spreadsheet = new Spreadsheet;
         $sheet = $spreadsheet->getActiveSheet();
         $sheet->setTitle('Material Temuan');
 
@@ -412,7 +432,7 @@ class DailyBriefingController extends Controller
         $sheet->mergeCells('A1:C4');
         $logoPath = public_path('sidebar-logo.png');
         if (is_file($logoPath)) {
-            $logo = new MemoryDrawing();
+            $logo = new Drawing;
             $logo->setPath($logoPath);
             $logo->setHeight(58);
             $logo->setOffsetX(8);
@@ -430,7 +450,7 @@ class DailyBriefingController extends Controller
         $meta = [
             ['No. Dokumen', ''],
             ['No. Revisi', ': 00'],
-            ['Tanggal Terbit', ': ' . \Carbon\Carbon::parse($dailyBriefing->tanggal)->format('d-m-Y')],
+            ['Tanggal Terbit', ': '.Carbon::parse($dailyBriefing->tanggal)->format('d-m-Y')],
             ['Jumlah Halaman', ': 1 dari 1'],
         ];
 
@@ -454,15 +474,15 @@ class DailyBriefingController extends Controller
         $kanan = [
             ['UNIT', $info['unit']],
             ['JENIS INSPEKSI', $info['jenis_inspeksi']],
-            ['JUMLAH TEMUAN', count($dailyBriefing->findings) . ' item'],
+            ['JUMLAH TEMUAN', count($dailyBriefing->findings).' item'],
         ];
 
         foreach ($kiri as $i => [$label, $value]) {
             $r = 6 + $i;
             $sheet->setCellValue("A{$r}", $label);
-            $sheet->setCellValue("C{$r}", ': ' . $value);
+            $sheet->setCellValue("C{$r}", ': '.$value);
             $sheet->setCellValue("G{$r}", $kanan[$i][0]);
-            $sheet->setCellValue("H{$r}", ': ' . $kanan[$i][1]);
+            $sheet->setCellValue("H{$r}", ': '.$kanan[$i][1]);
         }
 
         $sheet->getStyle('A6:A8')->getFont()->setBold(true);
@@ -488,7 +508,7 @@ class DailyBriefingController extends Controller
         foreach ($dailyBriefing->findings as $idx => $f) {
             $sheet->getRowDimension($row)->setRowHeight(90);
             $sheet->setCellValue("A{$row}", $idx + 1);
-            $sheet->setCellValue("B{$row}", $f->tanggal ? \Carbon\Carbon::parse($f->tanggal)->format('d-m-Y') : '');
+            $sheet->setCellValue("B{$row}", $f->tanggal ? Carbon::parse($f->tanggal)->format('d-m-Y') : '');
             $sheet->setCellValue("C{$row}", $f->uraian);
             $sheet->setCellValue("D{$row}", $f->part_number);
             $sheet->setCellValue("E{$row}", $f->qty);
@@ -501,7 +521,7 @@ class DailyBriefingController extends Controller
                 $binary = base64_decode(explode(',', $f->foto, 2)[1] ?? '');
                 $img = $binary ? @imagecreatefromstring($binary) : false;
                 if ($img !== false) {
-                    $drawing = new MemoryDrawing();
+                    $drawing = new MemoryDrawing;
                     $drawing->setImageResource($img);
                     $drawing->setRenderingFunction(MemoryDrawing::RENDERING_JPEG);
                     $drawing->setMimeType(MemoryDrawing::MIMETYPE_JPEG);
@@ -534,10 +554,10 @@ class DailyBriefingController extends Controller
         foreach (['A' => 6, 'B' => 12, 'C' => 34, 'D' => 13, 'E' => 7, 'F' => 9, 'G' => 24, 'H' => 28, 'I' => 46, 'J' => 12] as $col => $w) {
             $sheet->getColumnDimension($col)->setWidth($w);
         }
-        $sheet->getPageSetup()->setOrientation(\PhpOffice\PhpSpreadsheet\Worksheet\PageSetup::ORIENTATION_LANDSCAPE);
+        $sheet->getPageSetup()->setOrientation(PageSetup::ORIENTATION_LANDSCAPE);
 
         $writer = new Xlsx($spreadsheet);
-        $slug = \Illuminate\Support\Str::slug($dailyBriefing->judul);
+        $slug = Str::slug($dailyBriefing->judul);
         $filename = "Material-Temuan-{$slug}-{$dailyBriefing->id}.xlsx";
 
         return response()->streamDownload(function () use ($writer) {
@@ -555,7 +575,7 @@ class DailyBriefingController extends Controller
             'revisi' => '001',
             'pimpinan_rapat' => 'TL Outage Management UP Kendari',
             'tempat' => $dailyBriefing->lokasi ?: 'Room Zoom UP Kendari',
-            'waktu' => ($dailyBriefing->waktu_mulai ? substr($dailyBriefing->waktu_mulai, 0, 5) : '09.00') . ' WITA - Selesai',
+            'waktu' => ($dailyBriefing->waktu_mulai ? substr($dailyBriefing->waktu_mulai, 0, 5) : '09.00').' WITA - Selesai',
             'agenda' => trim("Kick Off Meeting {$dailyBriefing->judul}"),
             'peserta' => '(Daftar peserta terlampir)',
             'pimpinan_nama' => 'ABDUL RAHMAN KADIR',
@@ -606,7 +626,9 @@ class DailyBriefingController extends Controller
         ]);
 
         $encoded = $this->encodePhoto($request->file('foto'));
-        if ($encoded === null) return redirect()->back()->with('error', 'Foto tidak dapat diproses.');
+        if ($encoded === null) {
+            return redirect()->back()->with('error', 'Foto tidak dapat diproses.');
+        }
 
         $dailyBriefing->kickoffPhotos()->create([
             'foto' => $encoded,
@@ -620,6 +642,7 @@ class DailyBriefingController extends Controller
     {
         abort_unless($photo->daily_briefing_id === $dailyBriefing->id, 404);
         $photo->delete();
+
         return redirect()->back()->with('success', 'Dokumentasi berhasil dihapus.');
     }
 
@@ -634,19 +657,20 @@ class DailyBriefingController extends Controller
             'photos' => $dailyBriefing->kickoffPhotos,
             'attendees' => $dailyBriefing->attendees,
             'defaults' => $this->kickoffDefaults($dailyBriefing),
-            'logo' => is_file($logoPath) ? 'data:image/png;base64,' . base64_encode(file_get_contents($logoPath)) : null,
+            'logo' => is_file($logoPath) ? 'data:image/png;base64,'.base64_encode(file_get_contents($logoPath)) : null,
         ])->setPaper('a4', 'portrait');
 
-        $slug = \Illuminate\Support\Str::slug($dailyBriefing->judul);
+        $slug = Str::slug($dailyBriefing->judul);
+
         return $pdf->download("Notulen-Kick-Off-{$slug}-{$dailyBriefing->id}.pdf");
     }
 
     public function exportKickoffExcel(DailyBriefing $dailyBriefing)
     {
         $dailyBriefing->load(['kickoff', 'kickoffPhotos', 'attendees']);
-        $slug = \Illuminate\Support\Str::slug($dailyBriefing->judul);
+        $slug = Str::slug($dailyBriefing->judul);
 
-        return \Maatwebsite\Excel\Facades\Excel::download(
+        return Excel::download(
             new BriefingKickoffExport(
                 $dailyBriefing,
                 $dailyBriefing->kickoff,

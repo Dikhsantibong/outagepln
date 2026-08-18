@@ -1,6 +1,6 @@
 import { Head, router, usePage, Link } from '@inertiajs/react';
 import { useForm } from '@inertiajs/react';
-import { Calendar, Users, QrCode, FileText, CheckCircle2, ChevronLeft, Plus, Edit, Trash2, Printer, Copy, FileSpreadsheet, ImageOff, Handshake, Link2, Images, ClipboardList } from 'lucide-react';
+import { Calendar, Users, QrCode, FileText, CheckCircle2, ChevronLeft, Plus, Edit, Pencil, Trash2, Printer, Copy, FileSpreadsheet, ImageOff, Handshake, Link2, Images, ClipboardList } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';

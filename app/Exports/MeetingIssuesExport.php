@@ -6,25 +6,25 @@ use App\Models\DailyMeeting;
 use Illuminate\Contracts\View\View;
 use Maatwebsite\Excel\Concerns\FromView;
 use Maatwebsite\Excel\Concerns\WithColumnWidths;
-use Maatwebsite\Excel\Concerns\WithStyles;
 use Maatwebsite\Excel\Concerns\WithDrawings;
-use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
-use PhpOffice\PhpSpreadsheet\Worksheet\Drawing;
+use Maatwebsite\Excel\Concerns\WithStyles;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
+use PhpOffice\PhpSpreadsheet\Worksheet\Drawing;
+use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 
-class MeetingIssuesExport implements FromView, WithColumnWidths, WithStyles, WithDrawings
+class MeetingIssuesExport implements FromView, WithColumnWidths, WithDrawings, WithStyles
 {
     protected $meeting;
 
     public function __construct(DailyMeeting $meeting)
     {
-        $this->briefing = $meeting;
+        $this->meeting = $meeting;
     }
 
     public function view(): View
     {
         return view('exports.meeting-issues-excel', [
-            'briefing' => $this->briefing,
+            'meeting' => $this->meeting,
         ]);
     }
 
@@ -65,7 +65,7 @@ class MeetingIssuesExport implements FromView, WithColumnWidths, WithStyles, Wit
         // Logo PLN pada kop, mengambang di sel logo A1:B3. Tingginya dijaga agar
         // muat dalam ketiga baris kop (masing-masing 22pt ≈ 88px) sehingga tidak
         // turun menimpa baris info di bawahnya.
-        $drawing = new Drawing();
+        $drawing = new Drawing;
         $drawing->setName('Logo');
         $drawing->setDescription('Logo PLN');
         $drawing->setPath(public_path('sidebar-logo.png'));

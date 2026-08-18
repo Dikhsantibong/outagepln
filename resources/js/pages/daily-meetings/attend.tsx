@@ -124,7 +124,7 @@ export default function AttendForm({
         }
 
         setTimeout(() => {
-            post(`/attend/`, {
+            post(`/attend/${token}`, {
                 onSuccess: () => {
                     setCaptchaAnswer('');
                     clearSignature();

@@ -550,27 +550,6 @@ export default function DailyBriefingsIndex({
                                                             <Eye className="mr-1 h-3 w-3" />
                                                             Detail
                                                         </Button>
-                                                        {[
-                                                            'active',
-                                                            'berlangsung',
-                                                        ].includes(
-                                                            meeting.status,
-                                                        ) &&
-                                                            !isTamu && (
-                                                                <Button
-                                                                    size="sm"
-                                                                    variant="outline"
-                                                                    className="h-7 w-7 p-0"
-                                                                    onClick={() =>
-                                                                        window.open(
-                                                                            `/daily-briefings/${meeting.id}/qr`,
-                                                                            '_blank',
-                                                                        )
-                                                                    }
-                                                                >
-                                                                    <QrCode className="h-3 w-3" />
-                                                                </Button>
-                                                            )}
                                                         {bolehHapus && (
                                                             <Button
                                                                 size="sm"

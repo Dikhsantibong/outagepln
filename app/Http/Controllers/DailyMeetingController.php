@@ -2,28 +2,37 @@
 
 namespace App\Http\Controllers;
 
+use App\Exports\MeetingIssuesExport;
+use App\Exports\MeetingKickoffExport;
 use App\Models\DailyMeeting;
-use App\Models\MeetingAttendee;
-use App\Models\MeetingFinding;
+use App\Models\MeetingIssue;
 use App\Models\MeetingKickoff;
 use App\Models\MeetingKickoffPhoto;
+use App\Models\Mesin;
 use App\Models\OutagePlan;
+use App\Models\Unit;
+use App\Support\TahunFilter;
 use Barryvdh\DomPDF\Facade\Pdf;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Str;
 use Inertia\Inertia;
+use Maatwebsite\Excel\Facades\Excel;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
 use PhpOffice\PhpSpreadsheet\Style\Border;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
+use PhpOffice\PhpSpreadsheet\Worksheet\Drawing;
 use PhpOffice\PhpSpreadsheet\Worksheet\MemoryDrawing;
+use PhpOffice\PhpSpreadsheet\Worksheet\PageSetup;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
 class DailyMeetingController extends Controller
 {
     /** Filter keys accepted by the listing. */
     private const FILTER_KEYS = [
-        'search', 'tahun', 'unit', 'scope', 'jenis_rapat'
+        'search', 'tahun', 'unit', 'scope', 'jenis_rapat',
     ];
 
     /**
@@ -40,14 +49,14 @@ class DailyMeetingController extends Controller
             $search = $request->input('search');
             $query->where(function ($q) use ($search) {
                 $q->where('mesin_pembangkit', 'like', "%{$search}%")
-                  ->orWhere('scope', 'like', "%{$search}%")
-                  ->orWhere('sistem', 'like', "%{$search}%");
+                    ->orWhere('scope', 'like', "%{$search}%")
+                    ->orWhere('sistem', 'like', "%{$search}%");
             });
         }
 
         // Fetch tahun options first
-        $tahunOptions = \App\Support\TahunFilter::options(OutagePlan::visibleTo($user), 'start_date');
-        $tahun = \App\Support\TahunFilter::resolve($request->input('tahun'), $tahunOptions);
+        $tahunOptions = TahunFilter::options(OutagePlan::visibleTo($user), 'start_date');
+        $tahun = TahunFilter::resolve($request->input('tahun'), $tahunOptions);
 
         if ($tahun !== null) {
             $query->whereYear('start_date', $tahun);
@@ -56,7 +65,7 @@ class DailyMeetingController extends Controller
         if ($request->filled('unit')) {
             $unit = $request->input('unit');
             if ($unit !== 'Semua') {
-                $mesinsInUnit = \App\Models\Mesin::whereHas('unit', function($q) use ($unit) {
+                $mesinsInUnit = Mesin::whereHas('unit', function ($q) use ($unit) {
                     $q->where('nama_sentral', $unit);
                 })->pluck('nama_mesin')->toArray();
 
@@ -84,10 +93,10 @@ class DailyMeetingController extends Controller
         $outagePlans = $query->with('dailyMeetings')->orderBy('id')->paginate(20)->withQueryString();
 
         // Get filter options
-        $tahunOptions = \App\Support\TahunFilter::options(OutagePlan::visibleTo($user), 'start_date');
-        
+        $tahunOptions = TahunFilter::options(OutagePlan::visibleTo($user), 'start_date');
+
         $visibleMesin = OutagePlan::visibleTo($user)->pluck('mesin_pembangkit')->toArray();
-        $unitOptions = \App\Models\Unit::whereHas('mesins', function($q) use ($visibleMesin) {
+        $unitOptions = Unit::whereHas('mesins', function ($q) use ($visibleMesin) {
             $q->whereIn('nama_mesin', $visibleMesin);
         })->pluck('nama_sentral')->toArray();
 
@@ -102,7 +111,7 @@ class DailyMeetingController extends Controller
             'outagePlans' => $outagePlans,
             'filters' => array_merge(
                 $request->only(self::FILTER_KEYS),
-                ['tahun' => \App\Support\TahunFilter::label($tahun)]
+                ['tahun' => TahunFilter::label($tahun)]
             ),
             'filterOptions' => [
                 'tahun' => array_values(array_unique(array_merge(['semua'], $tahunOptions))),
@@ -137,7 +146,7 @@ class DailyMeetingController extends Controller
             'meeting' => $dailyMeeting,
             'attendees' => $dailyMeeting->attendees,
             'issues' => $dailyMeeting->issues,
-                        'findingInfo' => $this->findingInfo($dailyMeeting),
+            'findingInfo' => $this->findingInfo($dailyMeeting),
             'kickoff' => $dailyMeeting->kickoff,
             'kickoffPhotos' => $dailyMeeting->kickoffPhotos,
             'kickoffDefaults' => $this->kickoffDefaults($dailyMeeting),
@@ -159,7 +168,7 @@ class DailyMeetingController extends Controller
             'revisi' => '001',
             'pimpinan_rapat' => 'TL Outage Management UP Kendari',
             'tempat' => $dailyMeeting->lokasi ?: 'Room Zoom UP Kendari',
-            'waktu' => ($dailyMeeting->waktu_mulai ? substr($dailyMeeting->waktu_mulai, 0, 5) : '09.00') . ' WITA - Selesai',
+            'waktu' => ($dailyMeeting->waktu_mulai ? substr($dailyMeeting->waktu_mulai, 0, 5) : '09.00').' WITA - Selesai',
             'agenda' => trim("Kick Off Meeting Pelaksanaan Pekerjaan OH {$scope} {$mesin}"),
             'peserta' => '(Daftar peserta terlampir)',
             // Penanda tangan tetap: Pimpinan Rapat (TL) dan Notulis (OF).
@@ -224,6 +233,44 @@ class DailyMeetingController extends Controller
         return redirect()->back()->with('success', 'Dokumentasi berhasil ditambahkan.');
     }
 
+    /**
+     * Kecilkan lalu simpan foto sebagai data URI JPEG.
+     *
+     * Dokumentasi rapat ikut tertanam di PDF/Excel, jadi disimpan inline di basis
+     * data — bukan di disk — supaya ekspor tidak bergantung pada berkas terpisah.
+     */
+    private function encodePhoto(?UploadedFile $file): ?string
+    {
+        if (! $file) {
+            return null;
+        }
+
+        $source = @imagecreatefromstring(file_get_contents($file->getRealPath()));
+
+        if ($source === false) {
+            return null;
+        }
+
+        $maxW = 640;
+        $w = imagesx($source);
+        $h = imagesy($source);
+
+        if ($w > $maxW) {
+            $newH = (int) round($h * ($maxW / $w));
+            $resized = imagecreatetruecolor($maxW, $newH);
+            imagecopyresampled($resized, $source, 0, 0, 0, 0, $maxW, $newH, $w, $h);
+            imagedestroy($source);
+            $source = $resized;
+        }
+
+        ob_start();
+        imagejpeg($source, null, 72);
+        $data = ob_get_clean();
+        imagedestroy($source);
+
+        return 'data:image/jpeg;base64,'.base64_encode($data);
+    }
+
     public function destroyKickoffPhoto(DailyMeeting $dailyMeeting, MeetingKickoffPhoto $photo)
     {
         abort_unless($photo->meeting_id === $dailyMeeting->id, 404);
@@ -233,7 +280,6 @@ class DailyMeetingController extends Controller
         return redirect()->back()->with('success', 'Dokumentasi berhasil dihapus.');
     }
 
-    
     public function exportIssuesPdf(DailyMeeting $dailyMeeting)
     {
         $dailyMeeting->load(['attendees', 'issues', 'outagePlan']);
@@ -250,9 +296,9 @@ class DailyMeetingController extends Controller
     public function exportIssuesExcel(DailyMeeting $dailyMeeting)
     {
         $dailyMeeting->load(['attendees', 'issues', 'outagePlan']);
-        
-        return \Maatwebsite\Excel\Facades\Excel::download(
-            new \App\Exports\MeetingIssuesExport($dailyMeeting), 
+
+        return Excel::download(
+            new MeetingIssuesExport($dailyMeeting),
             "Rapat-Outage-{$dailyMeeting->id}.xlsx"
         );
     }
@@ -271,11 +317,11 @@ class DailyMeetingController extends Controller
             'issues' => $dailyMeeting->issues,
             'defaults' => $this->kickoffDefaults($dailyMeeting),
             'logo' => is_file($logoPath)
-                ? 'data:image/png;base64,' . base64_encode(file_get_contents($logoPath))
+                ? 'data:image/png;base64,'.base64_encode(file_get_contents($logoPath))
                 : null,
         ])->setPaper('a4', 'portrait');
 
-        $slug = \Illuminate\Support\Str::slug($dailyMeeting->outagePlan->mesin_pembangkit ?? $dailyMeeting->judul);
+        $slug = Str::slug($dailyMeeting->outagePlan->mesin_pembangkit ?? $dailyMeeting->judul);
 
         return $pdf->download("Notulen-Kick-Off-{$slug}-{$dailyMeeting->id}.pdf");
     }
@@ -288,10 +334,10 @@ class DailyMeetingController extends Controller
     {
         $dailyMeeting->load(['kickoff', 'kickoffPhotos', 'attendees', 'outagePlan']);
 
-        $slug = \Illuminate\Support\Str::slug($dailyMeeting->outagePlan->mesin_pembangkit ?? $dailyMeeting->judul);
+        $slug = Str::slug($dailyMeeting->outagePlan->mesin_pembangkit ?? $dailyMeeting->judul);
 
-        return \Maatwebsite\Excel\Facades\Excel::download(
-            new \App\Exports\MeetingKickoffExport(
+        return Excel::download(
+            new MeetingKickoffExport(
                 $dailyMeeting,
                 $dailyMeeting->kickoff,
                 $dailyMeeting->kickoffPhotos,
@@ -317,7 +363,7 @@ class DailyMeetingController extends Controller
             'judul_rapat' => $dailyMeeting->judul ?: '-',
             'tipe_rapat' => $dailyMeeting->tipe_rapat ?: '-',
             'tanggal_rapat' => $dailyMeeting->tanggal
-                ? \Carbon\Carbon::parse($dailyMeeting->tanggal)->translatedFormat('d F Y')
+                ? Carbon::parse($dailyMeeting->tanggal)->translatedFormat('d F Y')
                 : '-',
             'unit' => $plan->mesin_pembangkit ?? '-',
             'jenis_inspeksi' => $plan->scope ?? '-',
@@ -329,7 +375,7 @@ class DailyMeetingController extends Controller
         $dailyMeeting->load(['findings', 'outagePlan']);
         $info = $this->findingInfo($dailyMeeting);
 
-        $spreadsheet = new Spreadsheet();
+        $spreadsheet = new Spreadsheet;
         $sheet = $spreadsheet->getActiveSheet();
         $sheet->setTitle('Material Temuan');
 
@@ -340,7 +386,7 @@ class DailyMeetingController extends Controller
         $sheet->mergeCells('A1:C4');
         $logoPath = public_path('sidebar-logo.png');
         if (is_file($logoPath)) {
-            $logo = new \PhpOffice\PhpSpreadsheet\Worksheet\Drawing();
+            $logo = new Drawing;
             $logo->setPath($logoPath);
             $logo->setHeight(58);
             $logo->setOffsetX(8);
@@ -358,7 +404,7 @@ class DailyMeetingController extends Controller
         $meta = [
             ['No. Dokumen', ''],
             ['No. Revisi', ': 00'],
-            ['Tanggal Terbit', ': ' . \Carbon\Carbon::parse($dailyMeeting->tanggal)->format('d-m-Y')],
+            ['Tanggal Terbit', ': '.Carbon::parse($dailyMeeting->tanggal)->format('d-m-Y')],
             ['Jumlah Halaman', ': 1 dari 1'],
         ];
 
@@ -384,15 +430,15 @@ class DailyMeetingController extends Controller
         $kanan = [
             ['UNIT', $info['unit']],
             ['JENIS INSPEKSI', $info['jenis_inspeksi']],
-            ['JUMLAH TEMUAN', count($dailyMeeting->findings) . ' item'],
+            ['JUMLAH TEMUAN', count($dailyMeeting->findings).' item'],
         ];
 
         foreach ($kiri as $i => [$label, $value]) {
             $r = 6 + $i;
             $sheet->setCellValue("A{$r}", $label);
-            $sheet->setCellValue("C{$r}", ': ' . $value);
+            $sheet->setCellValue("C{$r}", ': '.$value);
             $sheet->setCellValue("G{$r}", $kanan[$i][0]);
-            $sheet->setCellValue("H{$r}", ': ' . $kanan[$i][1]);
+            $sheet->setCellValue("H{$r}", ': '.$kanan[$i][1]);
         }
 
         $sheet->getStyle('A6:A8')->getFont()->setBold(true);
@@ -419,7 +465,7 @@ class DailyMeetingController extends Controller
         foreach ($dailyMeeting->findings as $idx => $f) {
             $sheet->getRowDimension($row)->setRowHeight(90);
             $sheet->setCellValue("A{$row}", $idx + 1);
-            $sheet->setCellValue("B{$row}", $f->tanggal ? \Carbon\Carbon::parse($f->tanggal)->format('d-m-Y') : '');
+            $sheet->setCellValue("B{$row}", $f->tanggal ? Carbon::parse($f->tanggal)->format('d-m-Y') : '');
             $sheet->setCellValue("C{$row}", $f->uraian);
             $sheet->setCellValue("D{$row}", $f->part_number);
             $sheet->setCellValue("E{$row}", $f->qty);
@@ -432,7 +478,7 @@ class DailyMeetingController extends Controller
                 $binary = base64_decode(explode(',', $f->foto, 2)[1] ?? '');
                 $img = $binary ? @imagecreatefromstring($binary) : false;
                 if ($img !== false) {
-                    $drawing = new MemoryDrawing();
+                    $drawing = new MemoryDrawing;
                     $drawing->setImageResource($img);
                     $drawing->setRenderingFunction(MemoryDrawing::RENDERING_JPEG);
                     $drawing->setMimeType(MemoryDrawing::MIMETYPE_JPEG);
@@ -465,7 +511,7 @@ class DailyMeetingController extends Controller
         foreach (['A' => 6, 'B' => 12, 'C' => 34, 'D' => 13, 'E' => 7, 'F' => 9, 'G' => 24, 'H' => 28, 'I' => 46, 'J' => 12] as $col => $w) {
             $sheet->getColumnDimension($col)->setWidth($w);
         }
-        $sheet->getPageSetup()->setOrientation(\PhpOffice\PhpSpreadsheet\Worksheet\PageSetup::ORIENTATION_LANDSCAPE);
+        $sheet->getPageSetup()->setOrientation(PageSetup::ORIENTATION_LANDSCAPE);
 
         $writer = new Xlsx($spreadsheet);
         $filename = $this->findingFilename($dailyMeeting, 'xlsx');
@@ -479,12 +525,12 @@ class DailyMeetingController extends Controller
 
     private function findingFilename(DailyMeeting $dailyMeeting, string $ext): string
     {
-        $slug = \Illuminate\Support\Str::slug($dailyMeeting->outagePlan->mesin_pembangkit ?? $dailyMeeting->judul);
+        $slug = Str::slug($dailyMeeting->outagePlan->mesin_pembangkit ?? $dailyMeeting->judul);
         // Jenis rapat ikut di nama berkas supaya beberapa rapat pada satu mesin
         // tidak menghasilkan berkas yang tampak sama.
-        $tipe = \Illuminate\Support\Str::slug($dailyMeeting->tipe_rapat ?? '');
+        $tipe = Str::slug($dailyMeeting->tipe_rapat ?? '');
 
-        return trim("Material-Temuan-{$slug}-{$tipe}", '-') . "-{$dailyMeeting->id}.{$ext}";
+        return trim("Material-Temuan-{$slug}-{$tipe}", '-')."-{$dailyMeeting->id}.{$ext}";
     }
 
     public function complete(DailyMeeting $dailyMeeting)
@@ -493,8 +539,8 @@ class DailyMeetingController extends Controller
             'status' => 'completed',
             'waktu_selesai' => now()->format('H:i'),
         ];
-        
-        if (!$dailyMeeting->tanggal_realisasi) {
+
+        if (! $dailyMeeting->tanggal_realisasi) {
             $updateData['tanggal_realisasi'] = now()->format('Y-m-d');
         }
 
@@ -516,10 +562,9 @@ class DailyMeetingController extends Controller
         return redirect()->back()->with('success', 'Tanggal realisasi berhasil disimpan.');
     }
 
-    
-    public function qrDisplay(\App\Models\DailyMeeting $dailyMeeting)
+    public function qrDisplay(DailyMeeting $dailyMeeting)
     {
-        return \Inertia\Inertia::render('daily-meetings/qr', [
+        return Inertia::render('daily-meetings/qr', [
             'meeting' => $dailyMeeting,
             'attendUrl' => route('attend.form', $dailyMeeting->token),
         ]);
@@ -527,9 +572,9 @@ class DailyMeetingController extends Controller
 
     public function attendForm(string $token)
     {
-        $meeting = \App\Models\DailyMeeting::with('attendees')->where('token', $token)->firstOrFail();
+        $meeting = DailyMeeting::with('attendees')->where('token', $token)->firstOrFail();
 
-        return \Inertia\Inertia::render('daily-meetings/attend', [
+        return Inertia::render('daily-meetings/attend', [
             'meeting' => $meeting,
             'token' => $token,
         ]);
@@ -537,7 +582,7 @@ class DailyMeetingController extends Controller
 
     public function submitAttendance(Request $request, string $token)
     {
-        $meeting = \App\Models\DailyMeeting::where('token', $token)->firstOrFail();
+        $meeting = DailyMeeting::where('token', $token)->firstOrFail();
 
         if ($meeting->status === 'completed') {
             return redirect()->back()->with('error', 'Rapat sudah selesai. Tidak dapat mendaftar kehadiran.');
@@ -554,23 +599,26 @@ class DailyMeetingController extends Controller
 
         $meeting->attendees()->create([
             'nama' => $validated['nama'],
-            'nid' => $validated['nid'],
-            'instansi' => $validated['instansi'],
-            'divisi' => $validated['divisi'],
-            'jabatan' => $validated['jabatan'],
-            'signature' => $validated['signature'],
+            'nid' => $validated['nid'] ?? null,
+            'instansi' => $validated['instansi'] ?? null,
+            'divisi' => $validated['divisi'] ?? null,
+            'jabatan' => $validated['jabatan'] ?? null,
+            'signature' => $validated['signature'] ?? null,
             'signed_at' => now(),
         ]);
 
         return redirect()->back()->with('success', 'Kehadiran berhasil dicatat.');
     }
 
-
     public function attendeesJson(DailyMeeting $dailyMeeting)
     {
         return response()->json([
             'count' => $dailyMeeting->attendees()->count(),
-            'attendees' => $dailyMeeting->attendees()->latest()->get(['id', 'nama', 'divisi', 'jabatan', 'signed_at']),
+            // Tanda tangan ikut dikirim karena tabel Daftar Hadir menampilkannya;
+            // tanpa itu paraf peserta hilang begitu polling 5 detik menimpa state.
+            'attendees' => $dailyMeeting->attendees()->latest()->get([
+                'id', 'nama', 'nid', 'instansi', 'divisi', 'jabatan', 'signature', 'signed_at',
+            ]),
         ]);
     }
 
@@ -595,6 +643,7 @@ class DailyMeetingController extends Controller
         ]);
 
         $dailyMeeting->issues()->create($validated);
+
         return redirect()->back()->with('success', 'Permasalahan ditambahkan.');
     }
 
@@ -609,12 +658,14 @@ class DailyMeetingController extends Controller
         ]);
 
         $issue->update($validated);
+
         return redirect()->back()->with('success', 'Permasalahan diperbarui.');
     }
 
     public function destroyIssue(DailyMeeting $dailyMeeting, MeetingIssue $issue)
     {
         $issue->delete();
+
         return redirect()->back()->with('success', 'Permasalahan dihapus.');
     }
 }
