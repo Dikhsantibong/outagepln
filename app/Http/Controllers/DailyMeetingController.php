@@ -21,65 +21,95 @@ use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
 class DailyMeetingController extends Controller
 {
+    /** Filter keys accepted by the listing. */
+    private const FILTER_KEYS = [
+        'search', 'tahun', 'unit', 'scope', 'jenis_rapat'
+    ];
+
     /**
-     * Halaman depan Daily Meeting: alur berpandu, bukan daftar semua rapat.
+     * Halaman Rapat Outage (Daily Meetings).
      *
-     * Sebelumnya seluruh rapat (ribuan) ditumpahkan sekaligus. Kini pengguna
-     * memilih mesin dulu (langkah 1); setelah itu lima jadwal rapat mesin
-     * tersebut (P1–P3, R2, R3) ditampilkan untuk dipilih lalu dimulai (langkah 2).
+     * Menampilkan daftar Outage Plan beserta dengan status/link rapat P1-R3 nya.
      */
     public function index(Request $request)
     {
         $user = $request->user();
-        // Akun pengelola merek hanya melihat mesin merek yang dikelolanya.
-        $merek = $user && filled($user->merek) ? $user->merek : null;
+        $query = OutagePlan::visibleTo($user);
 
-        // Langkah 1 — daftar mesin: satu kartu per outage plan yang punya rapat,
-        // dikelompokkan agar halaman tidak menumpahkan seluruh rapat sekaligus.
-        $machines = DB::table('daily_meetings as dm')
-            ->join('outage_plans as op', 'dm.outage_plan_id', '=', 'op.id')
-            ->when($merek, fn ($q) => $q->where('op.merek', $merek))
-            ->groupBy('op.id', 'op.mesin_pembangkit', 'op.scope', 'op.jenis_pembangkit')
-            ->orderBy('op.mesin_pembangkit')
-            ->get([
-                'op.id as plan_id',
-                'op.mesin_pembangkit as mesin',
-                'op.scope as scope',
-                'op.jenis_pembangkit as jenis',
-                DB::raw('COUNT(dm.id) as jumlah'),
-                DB::raw('MIN(dm.tanggal) as mulai'),
-                DB::raw("SUM(CASE WHEN dm.status = 'completed' THEN 1 ELSE 0 END) as selesai"),
-            ]);
+        if ($request->filled('search')) {
+            $search = $request->input('search');
+            $query->where(function ($q) use ($search) {
+                $q->where('mesin_pembangkit', 'like', "%{$search}%")
+                  ->orWhere('scope', 'like', "%{$search}%")
+                  ->orWhere('sistem', 'like', "%{$search}%");
+            });
+        }
 
-        // Langkah 2 — mesin terpilih beserta jadwal rapatnya, terurut P1→R3.
-        $selected = null;
-        if ($request->filled('plan')) {
-            $plan = OutagePlan::find($request->input('plan'));
+        // Fetch tahun options first
+        $tahunOptions = \App\Support\TahunFilter::options(OutagePlan::visibleTo($user), 'start_date');
+        $tahun = \App\Support\TahunFilter::resolve($request->input('tahun'), $tahunOptions);
 
-            if ($plan && (! $merek || $plan->merek === $merek)) {
-                // Diurutkan di PHP (lima baris) agar tidak bergantung FIELD() yang
-                // hanya ada di MySQL — SQLite dipakai pada test.
-                $urutan = ['RAPAT P1' => 1, 'RAPAT P2' => 2, 'RAPAT P3' => 3, 'RAPAT R2' => 4, 'RAPAT R3' => 5];
+        if ($tahun !== null) {
+            $query->whereYear('start_date', $tahun);
+        }
 
-                $meetings = DailyMeeting::where('outage_plan_id', $plan->id)
-                    ->withCount('attendees')
-                    ->get()
-                    ->sortBy(fn ($m) => $urutan[$m->tipe_rapat] ?? 99)
-                    ->values();
+        if ($request->filled('unit')) {
+            $unit = $request->input('unit');
+            if ($unit !== 'Semua') {
+                $mesinsInUnit = \App\Models\Mesin::whereHas('unit', function($q) use ($unit) {
+                    $q->where('nama_sentral', $unit);
+                })->pluck('nama_mesin')->toArray();
 
-                $selected = [
-                    'plan_id' => $plan->id,
-                    'mesin' => $plan->mesin_pembangkit,
-                    'scope' => $plan->scope,
-                    'jenis' => $plan->jenis_pembangkit,
-                    'meetings' => $meetings,
-                ];
+                $query->whereIn('mesin_pembangkit', $mesinsInUnit);
             }
         }
 
+        if ($request->filled('scope')) {
+            $scope = $request->input('scope');
+            if ($scope !== 'Semua') {
+                $query->where('scope', $scope);
+            }
+        }
+
+        if ($request->filled('jenis_rapat')) {
+            $jenisRapat = $request->input('jenis_rapat');
+            if ($jenisRapat !== 'Semua') {
+                $query->whereHas('dailyMeetings', function ($q) use ($jenisRapat) {
+                    $q->where('tipe_rapat', $jenisRapat);
+                });
+            }
+        }
+
+        // Ordered by id so the listing mirrors the row order.
+        $outagePlans = $query->with('dailyMeetings')->orderBy('id')->paginate(20)->withQueryString();
+
+        // Get filter options
+        $tahunOptions = \App\Support\TahunFilter::options(OutagePlan::visibleTo($user), 'start_date');
+        
+        $visibleMesin = OutagePlan::visibleTo($user)->pluck('mesin_pembangkit')->toArray();
+        $unitOptions = \App\Models\Unit::whereHas('mesins', function($q) use ($visibleMesin) {
+            $q->whereIn('nama_mesin', $visibleMesin);
+        })->pluck('nama_sentral')->toArray();
+
+        $scopeOptions = OutagePlan::visibleTo($user)
+            ->whereNotNull('scope')
+            ->distinct()
+            ->orderBy('scope')
+            ->pluck('scope')
+            ->toArray();
+
         return Inertia::render('daily-meetings/index', [
-            'machines' => $machines,
-            'selected' => $selected,
+            'outagePlans' => $outagePlans,
+            'filters' => array_merge(
+                $request->only(self::FILTER_KEYS),
+                ['tahun' => \App\Support\TahunFilter::label($tahun)]
+            ),
+            'filterOptions' => [
+                'tahun' => array_values(array_unique(array_merge(['semua'], $tahunOptions))),
+                'unit' => array_values(array_unique(array_merge(['Semua'], $unitOptions))),
+                'scope' => array_values(array_unique(array_merge(['Semua'], $scopeOptions))),
+                'jenis_rapat' => ['Semua', 'RAPAT P1', 'RAPAT P2', 'RAPAT P3', 'RAPAT R2', 'RAPAT R3'],
+            ],
         ]);
     }
 
@@ -595,12 +625,31 @@ class DailyMeetingController extends Controller
 
     public function complete(DailyMeeting $dailyMeeting)
     {
-        $dailyMeeting->update([
+        $updateData = [
             'status' => 'completed',
             'waktu_selesai' => now()->format('H:i'),
-        ]);
+        ];
+        
+        if (!$dailyMeeting->tanggal_realisasi) {
+            $updateData['tanggal_realisasi'] = now()->format('Y-m-d');
+        }
+
+        $dailyMeeting->update($updateData);
 
         return redirect()->back()->with('success', 'Meeting selesai.');
+    }
+
+    public function setRealisasi(Request $request, DailyMeeting $dailyMeeting)
+    {
+        $request->validate([
+            'tanggal_realisasi' => 'required|date',
+        ]);
+
+        $dailyMeeting->update([
+            'tanggal_realisasi' => $request->tanggal_realisasi,
+        ]);
+
+        return redirect()->back()->with('success', 'Tanggal realisasi berhasil disimpan.');
     }
 
     public function attendeesJson(DailyMeeting $dailyMeeting)

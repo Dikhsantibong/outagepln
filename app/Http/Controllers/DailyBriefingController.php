@@ -54,8 +54,17 @@ class DailyBriefingController extends Controller
             ->paginate(12)
             ->withQueryString();
 
+        $activeMachines = \App\Models\OutagePlan::where('progress', '>', 0)
+            ->where('progress', '<', 100)
+            ->pluck('mesin_pembangkit')
+            ->filter()
+            ->unique()
+            ->values()
+            ->toArray();
+
         return Inertia::render('daily-briefings/index', [
             'briefings' => $briefings,
+            'activeMachines' => $activeMachines,
             'filters' => array_merge(
                 $request->only(['search', 'status', 'tahun', 'bulan']),
                 ['tahun' => TahunFilter::label($tahun)],

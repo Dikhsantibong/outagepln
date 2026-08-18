@@ -45,6 +45,7 @@ type Meeting = {
     id: number;
     judul: string;
     tanggal: string;
+    tanggal_realisasi?: string | null;
     waktu_mulai: string | null;
     waktu_selesai: string | null;
     lokasi: string | null;
@@ -134,6 +135,7 @@ export default function DailyMeetingShow({
 }) {
     const { auth } = usePage<any>().props;
     const isTamu = auth?.user?.role === 'tamu';
+    const bolehHapus = auth?.can?.delete ?? false;
 
     // Notulen Kick Off (FORMULIR NOTULEN RAPAT) kini tersedia untuk SEMUA tipe
     // rapat. Flag P3 dipertahankan hanya untuk menentukan apakah Notulen Temuan
@@ -144,6 +146,19 @@ export default function DailyMeetingShow({
     const [attendees, setAttendees] = useState<Attendee[]>(initialAttendees);
     const [findingDialogOpen, setFindingDialogOpen] = useState(false);
     const [editingFinding, setEditingFinding] = useState<Finding | null>(null);
+    const [realisasiDialogOpen, setRealisasiDialogOpen] = useState(false);
+
+    const realisasiForm = useForm({
+        tanggal_realisasi: meeting.tanggal_realisasi || new Date().toISOString().split('T')[0],
+    });
+
+    const submitRealisasi: FormEventHandler = (e) => {
+        e.preventDefault();
+        realisasiForm.post(`/daily-meetings/${meeting.id}/realisasi`, {
+            preserveScroll: true,
+            onSuccess: () => setRealisasiDialogOpen(false),
+        });
+    };
 
     const findingForm = useForm({ ...emptyFinding });
 
@@ -269,6 +284,12 @@ return;
         }
     };
 
+    const deleteMeeting = () => {
+        if (confirm('PERINGATAN: Menghapus rapat ini akan membuang SELURUH data di dalamnya (absensi, foto, notulen). Apakah Anda yakin?')) {
+            router.delete(`/daily-meetings/${meeting.id}`);
+        }
+    };
+
     const tabs = [
         { key: 'hadir' as const, label: 'Daftar Hadir', icon: Users, count: attendees.length },
         { key: 'kickoff' as const, label: 'Notulen Kick Off Meeting', icon: Handshake },
@@ -289,13 +310,8 @@ return;
                             <div className="space-y-4">
                                 <div className="flex flex-wrap items-center gap-3">
                                     <h1 className="text-2xl font-bold tracking-tight text-foreground">{meeting.judul}</h1>
-                                    <Badge variant={['active', 'berlangsung'].includes(meeting.status) ? 'default' : 'secondary'} className={meeting.status === 'berlangsung' ? 'bg-emerald-500 hover:bg-emerald-600 gap-1.5' : meeting.status === 'active' ? 'bg-blue-500 hover:bg-blue-600 gap-1.5' : 'gap-1.5'}>
-                                        {meeting.status === 'berlangsung' ? (
-                                            <>
-                                                <div className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" />
-                                                Berlangsung
-                                            </>
-                                        ) : meeting.status === 'active' ? (
+                                    <Badge variant={meeting.status === 'active' ? 'default' : 'secondary'} className={meeting.status === 'active' ? 'bg-blue-500 hover:bg-blue-600 gap-1.5' : 'gap-1.5'}>
+                                        {meeting.status === 'active' ? (
                                             <>Akan Datang</>
                                         ) : (
                                             <>
@@ -306,12 +322,31 @@ return;
                                     </Badge>
                                 </div>
                                 
-                                <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-muted-foreground">
-                                    <div className="flex items-center gap-2">
-                                        <div className="flex h-7 w-7 items-center justify-center rounded-full bg-white/80 dark:bg-black/20 shadow-sm">
-                                            <Calendar className="h-3.5 w-3.5 text-primary" />
+                                <div className="flex flex-wrap items-center gap-x-6 gap-y-3 text-sm text-muted-foreground mt-2">
+                                    <div className="flex flex-col gap-1">
+                                        <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70">Rencana</div>
+                                        <div className="flex items-center gap-2">
+                                            <div className="flex h-7 w-7 items-center justify-center rounded-full bg-white/80 dark:bg-black/20 shadow-sm">
+                                                <Calendar className="h-3.5 w-3.5 text-primary" />
+                                            </div>
+                                            <span className="font-medium text-foreground">{new Date(meeting.tanggal).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</span>
                                         </div>
-                                        <span>{new Date(meeting.tanggal).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</span>
+                                    </div>
+                                    
+                                    <div className="flex flex-col gap-1">
+                                        <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70">Realisasi</div>
+                                        <div className="flex items-center gap-2">
+                                            <div className="flex h-7 w-7 items-center justify-center rounded-full bg-white/80 dark:bg-black/20 shadow-sm">
+                                                <Calendar className="h-3.5 w-3.5 text-emerald-600" />
+                                            </div>
+                                            {meeting.tanggal_realisasi ? (
+                                                <span className="font-bold text-emerald-700 dark:text-emerald-400">
+                                                    {new Date(meeting.tanggal_realisasi).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+                                                </span>
+                                            ) : (
+                                                <span className="text-muted-foreground/60 italic text-[13px]">Belum direalisasikan</span>
+                                            )}
+                                        </div>
                                     </div>
                                     {meeting.waktu_mulai && (
                                         <div className="flex items-center gap-2">
@@ -339,8 +374,14 @@ return;
                                         Join Zoom Meeting
                                     </Button>
                                 )}
-                                {['active', 'berlangsung'].includes(meeting.status) && !isTamu && (
+                                {['active'].includes(meeting.status) && !isTamu && (
                                     <>
+                                        {bolehHapus && (
+                                            <Button variant="outline" size="sm" className="gap-2 h-9 text-destructive border-destructive/30 hover:bg-destructive/10" onClick={deleteMeeting}>
+                                                <Trash2 className="h-4 w-4" />
+                                                Hapus
+                                            </Button>
+                                        )}
                                         <Button
                                             variant="outline"
                                             size="sm"
@@ -350,16 +391,50 @@ return;
                                             <QrCode className="h-4 w-4" />
                                             QR Code
                                         </Button>
-                                        <Button variant="default" size="sm" className="gap-2 h-9" onClick={completeMeeting}>
-                                            <CheckCircle2 className="h-4 w-4" />
-                                            Selesaikan Rapat
-                                        </Button>
+                                        {!meeting.tanggal_realisasi ? (
+                                            <Button variant="default" size="sm" className="gap-2 h-9 bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => setRealisasiDialogOpen(true)}>
+                                                <Calendar className="h-4 w-4" />
+                                                Mulai Rapat (Set Realisasi)
+                                            </Button>
+                                        ) : (
+                                            <Button variant="default" size="sm" className="gap-2 h-9" onClick={completeMeeting}>
+                                                <CheckCircle2 className="h-4 w-4" />
+                                                Selesaikan Rapat
+                                            </Button>
+                                        )}
                                     </>
                                 )}
                             </div>
                         </div>
                     </CardContent>
                 </Card>
+
+                {/* Dialog Set Realisasi */}
+                <Dialog open={realisasiDialogOpen} onOpenChange={setRealisasiDialogOpen}>
+                    <DialogContent>
+                        <DialogHeader>
+                            <DialogTitle>Mulai Rapat & Set Realisasi</DialogTitle>
+                            <DialogDescription>
+                                Silakan tentukan tanggal realisasi untuk rapat ini. Rapat akan ditandai telah terealisasi.
+                            </DialogDescription>
+                        </DialogHeader>
+                        <form onSubmit={submitRealisasi} className="space-y-4">
+                            <div className="space-y-2">
+                                <Label>Tanggal Realisasi</Label>
+                                <Input
+                                    type="date"
+                                    value={realisasiForm.data.tanggal_realisasi}
+                                    onChange={(e) => realisasiForm.setData('tanggal_realisasi', e.target.value)}
+                                    required
+                                />
+                            </div>
+                            <DialogFooter>
+                                <Button type="button" variant="outline" onClick={() => setRealisasiDialogOpen(false)}>Batal</Button>
+                                <Button type="submit" disabled={realisasiForm.processing} className="bg-emerald-600 hover:bg-emerald-700 text-white">Simpan & Mulai</Button>
+                            </DialogFooter>
+                        </form>
+                    </DialogContent>
+                </Dialog>
 
                 {/* Tabs Navigation */}
                 <div className="flex p-1 bg-muted/50 rounded-lg w-fit">

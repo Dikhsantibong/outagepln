@@ -60,7 +60,7 @@ class User extends Authenticatable
      */
     public function canDeleteRecords(): bool
     {
-        return $this->isSuperAdmin();
+        return $this->isAdmin();
     }
 
     /** Tamu tidak boleh menulis apa pun. */

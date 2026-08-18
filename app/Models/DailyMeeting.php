@@ -11,6 +11,7 @@ class DailyMeeting extends Model
 
     protected $casts = [
         'tanggal' => 'date',
+        'tanggal_realisasi' => 'date',
     ];
 
     protected static function booted(): void
@@ -69,13 +70,5 @@ class DailyMeeting extends Model
     public function outagePlan()
     {
         return $this->belongsTo(OutagePlan::class);
-    }
-
-    public function getStatusAttribute($value)
-    {
-        if ($value !== 'completed' && $this->tanggal && $this->tanggal->isToday()) {
-            return 'berlangsung';
-        }
-        return $value;
     }
 }
