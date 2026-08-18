@@ -24,7 +24,7 @@ export type NavGroup = {
  * tambahan dan tanpa state yang perlu diingat.
  */
 export function NavMain({ groups = [] }: { groups: NavGroup[] }) {
-    const { isCurrentUrl } = useCurrentUrl();
+    const { isCurrentOrParentUrl } = useCurrentUrl();
 
     return (
         <>
@@ -36,7 +36,7 @@ export function NavMain({ groups = [] }: { groups: NavGroup[] }) {
                             <SidebarMenuItem key={item.title}>
                                 <SidebarMenuButton
                                     asChild
-                                    isActive={isCurrentUrl(item.href)}
+                                    isActive={isCurrentOrParentUrl(item.href)}
                                     tooltip={{ children: item.title }}
                                 >
                                     <Link href={toUrl(item.href)} prefetch>

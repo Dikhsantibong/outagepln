@@ -8,6 +8,7 @@ import {
     HeartPulse,
     LayoutGrid,
     MessageSquare,
+    PieChart,
     ShieldCheck,
     Users,
 } from 'lucide-react';
@@ -71,7 +72,10 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     const groups: NavGroup[] = [
         ...(canAccess('dashboard') ? [{
             label: 'Monitoring',
-            items: [{ title: 'Dashboard', href: dashboard(), icon: LayoutGrid }],
+            items: [
+                { title: 'Dashboard', href: dashboard(), icon: LayoutGrid },
+                { title: 'Summary', href: '/summary', icon: PieChart },
+            ],
         }] : []),
         ...(pelaksanaan.length > 0 ? [{
             label: 'Perencanaan & Pelaksanaan',

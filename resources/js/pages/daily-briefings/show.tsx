@@ -1,6 +1,7 @@
 import { Head, router, usePage, Link } from '@inertiajs/react';
 import { useForm } from '@inertiajs/react';
-import { Calendar, Users, QrCode, FileText, CheckCircle2, ChevronLeft, Plus, Edit, Trash2, Printer, Copy } from 'lucide-react';
+import { Calendar, Users, QrCode, FileText, CheckCircle2, ChevronLeft, Plus, Edit, Trash2, Printer, Copy, FileSpreadsheet, ImageOff, Handshake, Link2, Images, ClipboardList } from 'lucide-react';
+import { Textarea } from '@/components/ui/textarea';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -13,6 +14,7 @@ import {
     DialogContent,
     DialogHeader,
     DialogTitle,
+    DialogDescription,
     DialogFooter,
 } from '@/components/ui/dialog';
 import {
@@ -34,11 +36,22 @@ export default function DailyBriefingsShow({
     briefing,
     attendees,
     issues,
+    findings = [],
+    kickoff = null,
+    kickoffPhotos = [],
+    findingInfo,
+    kickoffDefaults,
 }: {
     briefing: any;
     attendees: any[];
     issues: any[];
+    findings?: any[];
+    kickoff?: any;
+    kickoffPhotos?: any[];
+    findingInfo?: any;
+    kickoffDefaults?: any;
 }) {
+
     const { auth } = usePage<any>().props;
     const isTamu = !(auth?.can?.write ?? false);
     
@@ -82,9 +95,105 @@ export default function DailyBriefingsShow({
     };
 
     // Issue Form
-    const [activeTab, setActiveTab] = useState('header');
+    const [activeTab, setActiveTab] = useState('temuan');
     const [issueModal, setIssueModal] = useState(false);
     const [editingIssue, setEditingIssue] = useState<any>(null);
+    
+    const [findingDialogOpen, setFindingDialogOpen] = useState(false);
+    const [editingFinding, setEditingFinding] = useState<any>(null);
+    const findingForm = useForm({
+        tanggal: '',
+        uraian: '',
+        part_number: '',
+        qty: '',
+        satuan: '',
+        keterangan: '',
+        tindak_lanjut: '',
+        target: 'Open',
+        foto: null as File | null,
+    });
+
+    const openFindingForm = (finding?: any) => {
+        if (finding) {
+            setEditingFinding(finding);
+            findingForm.setData({
+                tanggal: finding.tanggal || '',
+                uraian: finding.uraian || '',
+                part_number: finding.part_number || '',
+                qty: finding.qty || '',
+                satuan: finding.satuan || '',
+                keterangan: finding.keterangan || '',
+                tindak_lanjut: finding.tindak_lanjut || '',
+                target: finding.target || 'Open',
+                foto: null,
+            });
+        } else {
+            setEditingFinding(null);
+            findingForm.reset();
+        }
+        setFindingDialogOpen(true);
+    };
+
+    const submitFinding = (e: React.FormEvent) => {
+        e.preventDefault();
+        const url = editingFinding 
+            ? `/daily-briefings/${briefing.id}/findings/${editingFinding.id}`
+            : `/daily-briefings/${briefing.id}/findings`;
+            
+        findingForm.post(url, {
+            preserveScroll: true,
+            preserveState: true,
+            onSuccess: () => setFindingDialogOpen(false),
+        });
+    };
+
+    const deleteFinding = (id: number) => {
+        if (confirm('Hapus temuan ini?')) {
+            router.delete(`/daily-briefings/${briefing.id}/findings/${id}`, { preserveScroll: true });
+        }
+    };
+
+    const kickoffForm = useForm({
+        nomor_dokumen: kickoff?.nomor_dokumen ?? kickoffDefaults?.nomor_dokumen ?? '',
+        revisi: kickoff?.revisi ?? kickoffDefaults?.revisi ?? '',
+        tanggal_terbit: kickoff?.tanggal_terbit ?? '',
+        pimpinan_rapat: kickoff?.pimpinan_rapat ?? kickoffDefaults?.pimpinan_rapat ?? '',
+        tempat: kickoff?.tempat ?? kickoffDefaults?.tempat ?? '',
+        waktu: kickoff?.waktu ?? kickoffDefaults?.waktu ?? '',
+        agenda: kickoff?.agenda ?? kickoffDefaults?.agenda ?? '',
+        peserta: kickoff?.peserta ?? kickoffDefaults?.peserta ?? '',
+        penyampaian_pln: kickoff?.penyampaian_pln ?? '',
+        nama_mitra: kickoff?.nama_mitra ?? '',
+        penyampaian_mitra: kickoff?.penyampaian_mitra ?? '',
+        hasil_kesepakatan: kickoff?.hasil_kesepakatan ?? '',
+        link_absensi: kickoff?.link_absensi ?? '',
+        pimpinan_nama: kickoff?.pimpinan_nama ?? kickoffDefaults?.pimpinan_nama ?? '',
+        pimpinan_jabatan: kickoff?.pimpinan_jabatan ?? kickoffDefaults?.pimpinan_jabatan ?? '',
+        notulis_nama: kickoff?.notulis_nama ?? kickoffDefaults?.notulis_nama ?? '',
+        notulis_jabatan: kickoff?.notulis_jabatan ?? kickoffDefaults?.notulis_jabatan ?? '',
+        kota_ttd: kickoff?.kota_ttd ?? kickoffDefaults?.kota_ttd ?? '',
+        tanggal_ttd: kickoff?.tanggal_ttd ?? '',
+    });
+
+    const submitKickoff = (e: React.FormEvent) => {
+        e.preventDefault();
+        kickoffForm.post(`/daily-briefings/${briefing.id}/kickoff`, { preserveScroll: true });
+    };
+
+    const kickoffPhotoForm = useForm({ foto: null as File | null, caption: '' });
+    const submitKickoffPhoto = (e: React.FormEvent) => {
+        e.preventDefault();
+        kickoffPhotoForm.post(`/daily-briefings/${briefing.id}/kickoff/photos`, {
+            preserveScroll: true,
+            onSuccess: () => kickoffPhotoForm.reset(),
+        });
+    };
+    const deleteKickoffPhoto = (id: number) => {
+        if (confirm('Hapus dokumentasi?')) {
+            router.delete(`/daily-briefings/${briefing.id}/kickoff/photos/${id}`, { preserveScroll: true });
+        }
+    };
+
     const issueForm = useForm({
         permasalahan: '',
         tindak_lanjut: '',
@@ -198,18 +307,27 @@ export default function DailyBriefingsShow({
                         >
                             <FileText className="h-4 w-4" /> Header & Info
                         </button>
-                        <button 
-                            onClick={() => setActiveTab('issues')} 
-                            className={`flex items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-all ${activeTab === 'issues' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:bg-muted-foreground/10'}`}
-                        >
-                            <CheckCircle2 className="h-4 w-4" /> Permasalahan & Solusi
-                        </button>
+                        
                         <button 
                             onClick={() => setActiveTab('attendees')} 
                             className={`flex items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-all ${activeTab === 'attendees' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:bg-muted-foreground/10'}`}
                         >
                             <Users className="h-4 w-4" /> Daftar Hadir ({attendees.length})
                         </button>
+                        
+                        <button 
+                            onClick={() => setActiveTab('temuan')} 
+                            className={`flex items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-all ${activeTab === 'temuan' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:bg-muted-foreground/10'}`}
+                        >
+                            <ClipboardList className="h-4 w-4" /> Notulen Temuan
+                        </button>
+                        <button 
+                            onClick={() => setActiveTab('kickoff')} 
+                            className={`flex items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-all ${activeTab === 'kickoff' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:bg-muted-foreground/10'}`}
+                        >
+                            <Handshake className="h-4 w-4" /> Notulen
+                        </button>
+
                         <button 
                             onClick={() => setActiveTab('dokumentasi')} 
                             className={`flex items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-all ${activeTab === 'dokumentasi' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:bg-muted-foreground/10'}`}
@@ -468,7 +586,405 @@ export default function DailyBriefingsShow({
                         </div>
                     )}
                 </div>
-            </div>
+                    
+                    {activeTab === 'temuan' && (
+                        <Card>
+                            <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-4 gap-4">
+                                <div>
+                                    <CardTitle>Notulen Temuan</CardTitle>
+                                    <CardDescription>Daftar material temuan overhaul beserta tindak lanjutnya</CardDescription>
+                                    {/* Identitas rapat + mesin, sama dengan kepala berkas PDF/Excel */}
+                                    {findingInfo && (
+                                        <div className="mt-3 grid gap-x-8 gap-y-1 text-xs sm:grid-cols-2">
+                                            {[
+                                                ['JUDUL RAPAT', findingInfo.judul_rapat],
+                                                ['UNIT', findingInfo.unit],
+                                                ['JENIS RAPAT', findingInfo.tipe_rapat],
+                                                ['JENIS INSPEKSI', findingInfo.jenis_inspeksi],
+                                                ['TANGGAL RAPAT', findingInfo.tanggal_rapat],
+                                                ['JUMLAH TEMUAN', `${findings.length} item`],
+                                            ].map(([label, value]) => (
+                                                <div key={label} className="flex gap-2">
+                                                    <span className="w-[110px] shrink-0 font-semibold text-muted-foreground">
+                                                        {label}
+                                                    </span>
+                                                    <span className="text-muted-foreground">:</span>
+                                                    <span className="font-medium text-red-600 dark:text-red-400">
+                                                        {value}
+                                                    </span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="flex flex-wrap gap-2 shrink-0">
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="gap-2 h-9"
+                                        onClick={() => window.open(`/daily-briefings/${briefing.id}/findings/export-pdf`, '_blank')}
+                                    >
+                                        <FileText className="h-4 w-4 text-red-500" />
+                                        PDF
+                                    </Button>
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="gap-2 h-9"
+                                        onClick={() => window.open(`/daily-briefings/${briefing.id}/findings/export-excel`, '_blank')}
+                                    >
+                                        <FileSpreadsheet className="h-4 w-4 text-emerald-600" />
+                                        Excel
+                                    </Button>
+                                    {!isTamu && (
+                                        <Button size="sm" className="gap-2 h-9" onClick={() => openFindingForm()}>
+                                            <Plus className="h-4 w-4" />
+                                            Tambah Temuan
+                                        </Button>
+                                    )}
+                                </div>
+                            </CardHeader>
+                            <CardContent className="p-0 overflow-x-auto">
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow className="bg-muted/50 hover:bg-muted/50">
+                                            <TableHead className="w-12 text-center font-bold border-r">NO</TableHead>
+                                            <TableHead className="text-center font-bold border-r whitespace-nowrap">TGL</TableHead>
+                                            <TableHead className="font-bold border-r min-w-[180px]">URAIAN</TableHead>
+                                            <TableHead className="text-center font-bold border-r whitespace-nowrap">P/N</TableHead>
+                                            <TableHead className="text-center font-bold border-r">QTY</TableHead>
+                                            <TableHead className="text-center font-bold border-r">SATUAN</TableHead>
+                                            <TableHead className="text-center font-bold border-r">FOTO</TableHead>
+                                            <TableHead className="font-bold border-r min-w-[150px]">KETERANGAN</TableHead>
+                                            <TableHead className="font-bold border-r min-w-[220px]">TINDAK LANJUT</TableHead>
+                                            <TableHead className="text-center font-bold border-r">TARGET</TableHead>
+                                            {!isTamu && <TableHead className="text-center font-bold w-20">AKSI</TableHead>}
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {findings.length > 0 ? (
+                                            findings.map((f, idx) => (
+                                                <TableRow key={f.id} className="hover:bg-muted/30 group">
+                                                    <TableCell className="text-center font-mono text-xs text-muted-foreground border-r">{idx + 1}</TableCell>
+                                                    <TableCell className="text-center font-mono text-[11px] text-muted-foreground border-r whitespace-nowrap">
+                                                        {f.tanggal ? new Date(f.tanggal).toLocaleDateString('id-ID') : '-'}
+                                                    </TableCell>
+                                                    <TableCell className="text-xs font-medium border-r">{f.uraian}</TableCell>
+                                                    <TableCell className="text-center font-mono text-[11px] border-r whitespace-nowrap">{f.part_number || '-'}</TableCell>
+                                                    <TableCell className="text-center text-xs border-r">{f.qty ?? '-'}</TableCell>
+                                                    <TableCell className="text-center text-xs border-r">{f.satuan || '-'}</TableCell>
+                                                    <TableCell className="text-center border-r">
+                                                        {f.foto ? (
+                                                            <img
+                                                                src={f.foto}
+                                                                alt={f.uraian}
+                                                                className="h-16 w-24 object-cover rounded border mx-auto cursor-zoom-in"
+                                                                onClick={() => window.open(f.foto!, '_blank')}
+                                                            />
+                                                        ) : (
+                                                            <ImageOff className="h-5 w-5 mx-auto opacity-20" />
+                                                        )}
+                                                    </TableCell>
+                                                    <TableCell className="text-xs border-r">{f.keterangan || '-'}</TableCell>
+                                                    <TableCell className="text-xs border-r whitespace-pre-line">{f.tindak_lanjut || '-'}</TableCell>
+                                                    <TableCell className="text-center border-r">
+                                                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                                                            (f.target || '').toUpperCase() === 'CLOSE'
+                                                                ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400'
+                                                                : 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400'
+                                                        }`}>
+                                                            {f.target || 'Open'}
+                                                        </span>
+                                                    </TableCell>
+                                                    {!isTamu && (
+                                                        <TableCell className="text-center">
+                                                            <div className="flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                                <Button
+                                                                    variant="ghost"
+                                                                    size="icon"
+                                                                    className="h-7 w-7 text-primary hover:bg-primary/10"
+                                                                    onClick={() => openFindingForm(f)}
+                                                                >
+                                                                    <Pencil className="h-3.5 w-3.5" />
+                                                                </Button>
+                                                                <Button
+                                                                    variant="ghost"
+                                                                    size="icon"
+                                                                    className="h-7 w-7 text-destructive hover:bg-destructive/10"
+                                                                    onClick={() => deleteFinding(f)}
+                                                                >
+                                                                    <Trash2 className="h-3.5 w-3.5" />
+                                                                </Button>
+                                                            </div>
+                                                        </TableCell>
+                                                    )}
+                                                </TableRow>
+                                            ))
+                                        ) : (
+                                            <TableRow>
+                                                <TableCell colSpan={isTamu ? 10 : 11} className="h-48 text-center text-muted-foreground">
+                                                    <div className="flex flex-col items-center justify-center space-y-3">
+                                                        <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center">
+                                                            <ClipboardList className="h-6 w-6 opacity-30" />
+                                                        </div>
+                                                        <div className="space-y-1">
+                                                            <p className="font-semibold">Belum ada temuan</p>
+                                                            <p className="text-xs max-w-xs mx-auto">
+                                                                Tambahkan material temuan overhaul beserta foto dan tindak lanjutnya.
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                </TableCell>
+                                            </TableRow>
+                                        )}
+                                    </TableBody>
+                                </Table>
+                            </CardContent>
+                        </Card>
+                    )}
+                    
+                    {activeTab === 'kickoff' && (
+                        <Card>
+                            <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-4 gap-4">
+                                <div>
+                                    <CardTitle>Notulen</CardTitle>
+                                    <CardDescription>Formulir notulen rapat kick off pelaksanaan pekerjaan overhaul</CardDescription>
+                                </div>
+                                <div className="flex shrink-0 gap-2">
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="gap-2 h-9"
+                                        onClick={() => window.open(`/daily-briefings/${briefing.id}/kickoff/export-pdf`, '_blank')}
+                                    >
+                                        <FileText className="h-4 w-4 text-red-500" />
+                                        Export PDF
+                                    </Button>
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="gap-2 h-9"
+                                        onClick={() => window.open(`/daily-briefings/${briefing.id}/kickoff/export-excel`, '_blank')}
+                                    >
+                                        <FileSpreadsheet className="h-4 w-4 text-emerald-600" />
+                                        Export Excel
+                                    </Button>
+                                </div>
+                            </CardHeader>
+                            <CardContent className="space-y-8">
+                                <form onSubmit={submitKickoff} className="space-y-8">
+                                    {/* Identitas dokumen */}
+                                    <div className="space-y-4">
+                                        <h4 className="text-xs font-bold uppercase tracking-[0.1em] text-primary/80">Identitas Dokumen</h4>
+                                        <div className="grid gap-4 md:grid-cols-3">
+                                            <div className="space-y-2">
+                                                <Label htmlFor="k_nodok">Nomor Dokumen</Label>
+                                                <Input id="k_nodok" value={kickoffForm.data.nomor_dokumen}
+                                                    onChange={(e) => kickoffForm.setData('nomor_dokumen', e.target.value)} disabled={isTamu} />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <Label htmlFor="k_rev">Revisi</Label>
+                                                <Input id="k_rev" value={kickoffForm.data.revisi}
+                                                    onChange={(e) => kickoffForm.setData('revisi', e.target.value)} disabled={isTamu} />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <Label htmlFor="k_terbit">Tanggal Terbit</Label>
+                                                <Input id="k_terbit" type="date" value={kickoffForm.data.tanggal_terbit}
+                                                    onChange={(e) => kickoffForm.setData('tanggal_terbit', e.target.value)} disabled={isTamu} />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Identitas rapat */}
+                                    <div className="space-y-4">
+                                        <h4 className="text-xs font-bold uppercase tracking-[0.1em] text-primary/80">Identitas Rapat</h4>
+                                        <div className="grid gap-4 md:grid-cols-2">
+                                            <div className="space-y-2">
+                                                <Label htmlFor="k_pimpinan">Pimpinan Rapat</Label>
+                                                <Input id="k_pimpinan" value={kickoffForm.data.pimpinan_rapat}
+                                                    onChange={(e) => kickoffForm.setData('pimpinan_rapat', e.target.value)} disabled={isTamu} />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <Label htmlFor="k_tempat">Tempat</Label>
+                                                <Input id="k_tempat" value={kickoffForm.data.tempat}
+                                                    onChange={(e) => kickoffForm.setData('tempat', e.target.value)} disabled={isTamu} />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <Label htmlFor="k_waktu">Waktu</Label>
+                                                <Input id="k_waktu" placeholder="09.15 WITA - Selesai" value={kickoffForm.data.waktu}
+                                                    onChange={(e) => kickoffForm.setData('waktu', e.target.value)} disabled={isTamu} />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <Label htmlFor="k_peserta">Peserta</Label>
+                                                <Input id="k_peserta" value={kickoffForm.data.peserta}
+                                                    onChange={(e) => kickoffForm.setData('peserta', e.target.value)} disabled={isTamu} />
+                                            </div>
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label htmlFor="k_agenda">Agenda</Label>
+                                            <Textarea id="k_agenda" className="min-h-[70px] resize-none" value={kickoffForm.data.agenda}
+                                                onChange={(e) => kickoffForm.setData('agenda', e.target.value)} disabled={isTamu} />
+                                        </div>
+                                    </div>
+
+                                    {/* I. Pembahasan */}
+                                    <div className="space-y-4">
+                                        <h4 className="text-xs font-bold uppercase tracking-[0.1em] text-primary/80">I. Pembahasan</h4>
+                                        <div className="space-y-2">
+                                            <Label htmlFor="k_pln">A. Penyampaian PLN NP UP Kendari</Label>
+                                            <Textarea id="k_pln" className="min-h-[150px] resize-none"
+                                                placeholder={'Satu poin per baris.\nContoh:\nTerkait rencana pelaksanaan Major Overhaul...\nUntuk mesin Deutz BV 8M 628...'}
+                                                value={kickoffForm.data.penyampaian_pln}
+                                                onChange={(e) => kickoffForm.setData('penyampaian_pln', e.target.value)} disabled={isTamu} />
+                                            <p className="text-xs text-muted-foreground">Tiap baris akan menjadi poin bernomor pada dokumen.</p>
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label htmlFor="k_mitra_nama">Nama Mitra / Vendor</Label>
+                                            <Input id="k_mitra_nama" placeholder="PT SINAR TIMUR UTAMA RAYA" value={kickoffForm.data.nama_mitra}
+                                                onChange={(e) => kickoffForm.setData('nama_mitra', e.target.value)} disabled={isTamu} />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label htmlFor="k_mitra">B. Penyampaian Mitra / Vendor</Label>
+                                            <Textarea id="k_mitra" className="min-h-[130px] resize-none" placeholder="Satu poin per baris."
+                                                value={kickoffForm.data.penyampaian_mitra}
+                                                onChange={(e) => kickoffForm.setData('penyampaian_mitra', e.target.value)} disabled={isTamu} />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label htmlFor="k_sepakat">C. Hasil Kesepakatan</Label>
+                                            <Textarea id="k_sepakat" className="min-h-[130px] resize-none" placeholder="Satu poin per baris."
+                                                value={kickoffForm.data.hasil_kesepakatan}
+                                                onChange={(e) => kickoffForm.setData('hasil_kesepakatan', e.target.value)} disabled={isTamu} />
+                                        </div>
+                                    </div>
+
+                                    {/* II. Lampiran - link absensi */}
+                                    <div className="space-y-4">
+                                        <h4 className="text-xs font-bold uppercase tracking-[0.1em] text-primary/80">II. Lampiran</h4>
+                                        <div className="space-y-2">
+                                            <Label htmlFor="k_absensi" className="flex items-center gap-1.5">
+                                                <Link2 className="h-3.5 w-3.5" />
+                                                Link Daftar Hadir / Absensi
+                                            </Label>
+                                            <Input id="k_absensi" type="url" placeholder="https://..." value={kickoffForm.data.link_absensi}
+                                                onChange={(e) => kickoffForm.setData('link_absensi', e.target.value)} disabled={isTamu} />
+                                            <p className="text-xs text-muted-foreground">
+                                                Kosongkan untuk memakai daftar hadir yang tercatat di sistem ({attendees.length} peserta).
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    {/* Tanda tangan */}
+                                    <div className="space-y-4">
+                                        <h4 className="text-xs font-bold uppercase tracking-[0.1em] text-primary/80">Tanda Tangan</h4>
+                                        <div className="grid gap-4 md:grid-cols-2">
+                                            <div className="space-y-2">
+                                                <Label htmlFor="k_pn">Nama Pimpinan Rapat</Label>
+                                                <Input id="k_pn" value={kickoffForm.data.pimpinan_nama}
+                                                    onChange={(e) => kickoffForm.setData('pimpinan_nama', e.target.value)} disabled={isTamu} />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <Label htmlFor="k_pj">Jabatan Pimpinan Rapat</Label>
+                                                <Input id="k_pj" value={kickoffForm.data.pimpinan_jabatan}
+                                                    onChange={(e) => kickoffForm.setData('pimpinan_jabatan', e.target.value)} disabled={isTamu} />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <Label htmlFor="k_nn">Nama Notulis</Label>
+                                                <Input id="k_nn" value={kickoffForm.data.notulis_nama}
+                                                    onChange={(e) => kickoffForm.setData('notulis_nama', e.target.value)} disabled={isTamu} />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <Label htmlFor="k_nj">Jabatan Notulis</Label>
+                                                <Input id="k_nj" value={kickoffForm.data.notulis_jabatan}
+                                                    onChange={(e) => kickoffForm.setData('notulis_jabatan', e.target.value)} disabled={isTamu} />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <Label htmlFor="k_kota">Kota Tanda Tangan</Label>
+                                                <Input id="k_kota" value={kickoffForm.data.kota_ttd}
+                                                    onChange={(e) => kickoffForm.setData('kota_ttd', e.target.value)} disabled={isTamu} />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <Label htmlFor="k_tglttd">Tanggal Tanda Tangan</Label>
+                                                <Input id="k_tglttd" type="date" value={kickoffForm.data.tanggal_ttd}
+                                                    onChange={(e) => kickoffForm.setData('tanggal_ttd', e.target.value)} disabled={isTamu} />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {!isTamu && (
+                                        <div className="flex justify-end pt-4 border-t">
+                                            <Button type="submit" disabled={kickoffForm.processing} className="gap-2 px-8">
+                                                <FileText className="h-4 w-4" />
+                                                Simpan Notulen Kick Off
+                                            </Button>
+                                        </div>
+                                    )}
+                                </form>
+
+                                {/* Dokumentasi rapat - form terpisah agar upload tidak mengganggu form utama */}
+                                <div className="space-y-4 border-t pt-6">
+                                    <h4 className="text-xs font-bold uppercase tracking-[0.1em] text-primary/80 flex items-center gap-1.5">
+                                        <Images className="h-3.5 w-3.5" />
+                                        Dokumentasi Rapat
+                                    </h4>
+
+                                    {!isTamu && (
+                                        <form onSubmit={submitPhoto} className="flex flex-wrap items-end gap-3">
+                                            <div className="space-y-2">
+                                                <Label htmlFor="k_foto">Foto</Label>
+                                                <Input
+                                                    id="k_foto"
+                                                    type="file"
+                                                    accept="image/*"
+                                                    className="w-64"
+                                                    onChange={(e) => photoForm.setData('foto', e.target.files?.[0] ?? null)}
+                                                />
+                                            </div>
+                                            <div className="space-y-2 flex-1 min-w-[200px]">
+                                                <Label htmlFor="k_cap">Keterangan</Label>
+                                                <Input
+                                                    id="k_cap"
+                                                    placeholder="cth: Pembukaan rapat"
+                                                    value={photoForm.data.caption}
+                                                    onChange={(e) => photoForm.setData('caption', e.target.value)}
+                                                />
+                                            </div>
+                                            <Button type="submit" variant="outline" className="gap-2" disabled={photoForm.processing || !photoForm.data.foto}>
+                                                <Plus className="h-4 w-4" />
+                                                Tambah Foto
+                                            </Button>
+                                        </form>
+                                    )}
+
+                                    {kickoffPhotos.length > 0 ? (
+                                        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                                            {kickoffPhotos.map((p) => (
+                                                <div key={p.id} className="group relative rounded-lg border overflow-hidden bg-card">
+                                                    <img src={p.foto} alt={p.caption || 'Dokumentasi'} className="h-40 w-full object-cover" />
+                                                    <div className="p-2 text-xs text-muted-foreground">{p.caption || '-'}</div>
+                                                    {!isTamu && (
+                                                        <Button
+                                                            variant="destructive"
+                                                            size="icon"
+                                                            className="absolute top-2 right-2 h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                            onClick={() => deletePhoto(p)}
+                                                        >
+                                                            <Trash2 className="h-3.5 w-3.5" />
+                                                        </Button>
+                                                    )}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <div className="flex flex-col items-center justify-center py-8 text-center rounded-lg border border-dashed">
+                                            <Images className="h-8 w-8 opacity-20 mb-2" />
+                                            <p className="text-sm text-muted-foreground italic">Belum ada dokumentasi rapat.</p>
+                                        </div>
+                                    )}
+                                </div>
+                            </CardContent>
+                        </Card>
+                    )}
+                </div>
 
             <Dialog open={issueModal} onOpenChange={setIssueModal}>
                 <DialogContent className="sm:max-w-[600px]">
@@ -521,6 +1037,147 @@ export default function DailyBriefingsShow({
                     </form>
                 </DialogContent>
             </Dialog>
+
+            {/* Dialog Tambah / Edit Temuan */}
+            <Dialog open={findingDialogOpen} onOpenChange={(open) => {
+ if (!open) {
+ setFindingDialogOpen(false); setEditingFinding(null); 
+} 
+}}>
+                <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+                    <DialogHeader>
+                        <DialogTitle>{editingFinding ? 'Edit Temuan' : 'Tambah Temuan'}</DialogTitle>
+                        <DialogDescription>
+                            {editingFinding
+                                ? 'Perbarui data material temuan overhaul.'
+                                : 'Input data material temuan overhaul baru.'}
+                        </DialogDescription>
+                    </DialogHeader>
+                    <form onSubmit={submitFinding} className="space-y-4">
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label htmlFor="f_tanggal">Tanggal</Label>
+                                <Input
+                                    id="f_tanggal"
+                                    type="date"
+                                    value={findingForm.data.tanggal}
+                                    onChange={(e) => findingForm.setData('tanggal', e.target.value)}
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="f_target">Target</Label>
+                                <Select value={findingForm.data.target} onValueChange={(v) => findingForm.setData('target', v)}>
+                                    <SelectTrigger id="f_target">
+                                        <SelectValue placeholder="Pilih Target" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="Open">Open</SelectItem>
+                                        <SelectItem value="Close">Close</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label htmlFor="f_uraian">Uraian</Label>
+                            <Input
+                                id="f_uraian"
+                                type="text"
+                                placeholder="cth: STUD BOLT CYLINDER HEAD NO. 7"
+                                value={findingForm.data.uraian}
+                                onChange={(e) => findingForm.setData('uraian', e.target.value)}
+                            />
+                            {findingForm.errors.uraian && <p className="text-xs text-destructive">{findingForm.errors.uraian}</p>}
+                        </div>
+
+                        <div className="grid grid-cols-3 gap-4">
+                            <div className="space-y-2">
+                                <Label htmlFor="f_pn">P/N</Label>
+                                <Input
+                                    id="f_pn"
+                                    type="text"
+                                    placeholder="1.1110-007"
+                                    value={findingForm.data.part_number}
+                                    onChange={(e) => findingForm.setData('part_number', e.target.value)}
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="f_qty">Qty</Label>
+                                <Input
+                                    id="f_qty"
+                                    type="number"
+                                    min={0}
+                                    value={findingForm.data.qty}
+                                    onChange={(e) => findingForm.setData('qty', e.target.value)}
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="f_satuan">Satuan</Label>
+                                <Input
+                                    id="f_satuan"
+                                    type="text"
+                                    placeholder="Bh"
+                                    value={findingForm.data.satuan}
+                                    onChange={(e) => findingForm.setData('satuan', e.target.value)}
+                                />
+                            </div>
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label htmlFor="f_foto">Foto</Label>
+                            <Input
+                                id="f_foto"
+                                type="file"
+                                accept="image/*"
+                                onChange={(e) => findingForm.setData('foto', e.target.files?.[0] ?? null)}
+                            />
+                            {editingFinding?.foto && !findingForm.data.foto && (
+                                <div className="flex items-center gap-2 pt-1">
+                                    <img src={editingFinding.foto} alt="Foto saat ini" className="h-14 w-20 object-cover rounded border" />
+                                    <span className="text-xs text-muted-foreground">
+                                        Foto saat ini. Pilih file baru untuk mengganti.
+                                    </span>
+                                </div>
+                            )}
+                            {findingForm.errors.foto && <p className="text-xs text-destructive">{findingForm.errors.foto}</p>}
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label htmlFor="f_ket">Keterangan</Label>
+                            <Textarea
+                                id="f_ket"
+                                placeholder="cth: Stud Bolt Patah"
+                                className="min-h-[70px] resize-none"
+                                value={findingForm.data.keterangan}
+                                onChange={(e) => findingForm.setData('keterangan', e.target.value)}
+                            />
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label htmlFor="f_tl">Tindak Lanjut</Label>
+                            <Textarea
+                                id="f_tl"
+                                placeholder={'Perlu dilakukan penggantian\nAkan menggunakan stok unit'}
+                                className="min-h-[100px] resize-none"
+                                value={findingForm.data.tindak_lanjut}
+                                onChange={(e) => findingForm.setData('tindak_lanjut', e.target.value)}
+                            />
+                            <p className="text-xs text-muted-foreground">Gunakan baris baru untuk memisahkan tiap poin.</p>
+                        </div>
+
+                        <DialogFooter className="pt-2">
+                            <Button type="button" variant="outline" onClick={() => {
+ setFindingDialogOpen(false); setEditingFinding(null); 
+}}>
+                                Batal
+                            </Button>
+                            <Button type="submit" disabled={findingForm.processing}>
+                                {editingFinding ? 'Simpan Perubahan' : 'Simpan Temuan'}
+                            </Button>
+                        </DialogFooter>
+                    </form>
+                </DialogContent></Dialog>
+
         </>
     );
 }

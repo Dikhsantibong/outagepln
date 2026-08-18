@@ -104,21 +104,11 @@ type FindingInfo = {
     jenis_inspeksi: string;
 };
 
-const emptyFinding = {
-    tanggal: '',
-    uraian: '',
-    part_number: '',
-    qty: '',
-    satuan: '',
-    keterangan: '',
-    tindak_lanjut: '',
-    target: 'Open',
-    foto: null as File | null,
-};
 
 export default function DailyMeetingShow({
     meeting,
     attendees: initialAttendees,
+    issues: initialIssues = [],
     findings = [],
     findingInfo,
     kickoff = null,
@@ -127,6 +117,7 @@ export default function DailyMeetingShow({
 }: {
     meeting: Meeting;
     attendees: Attendee[];
+    issues?: any[];
     findings?: Finding[];
     findingInfo?: FindingInfo;
     kickoff?: Kickoff;
@@ -142,8 +133,9 @@ export default function DailyMeetingShow({
     // masih ditampilkan (rapat non-P3 tetap punya lembar temuan).
     const isKickoffMeeting = (meeting.tipe_rapat || '').toUpperCase() === 'RAPAT P3';
 
-    const [activeTab, setActiveTab] = useState<'hadir' | 'temuan' | 'kickoff'>('hadir');
+    const [activeTab, setActiveTab] = useState<'hadir' | 'kickoff' | 'issues'>('hadir');
     const [attendees, setAttendees] = useState<Attendee[]>(initialAttendees);
+    const [issues, setIssues] = useState<any[]>(initialIssues);
     const [findingDialogOpen, setFindingDialogOpen] = useState(false);
     const [editingFinding, setEditingFinding] = useState<Finding | null>(null);
     const [realisasiDialogOpen, setRealisasiDialogOpen] = useState(false);
@@ -158,56 +150,6 @@ export default function DailyMeetingShow({
             preserveScroll: true,
             onSuccess: () => setRealisasiDialogOpen(false),
         });
-    };
-
-    const findingForm = useForm({ ...emptyFinding });
-
-    const openAddFinding = () => {
-        setEditingFinding(null);
-        findingForm.setData({ ...emptyFinding });
-        findingForm.clearErrors();
-        setFindingDialogOpen(true);
-    };
-
-    const openEditFinding = (f: Finding) => {
-        setEditingFinding(f);
-        findingForm.setData({
-            tanggal: f.tanggal || '',
-            uraian: f.uraian || '',
-            part_number: f.part_number || '',
-            qty: f.qty?.toString() || '',
-            satuan: f.satuan || '',
-            keterangan: f.keterangan || '',
-            tindak_lanjut: f.tindak_lanjut || '',
-            target: f.target || 'Open',
-            foto: null,
-        });
-        findingForm.clearErrors();
-        setFindingDialogOpen(true);
-    };
-
-    const submitFinding: FormEventHandler = (e) => {
-        e.preventDefault();
-        const url = editingFinding
-            ? `/daily-meetings/${meeting.id}/findings/${editingFinding.id}`
-            : `/daily-meetings/${meeting.id}/findings`;
-
-        // Always POST: file uploads cannot be sent through a PUT request.
-        findingForm.post(url, {
-            forceFormData: true,
-            preserveScroll: true,
-            onSuccess: () => {
-                setFindingDialogOpen(false);
-                setEditingFinding(null);
-                findingForm.reset();
-            },
-        });
-    };
-
-    const deleteFinding = (f: Finding) => {
-        if (confirm(`Hapus temuan "${f.uraian}"?`)) {
-            router.delete(`/daily-meetings/${meeting.id}/findings/${f.id}`, { preserveScroll: true });
-        }
     };
 
     // --- Kick Off Meeting notulen -----------------------------------------
@@ -237,6 +179,53 @@ export default function DailyMeetingShow({
     const submitKickoff: FormEventHandler = (e) => {
         e.preventDefault();
         kickoffForm.post(`/daily-meetings/${meeting.id}/kickoff`, { preserveScroll: true });
+    };
+
+    
+    const [issueModal, setIssueModal] = useState(false);
+    const [editingIssue, setEditingIssue] = useState<any>(null);
+    const issueForm = useForm({
+        permasalahan: '',
+        tindak_lanjut: '',
+        target: '',
+        pic: '',
+        status: 'Open',
+    });
+
+    const openIssueForm = (issue?: any) => {
+        if (issue) {
+            setEditingIssue(issue);
+            issueForm.setData({
+                permasalahan: issue.permasalahan,
+                tindak_lanjut: issue.tindak_lanjut,
+                target: issue.target,
+                pic: issue.pic,
+                status: issue.status,
+            });
+        } else {
+            setEditingIssue(null);
+            issueForm.reset();
+        }
+        setIssueModal(true);
+    };
+
+    const submitIssue: React.FormEventHandler = (e) => {
+        e.preventDefault();
+        const url = editingIssue
+            ? `/daily-meetings/${meeting.id}/issues/${editingIssue.id}`
+            : `/daily-meetings/${meeting.id}/issues`;
+        
+        if (editingIssue) {
+            issueForm.put(url, { preserveScroll: true, onSuccess: () => setIssueModal(false) });
+        } else {
+            issueForm.post(url, { preserveScroll: true, onSuccess: () => setIssueModal(false) });
+        }
+    };
+
+    const deleteIssue = (id: number) => {
+        if (confirm('Hapus permasalahan ini?')) {
+            router.delete(`/daily-meetings/${meeting.id}/issues/${id}`, { preserveScroll: true });
+        }
     };
 
     const photoForm = useForm({ foto: null as File | null, caption: '' });
@@ -292,10 +281,9 @@ return;
 
     const tabs = [
         { key: 'hadir' as const, label: 'Daftar Hadir', icon: Users, count: attendees.length },
-        { key: 'kickoff' as const, label: 'Notulen Kick Off Meeting', icon: Handshake },
-        ...(!isKickoffMeeting
-            ? [{ key: 'temuan' as const, label: 'Notulen Temuan', icon: ClipboardList, count: findings.length }]
-            : []),
+        ...(isKickoffMeeting
+            ? [{ key: 'kickoff' as const, label: 'Notulen Kick Off Meeting', icon: Handshake }]
+            : [{ key: 'issues' as const, label: 'Notulen', icon: ClipboardList, count: issues.length }]),
     ];
 
     return (
@@ -533,161 +521,77 @@ return;
                         </Card>
                     )}
 
-                    {activeTab === 'temuan' && (
+                    {activeTab === 'issues' && (
+                        <div className="mt-4">
                         <Card>
-                            <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-4 gap-4">
+                            <CardHeader className="flex flex-row items-center justify-between pb-2">
                                 <div>
-                                    <CardTitle>Notulen Temuan</CardTitle>
-                                    <CardDescription>Daftar material temuan overhaul beserta tindak lanjutnya</CardDescription>
-                                    {/* Identitas rapat + mesin, sama dengan kepala berkas PDF/Excel */}
-                                    {findingInfo && (
-                                        <div className="mt-3 grid gap-x-8 gap-y-1 text-xs sm:grid-cols-2">
-                                            {[
-                                                ['JUDUL RAPAT', findingInfo.judul_rapat],
-                                                ['UNIT', findingInfo.unit],
-                                                ['JENIS RAPAT', findingInfo.tipe_rapat],
-                                                ['JENIS INSPEKSI', findingInfo.jenis_inspeksi],
-                                                ['TANGGAL RAPAT', findingInfo.tanggal_rapat],
-                                                ['JUMLAH TEMUAN', `${findings.length} item`],
-                                            ].map(([label, value]) => (
-                                                <div key={label} className="flex gap-2">
-                                                    <span className="w-[110px] shrink-0 font-semibold text-muted-foreground">
-                                                        {label}
-                                                    </span>
-                                                    <span className="text-muted-foreground">:</span>
-                                                    <span className="font-medium text-red-600 dark:text-red-400">
-                                                        {value}
-                                                    </span>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
+                                    <CardTitle>Notulen</CardTitle>
+                                    <CardDescription>Catatan permasalahan dan tindak lanjut (Notulen Rapat)</CardDescription>
                                 </div>
-                                <div className="flex flex-wrap gap-2 shrink-0">
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        className="gap-2 h-9"
-                                        onClick={() => window.open(`/daily-meetings/${meeting.id}/findings/export-pdf`, '_blank')}
-                                    >
-                                        <FileText className="h-4 w-4 text-red-500" />
-                                        PDF
+                                {!isTamu && (
+                                    <Button onClick={() => openIssueForm()} size="sm" className="h-8 gap-1">
+                                        <Plus className="h-3.5 w-3.5" /> Tambah
                                     </Button>
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        className="gap-2 h-9"
-                                        onClick={() => window.open(`/daily-meetings/${meeting.id}/findings/export-excel`, '_blank')}
-                                    >
-                                        <FileSpreadsheet className="h-4 w-4 text-emerald-600" />
-                                        Excel
-                                    </Button>
-                                    {!isTamu && (
-                                        <Button size="sm" className="gap-2 h-9" onClick={openAddFinding}>
-                                            <Plus className="h-4 w-4" />
-                                            Tambah Temuan
-                                        </Button>
-                                    )}
-                                </div>
+                                )}
                             </CardHeader>
-                            <CardContent className="p-0 overflow-x-auto">
-                                <Table>
-                                    <TableHeader>
-                                        <TableRow className="bg-muted/50 hover:bg-muted/50">
-                                            <TableHead className="w-12 text-center font-bold border-r">NO</TableHead>
-                                            <TableHead className="text-center font-bold border-r whitespace-nowrap">TGL</TableHead>
-                                            <TableHead className="font-bold border-r min-w-[180px]">URAIAN</TableHead>
-                                            <TableHead className="text-center font-bold border-r whitespace-nowrap">P/N</TableHead>
-                                            <TableHead className="text-center font-bold border-r">QTY</TableHead>
-                                            <TableHead className="text-center font-bold border-r">SATUAN</TableHead>
-                                            <TableHead className="text-center font-bold border-r">FOTO</TableHead>
-                                            <TableHead className="font-bold border-r min-w-[150px]">KETERANGAN</TableHead>
-                                            <TableHead className="font-bold border-r min-w-[220px]">TINDAK LANJUT</TableHead>
-                                            <TableHead className="text-center font-bold border-r">TARGET</TableHead>
-                                            {!isTamu && <TableHead className="text-center font-bold w-20">AKSI</TableHead>}
-                                        </TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                        {findings.length > 0 ? (
-                                            findings.map((f, idx) => (
-                                                <TableRow key={f.id} className="hover:bg-muted/30 group">
-                                                    <TableCell className="text-center font-mono text-xs text-muted-foreground border-r">{idx + 1}</TableCell>
-                                                    <TableCell className="text-center font-mono text-[11px] text-muted-foreground border-r whitespace-nowrap">
-                                                        {f.tanggal ? new Date(f.tanggal).toLocaleDateString('id-ID') : '-'}
-                                                    </TableCell>
-                                                    <TableCell className="text-xs font-medium border-r">{f.uraian}</TableCell>
-                                                    <TableCell className="text-center font-mono text-[11px] border-r whitespace-nowrap">{f.part_number || '-'}</TableCell>
-                                                    <TableCell className="text-center text-xs border-r">{f.qty ?? '-'}</TableCell>
-                                                    <TableCell className="text-center text-xs border-r">{f.satuan || '-'}</TableCell>
-                                                    <TableCell className="text-center border-r">
-                                                        {f.foto ? (
-                                                            <img
-                                                                src={f.foto}
-                                                                alt={f.uraian}
-                                                                className="h-16 w-24 object-cover rounded border mx-auto cursor-zoom-in"
-                                                                onClick={() => window.open(f.foto!, '_blank')}
-                                                            />
-                                                        ) : (
-                                                            <ImageOff className="h-5 w-5 mx-auto opacity-20" />
-                                                        )}
-                                                    </TableCell>
-                                                    <TableCell className="text-xs border-r">{f.keterangan || '-'}</TableCell>
-                                                    <TableCell className="text-xs border-r whitespace-pre-line">{f.tindak_lanjut || '-'}</TableCell>
-                                                    <TableCell className="text-center border-r">
-                                                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
-                                                            (f.target || '').toUpperCase() === 'CLOSE'
-                                                                ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400'
-                                                                : 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400'
-                                                        }`}>
-                                                            {f.target || 'Open'}
-                                                        </span>
-                                                    </TableCell>
-                                                    {!isTamu && (
-                                                        <TableCell className="text-center">
-                                                            <div className="flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                                <Button
-                                                                    variant="ghost"
-                                                                    size="icon"
-                                                                    className="h-7 w-7 text-primary hover:bg-primary/10"
-                                                                    onClick={() => openEditFinding(f)}
-                                                                >
-                                                                    <Pencil className="h-3.5 w-3.5" />
-                                                                </Button>
-                                                                <Button
-                                                                    variant="ghost"
-                                                                    size="icon"
-                                                                    className="h-7 w-7 text-destructive hover:bg-destructive/10"
-                                                                    onClick={() => deleteFinding(f)}
-                                                                >
-                                                                    <Trash2 className="h-3.5 w-3.5" />
-                                                                </Button>
-                                                            </div>
-                                                        </TableCell>
-                                                    )}
-                                                </TableRow>
-                                            ))
-                                        ) : (
+                            <CardContent>
+                                <div className="rounded-md border">
+                                    <Table>
+                                        <TableHeader className="bg-muted/50">
                                             <TableRow>
-                                                <TableCell colSpan={isTamu ? 10 : 11} className="h-48 text-center text-muted-foreground">
-                                                    <div className="flex flex-col items-center justify-center space-y-3">
-                                                        <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center">
-                                                            <ClipboardList className="h-6 w-6 opacity-30" />
-                                                        </div>
-                                                        <div className="space-y-1">
-                                                            <p className="font-semibold">Belum ada temuan</p>
-                                                            <p className="text-xs max-w-xs mx-auto">
-                                                                Tambahkan material temuan overhaul beserta foto dan tindak lanjutnya.
-                                                            </p>
-                                                        </div>
-                                                    </div>
-                                                </TableCell>
+                                                <TableHead className="w-[50px] text-center">No</TableHead>
+                                                <TableHead>Permasalahan</TableHead>
+                                                <TableHead>Tindak Lanjut / Solusi</TableHead>
+                                                <TableHead>Target</TableHead>
+                                                <TableHead>PIC</TableHead>
+                                                <TableHead>Status</TableHead>
+                                                {!isTamu && <TableHead className="w-[100px] text-right">Aksi</TableHead>}
                                             </TableRow>
-                                        )}
-                                    </TableBody>
-                                </Table>
+                                        </TableHeader>
+                                        <TableBody>
+                                            {issues && issues.length > 0 ? (
+                                                issues.map((issue: any, index: number) => (
+                                                    <TableRow key={issue.id}>
+                                                        <TableCell className="text-center">{index + 1}</TableCell>
+                                                        <TableCell className="whitespace-pre-wrap">{issue.permasalahan}</TableCell>
+                                                        <TableCell className="whitespace-pre-wrap">{issue.tindak_lanjut}</TableCell>
+                                                        <TableCell>{issue.target}</TableCell>
+                                                        <TableCell>{issue.pic}</TableCell>
+                                                        <TableCell>
+                                                            <Badge variant={issue.status === 'Close' ? 'success' : 'secondary'} className={issue.status === 'Close' ? 'bg-green-100 text-green-800 hover:bg-green-100' : ''}>
+                                                                {issue.status}
+                                                            </Badge>
+                                                        </TableCell>
+                                                        {!isTamu && (
+                                                            <TableCell className="text-right">
+                                                                <div className="flex items-center justify-end gap-2">
+                                                                    <Button variant="ghost" size="icon" className="h-8 w-8 text-blue-600" onClick={() => openIssueForm(issue)}>
+                                                                        <Edit className="h-4 w-4" />
+                                                                    </Button>
+                                                                    <Button variant="ghost" size="icon" className="h-8 w-8 text-red-600" onClick={() => deleteIssue(issue.id)}>
+                                                                        <Trash2 className="h-4 w-4" />
+                                                                    </Button>
+                                                                </div>
+                                                            </TableCell>
+                                                        )}
+                                                    </TableRow>
+                                                ))
+                                            ) : (
+                                                <TableRow>
+                                                    <TableCell colSpan={isTamu ? 6 : 7} className="h-24 text-center text-muted-foreground">
+                                                        Belum ada permasalahan dicatat.
+                                                    </TableCell>
+                                                </TableRow>
+                                            )}
+                                        </TableBody>
+                                    </Table>
+                                </div>
                             </CardContent>
                         </Card>
+                        </div>
                     )}
+
                     {activeTab === 'kickoff' && (
                         <Card>
                             <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-4 gap-4">
@@ -932,146 +836,55 @@ return;
                 </div>
             </div>
 
-            {/* Dialog Tambah / Edit Temuan */}
-            <Dialog open={findingDialogOpen} onOpenChange={(open) => {
- if (!open) {
- setFindingDialogOpen(false); setEditingFinding(null); 
-} 
-}}>
-                <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+
+            <Dialog open={issueModal} onOpenChange={setIssueModal}>
+                <DialogContent className="sm:max-w-[600px]">
                     <DialogHeader>
-                        <DialogTitle>{editingFinding ? 'Edit Temuan' : 'Tambah Temuan'}</DialogTitle>
-                        <DialogDescription>
-                            {editingFinding
-                                ? 'Perbarui data material temuan overhaul.'
-                                : 'Input data material temuan overhaul baru.'}
-                        </DialogDescription>
+                        <DialogTitle>{editingIssue ? 'Edit Permasalahan' : 'Tambah Permasalahan'}</DialogTitle>
                     </DialogHeader>
-                    <form onSubmit={submitFinding} className="space-y-4">
+                    <form onSubmit={submitIssue} className="space-y-4">
+                        <div className="space-y-2">
+                            <Label>Permasalahan</Label>
+                            <Textarea
+                                value={issueForm.data.permasalahan}
+                                onChange={e => issueForm.setData('permasalahan', e.target.value)}
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label>Tindak Lanjut / Solusi</Label>
+                            <Textarea
+                                value={issueForm.data.tindak_lanjut}
+                                onChange={e => issueForm.setData('tindak_lanjut', e.target.value)}
+                            />
+                        </div>
                         <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-2">
-                                <Label htmlFor="f_tanggal">Tanggal</Label>
-                                <Input
-                                    id="f_tanggal"
-                                    type="date"
-                                    value={findingForm.data.tanggal}
-                                    onChange={(e) => findingForm.setData('tanggal', e.target.value)}
-                                />
+                                <Label>Target (Misal: Jul-26)</Label>
+                                <Input value={issueForm.data.target} onChange={e => issueForm.setData('target', e.target.value)} />
                             </div>
                             <div className="space-y-2">
-                                <Label htmlFor="f_target">Target</Label>
-                                <Select value={findingForm.data.target} onValueChange={(v) => findingForm.setData('target', v)}>
-                                    <SelectTrigger id="f_target">
-                                        <SelectValue placeholder="Pilih Target" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="Open">Open</SelectItem>
-                                        <SelectItem value="Close">Close</SelectItem>
-                                    </SelectContent>
-                                </Select>
+                                <Label>PIC (Misal: Unit / Rendal HAR)</Label>
+                                <Input value={issueForm.data.pic} onChange={e => issueForm.setData('pic', e.target.value)} />
                             </div>
                         </div>
-
                         <div className="space-y-2">
-                            <Label htmlFor="f_uraian">Uraian</Label>
-                            <Input
-                                id="f_uraian"
-                                type="text"
-                                placeholder="cth: STUD BOLT CYLINDER HEAD NO. 7"
-                                value={findingForm.data.uraian}
-                                onChange={(e) => findingForm.setData('uraian', e.target.value)}
-                            />
-                            {findingForm.errors.uraian && <p className="text-xs text-destructive">{findingForm.errors.uraian}</p>}
+                            <Label>Status</Label>
+                            <Select value={issueForm.data.status} onValueChange={v => issueForm.setData('status', v)}>
+                                <SelectTrigger><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="Open">Open</SelectItem>
+                                    <SelectItem value="Close">Close</SelectItem>
+                                </SelectContent>
+                            </Select>
                         </div>
-
-                        <div className="grid grid-cols-3 gap-4">
-                            <div className="space-y-2">
-                                <Label htmlFor="f_pn">P/N</Label>
-                                <Input
-                                    id="f_pn"
-                                    type="text"
-                                    placeholder="1.1110-007"
-                                    value={findingForm.data.part_number}
-                                    onChange={(e) => findingForm.setData('part_number', e.target.value)}
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="f_qty">Qty</Label>
-                                <Input
-                                    id="f_qty"
-                                    type="number"
-                                    min={0}
-                                    value={findingForm.data.qty}
-                                    onChange={(e) => findingForm.setData('qty', e.target.value)}
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="f_satuan">Satuan</Label>
-                                <Input
-                                    id="f_satuan"
-                                    type="text"
-                                    placeholder="Bh"
-                                    value={findingForm.data.satuan}
-                                    onChange={(e) => findingForm.setData('satuan', e.target.value)}
-                                />
-                            </div>
-                        </div>
-
-                        <div className="space-y-2">
-                            <Label htmlFor="f_foto">Foto</Label>
-                            <Input
-                                id="f_foto"
-                                type="file"
-                                accept="image/*"
-                                onChange={(e) => findingForm.setData('foto', e.target.files?.[0] ?? null)}
-                            />
-                            {editingFinding?.foto && !findingForm.data.foto && (
-                                <div className="flex items-center gap-2 pt-1">
-                                    <img src={editingFinding.foto} alt="Foto saat ini" className="h-14 w-20 object-cover rounded border" />
-                                    <span className="text-xs text-muted-foreground">
-                                        Foto saat ini. Pilih file baru untuk mengganti.
-                                    </span>
-                                </div>
-                            )}
-                            {findingForm.errors.foto && <p className="text-xs text-destructive">{findingForm.errors.foto}</p>}
-                        </div>
-
-                        <div className="space-y-2">
-                            <Label htmlFor="f_ket">Keterangan</Label>
-                            <Textarea
-                                id="f_ket"
-                                placeholder="cth: Stud Bolt Patah"
-                                className="min-h-[70px] resize-none"
-                                value={findingForm.data.keterangan}
-                                onChange={(e) => findingForm.setData('keterangan', e.target.value)}
-                            />
-                        </div>
-
-                        <div className="space-y-2">
-                            <Label htmlFor="f_tl">Tindak Lanjut</Label>
-                            <Textarea
-                                id="f_tl"
-                                placeholder={'Perlu dilakukan penggantian\nAkan menggunakan stok unit'}
-                                className="min-h-[100px] resize-none"
-                                value={findingForm.data.tindak_lanjut}
-                                onChange={(e) => findingForm.setData('tindak_lanjut', e.target.value)}
-                            />
-                            <p className="text-xs text-muted-foreground">Gunakan baris baru untuk memisahkan tiap poin.</p>
-                        </div>
-
-                        <DialogFooter className="pt-2">
-                            <Button type="button" variant="outline" onClick={() => {
- setFindingDialogOpen(false); setEditingFinding(null); 
-}}>
-                                Batal
-                            </Button>
-                            <Button type="submit" disabled={findingForm.processing}>
-                                {editingFinding ? 'Simpan Perubahan' : 'Simpan Temuan'}
-                            </Button>
+                        <DialogFooter>
+                            <Button type="button" variant="outline" onClick={() => setIssueModal(false)}>Batal</Button>
+                            <Button type="submit" disabled={issueForm.processing}>Simpan</Button>
                         </DialogFooter>
                     </form>
                 </DialogContent>
             </Dialog>
+
         </>
     );
 }
@@ -1079,11 +892,11 @@ return;
 DailyMeetingShow.layout = {
     breadcrumbs: [
         {
-            title: 'Daily Meeting',
+            title: 'Rapat Outage',
             href: '/daily-meetings',
         },
         {
-            title: 'Detail Meeting',
+            title: 'Detail Rapat',
             href: '#',
         },
     ],

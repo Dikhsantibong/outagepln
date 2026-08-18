@@ -136,8 +136,8 @@ class DailyMeetingController extends Controller
         return Inertia::render('daily-meetings/show', [
             'meeting' => $dailyMeeting,
             'attendees' => $dailyMeeting->attendees,
-            'findings' => $dailyMeeting->findings,
-            'findingInfo' => $this->findingInfo($dailyMeeting),
+            'issues' => $dailyMeeting->issues,
+                        'findingInfo' => $this->findingInfo($dailyMeeting),
             'kickoff' => $dailyMeeting->kickoff,
             'kickoffPhotos' => $dailyMeeting->kickoffPhotos,
             'kickoffDefaults' => $this->kickoffDefaults($dailyMeeting),
@@ -233,6 +233,30 @@ class DailyMeetingController extends Controller
         return redirect()->back()->with('success', 'Dokumentasi berhasil dihapus.');
     }
 
+    
+    public function exportIssuesPdf(DailyMeeting $dailyMeeting)
+    {
+        $dailyMeeting->load(['attendees', 'issues', 'outagePlan']);
+
+        $pdf = Pdf::loadView('exports.meeting-issues', [
+            'meeting' => $dailyMeeting,
+        ]);
+
+        $pdf->setPaper('A4', 'landscape');
+
+        return $pdf->download("Rapat-Outage-{$dailyMeeting->id}.pdf");
+    }
+
+    public function exportIssuesExcel(DailyMeeting $dailyMeeting)
+    {
+        $dailyMeeting->load(['attendees', 'issues', 'outagePlan']);
+        
+        return \Maatwebsite\Excel\Facades\Excel::download(
+            new \App\Exports\MeetingIssuesExport($dailyMeeting), 
+            "Rapat-Outage-{$dailyMeeting->id}.xlsx"
+        );
+    }
+
     public function exportKickoffPdf(DailyMeeting $dailyMeeting)
     {
         $dailyMeeting->load(['kickoff', 'kickoffPhotos', 'attendees', 'outagePlan']);
@@ -244,6 +268,7 @@ class DailyMeetingController extends Controller
             'kickoff' => $dailyMeeting->kickoff,
             'photos' => $dailyMeeting->kickoffPhotos,
             'attendees' => $dailyMeeting->attendees,
+            'issues' => $dailyMeeting->issues,
             'defaults' => $this->kickoffDefaults($dailyMeeting),
             'logo' => is_file($logoPath)
                 ? 'data:image/png;base64,' . base64_encode(file_get_contents($logoPath))
@@ -297,167 +322,6 @@ class DailyMeetingController extends Controller
             'unit' => $plan->mesin_pembangkit ?? '-',
             'jenis_inspeksi' => $plan->scope ?? '-',
         ];
-    }
-
-    public function storeFinding(Request $request, DailyMeeting $dailyMeeting)
-    {
-        $validated = $request->validate([
-            'tanggal' => 'nullable|date',
-            'uraian' => 'required|string|max:255',
-            'part_number' => 'nullable|string|max:100',
-            'qty' => 'nullable|integer|min:0',
-            'satuan' => 'nullable|string|max:50',
-            'keterangan' => 'nullable|string',
-            'tindak_lanjut' => 'nullable|string',
-            'target' => 'nullable|string|max:50',
-            'foto' => 'nullable|image|max:8192',
-        ]);
-
-        $validated['foto'] = $this->encodePhoto($request->file('foto'));
-        $validated['target'] = $validated['target'] ?: 'Open';
-
-        $dailyMeeting->findings()->create($validated);
-
-        return redirect()->back()->with('success', 'Temuan berhasil ditambahkan.');
-    }
-
-    public function updateFinding(Request $request, DailyMeeting $dailyMeeting, MeetingFinding $finding)
-    {
-        abort_unless($finding->meeting_id === $dailyMeeting->id, 404);
-
-        $validated = $request->validate([
-            'tanggal' => 'nullable|date',
-            'uraian' => 'required|string|max:255',
-            'part_number' => 'nullable|string|max:100',
-            'qty' => 'nullable|integer|min:0',
-            'satuan' => 'nullable|string|max:50',
-            'keterangan' => 'nullable|string',
-            'tindak_lanjut' => 'nullable|string',
-            'target' => 'nullable|string|max:50',
-            'foto' => 'nullable|image|max:8192',
-        ]);
-
-        // Keep the existing photo when no replacement is uploaded.
-        if ($request->hasFile('foto')) {
-            $validated['foto'] = $this->encodePhoto($request->file('foto'));
-        } else {
-            unset($validated['foto']);
-        }
-
-        $validated['target'] = $validated['target'] ?: 'Open';
-        $finding->update($validated);
-
-        return redirect()->back()->with('success', 'Temuan berhasil diperbarui.');
-    }
-
-    public function destroyFinding(DailyMeeting $dailyMeeting, MeetingFinding $finding)
-    {
-        abort_unless($finding->meeting_id === $dailyMeeting->id, 404);
-
-        $finding->delete();
-
-        return redirect()->back()->with('success', 'Temuan berhasil dihapus.');
-    }
-
-    /**
-     * Downscales an uploaded photo and returns it as a base64 data URI, keeping
-     * rows light enough to embed directly into the PDF/Excel exports.
-     */
-    private function encodePhoto(?\Illuminate\Http\UploadedFile $file): ?string
-    {
-        if (! $file) {
-            return null;
-        }
-
-        $source = @imagecreatefromstring(file_get_contents($file->getRealPath()));
-
-        if ($source === false) {
-            return null;
-        }
-
-        $maxW = 640;
-        $w = imagesx($source);
-        $h = imagesy($source);
-
-        if ($w > $maxW) {
-            $newH = (int) round($h * ($maxW / $w));
-            $resized = imagecreatetruecolor($maxW, $newH);
-            imagecopyresampled($resized, $source, 0, 0, 0, 0, $maxW, $newH, $w, $h);
-            imagedestroy($source);
-            $source = $resized;
-        }
-
-        ob_start();
-        imagejpeg($source, null, 72);
-        $data = ob_get_clean();
-        imagedestroy($source);
-
-        return 'data:image/jpeg;base64,' . base64_encode($data);
-    }
-
-    public function qrDisplay(DailyMeeting $dailyMeeting)
-    {
-        $dailyMeeting->loadCount('attendees');
-
-        return Inertia::render('daily-meetings/qr-display', [
-            'meeting' => $dailyMeeting,
-            'attendCount' => $dailyMeeting->attendees_count,
-        ]);
-    }
-
-    public function attendForm(string $token)
-    {
-        $meeting = DailyMeeting::where('token', $token)->firstOrFail();
-
-        return Inertia::render('attend', [
-            'meeting' => $meeting,
-            'token' => $token,
-        ]);
-    }
-
-    public function submitAttendance(Request $request, string $token)
-    {
-        $meeting = DailyMeeting::where('token', $token)->firstOrFail();
-
-        if ($meeting->status === 'completed') {
-            return redirect()->back()->with('error', 'Rapat sudah selesai. Tidak dapat mendaftar kehadiran.');
-        }
-
-        $validated = $request->validate([
-            'nama' => 'required|string|max:255',
-            'divisi' => 'nullable|string|max:255',
-            'jabatan' => 'nullable|string|max:255',
-            'signature' => 'nullable|string',
-        ]);
-
-        MeetingAttendee::create([
-            'meeting_id' => $meeting->id,
-            'nama' => $validated['nama'],
-            'divisi' => $validated['divisi'] ?? null,
-            'jabatan' => $validated['jabatan'] ?? null,
-            'signature' => $validated['signature'] ?? null,
-            'signed_at' => now(),
-        ]);
-
-        return redirect()->back()->with('success', 'Kehadiran berhasil tercatat. Terima kasih!');
-    }
-
-    public function exportFindingsPdf(DailyMeeting $dailyMeeting)
-    {
-        $dailyMeeting->load(['findings', 'outagePlan']);
-
-        $logoPath = public_path('sidebar-logo.png');
-
-        $pdf = Pdf::loadView('exports.meeting-findings', [
-            'meeting' => $dailyMeeting,
-            'findings' => $dailyMeeting->findings,
-            'info' => $this->findingInfo($dailyMeeting),
-            'logo' => is_file($logoPath)
-                ? 'data:image/png;base64,' . base64_encode(file_get_contents($logoPath))
-                : null,
-        ])->setPaper('a4', 'landscape');
-
-        return $pdf->download($this->findingFilename($dailyMeeting, 'pdf'));
     }
 
     public function exportFindingsExcel(DailyMeeting $dailyMeeting)
@@ -668,5 +532,39 @@ class DailyMeetingController extends Controller
         $dailyMeeting->delete();
 
         return redirect()->route('daily-meetings.index')->with('success', 'Meeting berhasil dihapus.');
+    }
+
+    public function storeIssue(Request $request, DailyMeeting $dailyMeeting)
+    {
+        $validated = $request->validate([
+            'permasalahan' => 'nullable|string',
+            'tindak_lanjut' => 'nullable|string',
+            'target' => 'nullable|string|max:255',
+            'pic' => 'nullable|string|max:255',
+            'status' => 'required|in:Open,Close',
+        ]);
+
+        $dailyMeeting->issues()->create($validated);
+        return redirect()->back()->with('success', 'Permasalahan ditambahkan.');
+    }
+
+    public function updateIssue(Request $request, DailyMeeting $dailyMeeting, MeetingIssue $issue)
+    {
+        $validated = $request->validate([
+            'permasalahan' => 'nullable|string',
+            'tindak_lanjut' => 'nullable|string',
+            'target' => 'nullable|string|max:255',
+            'pic' => 'nullable|string|max:255',
+            'status' => 'required|in:Open,Close',
+        ]);
+
+        $issue->update($validated);
+        return redirect()->back()->with('success', 'Permasalahan diperbarui.');
+    }
+
+    public function destroyIssue(DailyMeeting $dailyMeeting, MeetingIssue $issue)
+    {
+        $issue->delete();
+        return redirect()->back()->with('success', 'Permasalahan dihapus.');
     }
 }

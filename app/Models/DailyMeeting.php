@@ -62,6 +62,11 @@ class DailyMeeting extends Model
         return $this->hasOne(MeetingKickoff::class, 'meeting_id');
     }
 
+    public function issues()
+    {
+        return $this->hasMany(MeetingIssue::class);
+    }
+
     public function kickoffPhotos()
     {
         return $this->hasMany(MeetingKickoffPhoto::class, 'meeting_id');

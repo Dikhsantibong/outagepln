@@ -29,6 +29,21 @@ class DailyBriefing extends Model
         return $this->hasMany(DailyBriefingIssue::class);
     }
 
+    public function findings()
+    {
+        return $this->hasMany(DailyBriefingFinding::class);
+    }
+
+    public function kickoff()
+    {
+        return $this->hasOne(DailyBriefingKickoff::class);
+    }
+
+    public function kickoffPhotos()
+    {
+        return $this->hasMany(DailyBriefingKickoffPhoto::class);
+    }
+
     protected static function booted()
     {
         static::creating(function ($model) {

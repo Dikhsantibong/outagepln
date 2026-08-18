@@ -31,6 +31,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('team-outage', function() {
         return inertia('team-outage');
     })->name('team-outage');
+    Route::get('summary', function() {
+        return inertia('summary/index');
+    })->name('summary');
 
     // Menu Daily Meeting dan Rapat Outage (tidak boleh diakses pengelola)
     Route::middleware(['can:viewMeetings'])->group(function () {
@@ -47,6 +50,20 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('daily-briefings/{dailyBriefing}/export-pdf', [\App\Http\Controllers\DailyBriefingController::class, 'exportPdf'])->name('daily-briefings.export-pdf');
         Route::get('daily-briefings/{dailyBriefing}/export-excel', [\App\Http\Controllers\DailyBriefingController::class, 'exportExcel'])->name('daily-briefings.export-excel');
 
+        // Notulen Temuan (Daily Briefing)
+        Route::post('daily-briefings/{dailyBriefing}/findings', [\App\Http\Controllers\DailyBriefingController::class, 'storeFinding'])->name('daily-briefings.findings.store');
+        Route::post('daily-briefings/{dailyBriefing}/findings/{finding}', [\App\Http\Controllers\DailyBriefingController::class, 'updateFinding'])->name('daily-briefings.findings.update');
+        Route::delete('daily-briefings/{dailyBriefing}/findings/{finding}', [\App\Http\Controllers\DailyBriefingController::class, 'destroyFinding'])->name('daily-briefings.findings.destroy');
+        Route::get('daily-briefings/{dailyBriefing}/findings/export-pdf', [\App\Http\Controllers\DailyBriefingController::class, 'exportFindingsPdf'])->name('daily-briefings.findings.export-pdf');
+        Route::get('daily-briefings/{dailyBriefing}/findings/export-excel', [\App\Http\Controllers\DailyBriefingController::class, 'exportFindingsExcel'])->name('daily-briefings.findings.export-excel');
+
+        // Notulen Kick Off Meeting (Daily Briefing)
+        Route::post('daily-briefings/{dailyBriefing}/kickoff', [\App\Http\Controllers\DailyBriefingController::class, 'storeKickoff'])->name('daily-briefings.kickoff.store');
+        Route::post('daily-briefings/{dailyBriefing}/kickoff/photos', [\App\Http\Controllers\DailyBriefingController::class, 'storeKickoffPhoto'])->name('daily-briefings.kickoff.photos.store');
+        Route::delete('daily-briefings/{dailyBriefing}/kickoff/photos/{photo}', [\App\Http\Controllers\DailyBriefingController::class, 'destroyKickoffPhoto'])->name('daily-briefings.kickoff.photos.destroy');
+        Route::get('daily-briefings/{dailyBriefing}/kickoff/export-pdf', [\App\Http\Controllers\DailyBriefingController::class, 'exportKickoffPdf'])->name('daily-briefings.kickoff.export-pdf');
+        Route::get('daily-briefings/{dailyBriefing}/kickoff/export-excel', [\App\Http\Controllers\DailyBriefingController::class, 'exportKickoffExcel'])->name('daily-briefings.kickoff.export-excel');
+
         // Rapat Outage routes
         Route::resource('daily-meetings', DailyMeetingController::class)->only(['index', 'store', 'show', 'destroy']);
         Route::get('daily-meetings/{dailyMeeting}/qr', [DailyMeetingController::class, 'qrDisplay'])->name('daily-meetings.qr');
@@ -54,12 +71,13 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('daily-meetings/{dailyMeeting}/realisasi', [DailyMeetingController::class, 'setRealisasi'])->name('daily-meetings.realisasi');
         Route::get('daily-meetings/{dailyMeeting}/attendees-json', [DailyMeetingController::class, 'attendeesJson'])->name('daily-meetings.attendees-json');
 
+                Route::post('daily-meetings/{dailyMeeting}/issues', [DailyMeetingController::class, 'storeIssue'])->name('daily-meetings.issues.store');
+        Route::put('daily-meetings/{dailyMeeting}/issues/{issue}', [DailyMeetingController::class, 'updateIssue'])->name('daily-meetings.issues.update');
+        Route::delete('daily-meetings/{dailyMeeting}/issues/{issue}', [DailyMeetingController::class, 'destroyIssue'])->name('daily-meetings.issues.destroy');
+        Route::get('daily-meetings/{dailyMeeting}/issues/export-pdf', [DailyMeetingController::class, 'exportIssuesPdf'])->name('daily-meetings.issues.export-pdf');
+        Route::get('daily-meetings/{dailyMeeting}/issues/export-excel', [DailyMeetingController::class, 'exportIssuesExcel'])->name('daily-meetings.issues.export-excel');
+
         // Notulen Temuan (material temuan overhaul)
-        Route::post('daily-meetings/{dailyMeeting}/findings', [DailyMeetingController::class, 'storeFinding'])->name('daily-meetings.findings.store');
-        Route::post('daily-meetings/{dailyMeeting}/findings/{finding}', [DailyMeetingController::class, 'updateFinding'])->name('daily-meetings.findings.update');
-        Route::delete('daily-meetings/{dailyMeeting}/findings/{finding}', [DailyMeetingController::class, 'destroyFinding'])->name('daily-meetings.findings.destroy');
-        Route::get('daily-meetings/{dailyMeeting}/findings/export-pdf', [DailyMeetingController::class, 'exportFindingsPdf'])->name('daily-meetings.findings.export-pdf');
-        Route::get('daily-meetings/{dailyMeeting}/findings/export-excel', [DailyMeetingController::class, 'exportFindingsExcel'])->name('daily-meetings.findings.export-excel');
 
         // Notulen Kick Off Meeting (rapat P3)
         Route::post('daily-meetings/{dailyMeeting}/kickoff', [DailyMeetingController::class, 'storeKickoff'])->name('daily-meetings.kickoff.store');
