@@ -28,9 +28,9 @@ import {
 import { dashboard } from '@/routes';
 import type { NavItem } from '@/types';
 
-/** Menu rute /daily-meetings — kini ditampilkan sebagai "Daily Meeting". */
+/** Menu rute /daily-meetings — kini ditampilkan sebagai "Rapat Outage". */
 const dailyMeetingsNav: NavItem = {
-    title: 'Daily Meeting',
+    title: 'Rapat Outage',
     href: '/daily-meetings',
     icon: MessageSquare,
 };
@@ -43,7 +43,7 @@ const getFooterNavItems = (canAccess: (m: string) => boolean) => [
     }] : []),
 ];
 
-export function AppSidebar() {
+export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     const { auth } = usePage<any>().props;
 
     const canAccess = (menuKey: string) => {
@@ -61,7 +61,7 @@ export function AppSidebar() {
         }] : []),
         ...((auth?.can?.viewMeetings ?? true) && canAccess('rapat-outage') ? [dailyMeetingsNav] : []),
         ...((auth?.can?.viewMeetings ?? true) && canAccess('daily-meeting') ? [{
-            title: 'Rapat Outage',
+            title: 'Daily Meeting',
             href: '/daily-briefings',
             icon: CalendarDays,
         }] : []),
