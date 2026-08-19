@@ -354,6 +354,12 @@ export default function DailyMeetingsIndex({
                                         Scope
                                     </TableHead>
                                     <TableHead className="w-[120px] text-[10px] font-bold tracking-widest uppercase">
+                                        R2
+                                    </TableHead>
+                                    <TableHead className="w-[120px] text-[10px] font-bold tracking-widest uppercase">
+                                        R3
+                                    </TableHead>
+                                    <TableHead className="w-[120px] text-[10px] font-bold tracking-widest uppercase">
                                         P1
                                     </TableHead>
                                     <TableHead className="w-[120px] text-[10px] font-bold tracking-widest uppercase">
@@ -361,12 +367,6 @@ export default function DailyMeetingsIndex({
                                     </TableHead>
                                     <TableHead className="w-[120px] text-[10px] font-bold tracking-widest uppercase">
                                         P3
-                                    </TableHead>
-                                    <TableHead className="w-[120px] text-[10px] font-bold tracking-widest uppercase">
-                                        R2
-                                    </TableHead>
-                                    <TableHead className="w-[120px] text-[10px] font-bold tracking-widest uppercase">
-                                        R3
                                     </TableHead>
                                 </TableRow>
                             </TableHeader>
@@ -424,6 +424,18 @@ export default function DailyMeetingsIndex({
                                                 <TableCell className="p-1 align-top">
                                                     {renderMeetingCell(
                                                         plan,
+                                                        'RAPAT R2',
+                                                    )}
+                                                </TableCell>
+                                                <TableCell className="p-1 align-top">
+                                                    {renderMeetingCell(
+                                                        plan,
+                                                        'RAPAT R3',
+                                                    )}
+                                                </TableCell>
+                                                <TableCell className="p-1 align-top">
+                                                    {renderMeetingCell(
+                                                        plan,
                                                         'RAPAT P1',
                                                     )}
                                                 </TableCell>
@@ -437,18 +449,6 @@ export default function DailyMeetingsIndex({
                                                     {renderMeetingCell(
                                                         plan,
                                                         'RAPAT P3',
-                                                    )}
-                                                </TableCell>
-                                                <TableCell className="p-1 align-top">
-                                                    {renderMeetingCell(
-                                                        plan,
-                                                        'RAPAT R2',
-                                                    )}
-                                                </TableCell>
-                                                <TableCell className="p-1 align-top">
-                                                    {renderMeetingCell(
-                                                        plan,
-                                                        'RAPAT R3',
                                                     )}
                                                 </TableCell>
                                             </TableRow>
