@@ -458,6 +458,30 @@ return;
                                 <div>
                                     <CardTitle>Daftar Hadir Peserta</CardTitle>
                                     <CardDescription>Daftar seluruh personil yang telah melakukan absensi</CardDescription>
+                                    <div className="mt-3 flex items-center gap-2 text-sm text-muted-foreground bg-muted/30 p-2 rounded-md border border-dashed">
+                                        <Link2 className="h-4 w-4 shrink-0" />
+                                        <span>Link Absensi Manual:</span>
+                                        <a 
+                                            href={typeof window !== 'undefined' ? `${window.location.origin}/attend/${meeting.token}` : ''} 
+                                            target="_blank" 
+                                            rel="noreferrer"
+                                            className="text-primary hover:underline font-medium truncate max-w-[200px] sm:max-w-md"
+                                        >
+                                            {typeof window !== 'undefined' ? `${window.location.origin}/attend/${meeting.token}` : ''}
+                                        </a>
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className="h-7 w-7 shrink-0 ml-1"
+                                            onClick={() => {
+                                                navigator.clipboard.writeText(typeof window !== 'undefined' ? `${window.location.origin}/attend/${meeting.token}` : '');
+                                                alert('Link absensi disalin ke clipboard!');
+                                            }}
+                                            title="Salin Link"
+                                        >
+                                            <ClipboardList className="h-3.5 w-3.5" />
+                                        </Button>
+                                    </div>
                                 </div>
                                 {['active', 'berlangsung'].includes(meeting.status) && (
                                     <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 text-xs font-medium dark:bg-emerald-950/30 dark:text-emerald-400">
