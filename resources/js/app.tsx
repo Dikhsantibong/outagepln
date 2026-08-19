@@ -14,6 +14,7 @@ createInertiaApp({
         switch (true) {
             case name === 'welcome':
             case name === 'attend':
+            case name === 'daily-meetings/attend':
             case name === 'daily-meetings/qr-display':
             case name === 'daily-meetings/qr':
             case name === 'daily-briefings/attend':
