@@ -161,8 +161,9 @@
 
         <div class="sub-title">A.&nbsp;&nbsp;Daftar Hadir / Absensi</div>
         <div class="lampiran" style="margin-left: 34px;">
-            @if ($k && filled($k->link_absensi))
-                <a href="{{ $k->link_absensi }}">{{ $k->link_absensi }}</a>
+            @php($absensi = $k && filled($k->link_absensi) ? $k->link_absensi : ($attendUrl ?? null))
+            @if (filled($absensi))
+                <a href="{{ $absensi }}">{{ $absensi }}</a>
             @else
                 Daftar hadir terlampir ({{ $attendees->count() }} peserta tercatat).
             @endif

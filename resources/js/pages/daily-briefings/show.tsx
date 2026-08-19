@@ -176,7 +176,7 @@ export default function DailyBriefingsShow({
         nama_mitra: kickoff?.nama_mitra ?? '',
         penyampaian_mitra: kickoff?.penyampaian_mitra ?? '',
         hasil_kesepakatan: kickoff?.hasil_kesepakatan ?? '',
-        link_absensi: kickoff?.link_absensi ?? '',
+        link_absensi: kickoff?.link_absensi ?? (typeof window !== 'undefined' ? `${window.location.origin}/daily-briefings/attend/${briefing.token}` : ''),
         pimpinan_nama: kickoff?.pimpinan_nama ?? kickoffDefaults?.pimpinan_nama ?? '',
         pimpinan_jabatan: kickoff?.pimpinan_jabatan ?? kickoffDefaults?.pimpinan_jabatan ?? '',
         notulis_nama: kickoff?.notulis_nama ?? kickoffDefaults?.notulis_nama ?? '',

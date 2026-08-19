@@ -121,8 +121,9 @@
     <tr>
         <td></td>
         <td colspan="5">
-            @if ($k && filled($k->link_absensi))
-                {{ $k->link_absensi }}
+            @php($absensi = $k && filled($k->link_absensi) ? $k->link_absensi : ($attendUrl ?? null))
+            @if (filled($absensi))
+                {{ $absensi }}
             @else
                 Daftar hadir terlampir ({{ $attendees->count() }} peserta tercatat).
             @endif

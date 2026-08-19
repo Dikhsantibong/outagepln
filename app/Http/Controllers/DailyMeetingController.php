@@ -316,6 +316,7 @@ class DailyMeetingController extends Controller
             'attendees' => $dailyMeeting->attendees,
             'issues' => $dailyMeeting->issues,
             'defaults' => $this->kickoffDefaults($dailyMeeting),
+            'attendUrl' => route('attend.form', $dailyMeeting->token),
             'logo' => is_file($logoPath)
                 ? 'data:image/png;base64,'.base64_encode(file_get_contents($logoPath))
                 : null,

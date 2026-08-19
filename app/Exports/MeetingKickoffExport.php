@@ -39,6 +39,7 @@ class MeetingKickoffExport implements FromView, WithColumnWidths, WithStyles, Wi
             'photos' => $this->photos,
             'attendees' => $this->attendees,
             'defaults' => $this->defaults,
+            'attendUrl' => route('attend.form', $this->meeting->token),
         ]);
     }
 

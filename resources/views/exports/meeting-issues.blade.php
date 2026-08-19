@@ -152,12 +152,12 @@
     </table>
     
     
-    <div style="margin-bottom: 15px; font-size: 11px;">
+    <!-- <div style="margin-bottom: 15px; font-size: 11px;">
         <span style="font-weight: bold;">Link Absensi Manual:</span> 
         <a href="{{ url('/attend/' . $meeting->token) }}" style="color: blue; text-decoration: underline;">
             {{ url('/attend/' . $meeting->token) }}
         </a>
-    </div>
+    </div> -->
 
     <div style="font-weight: bold; margin-bottom: 5px;">NOTULEN RAPAT:</div>
 
@@ -265,10 +265,10 @@
     </div>
 
 
-    <div style="margin-top: 30px; font-size: 11pt;">
+    <!-- <div style="margin-top: 30px; font-size: 11pt;">
         <strong>Link Absensi Rapat:</strong> <br/>
         <a href="{{ url('/attend/' . $meeting->token) }}">{{ url('/attend/' . $meeting->token) }}</a>
-    </div>
+    </div> -->
 
     @if($meeting->kickoffPhotos->count() > 0)
     <div class="page-break"></div>

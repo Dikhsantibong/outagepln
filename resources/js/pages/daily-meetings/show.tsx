@@ -167,7 +167,7 @@ export default function DailyMeetingShow({
         nama_mitra: kickoff?.nama_mitra ?? '',
         penyampaian_mitra: kickoff?.penyampaian_mitra ?? '',
         hasil_kesepakatan: kickoff?.hasil_kesepakatan ?? '',
-        link_absensi: kickoff?.link_absensi ?? '',
+        link_absensi: kickoff?.link_absensi ?? (typeof window !== 'undefined' ? `${window.location.origin}/attend/${meeting.token}` : ''),
         pimpinan_nama: kickoff?.pimpinan_nama ?? d.pimpinan_nama ?? '',
         pimpinan_jabatan: kickoff?.pimpinan_jabatan ?? d.pimpinan_jabatan ?? '',
         notulis_nama: kickoff?.notulis_nama ?? d.notulis_nama ?? '',
