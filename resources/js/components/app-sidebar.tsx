@@ -8,6 +8,7 @@ import {
     HeartPulse,
     LayoutGrid,
     MessageSquare,
+    PenLine,
     PieChart,
     ShieldCheck,
     Users,
@@ -97,6 +98,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                 { title: 'Users & Hak Akses', href: '/master/users', icon: Users },
                 { title: 'Data Unit & Mesin', href: '/master/units', icon: LayoutGrid },
                 { title: 'Data Material', href: '/master/materials', icon: Crosshair },
+                { title: 'Tanda Tangan', href: '/master/ttd', icon: PenLine },
             ],
         }] : []),
     ].filter(g => g.items.length > 0);

@@ -197,8 +197,8 @@
                 <td>
                     Pimpinan Rapat,
                     <div class="sign-space"></div>
-                    <span class="sign-name">{{ $val('pimpinan_nama', '(..................)') }}</span><br>
-                    {{ $val('pimpinan_jabatan') }}
+                    <span class="sign-name">{{ $penandatangan['menyetujui_nama'] }}</span><br>
+                    {{ $penandatangan['menyetujui_jabatan'] }}
                 </td>
                 <td>
                     {{ $val('kota_ttd', 'Kendari') }},
@@ -207,8 +207,8 @@
                         : \Carbon\Carbon::parse($meeting->tanggal)->locale('id')->isoFormat('D MMMM Y') }}<br>
                     Notulis,
                     <div class="sign-space"></div>
-                    <span class="sign-name">{{ $val('notulis_nama', '(..................)') }}</span><br>
-                    {{ $val('notulis_jabatan') }}
+                    <span class="sign-name">{{ $penandatangan['staf_nama'] }}</span><br>
+                    {{ $penandatangan['staf_jabatan'] }}
                 </td>
             </tr>
         </table>

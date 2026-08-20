@@ -65,7 +65,9 @@ export default function DailyBriefingsShow({
         setTimeout(() => setLinkTersalin(false), 2000);
     };
 
-    // Header Form
+    // Header Form. Nama penandatangan tidak lagi di sini — diatur terpusat di
+    // Data Master → Tanda Tangan (super admin).
+    const [headerModal, setHeaderModal] = useState(false);
     const headerForm = useForm({
         unit: briefing.unit || '',
         jenis_inspeksi: briefing.jenis_inspeksi || '',
@@ -76,10 +78,6 @@ export default function DailyBriefingsShow({
         nomor_dokumen: briefing.nomor_dokumen || '',
         revisi: briefing.revisi || '00',
         tanggal_terbit: briefing.tanggal_terbit || '',
-        nama_mengetahui: briefing.nama_mengetahui || 'Abdul Rahman Jadir',
-        jabatan_mengetahui: briefing.jabatan_mengetahui || 'TEAM LEADER OUTAGE MANAGEMENT',
-        nama_disetujui: briefing.nama_disetujui || 'Firmansyah',
-        jabatan_disetujui: briefing.jabatan_disetujui || 'OF OUTAGE MANAGEMENT',
     });
 
     const submitHeader = (e: React.FormEvent) => {
@@ -87,6 +85,7 @@ export default function DailyBriefingsShow({
         headerForm.put(`/daily-briefings/${briefing.id}`, {
             preserveScroll: true,
             preserveState: true,
+            onSuccess: () => setHeaderModal(false),
         });
     };
 
@@ -292,15 +291,8 @@ export default function DailyBriefingsShow({
 
                 <div className="w-full">
                     <div className="flex flex-wrap items-center gap-1 bg-muted p-1 rounded-lg w-fit">
-                        <button 
-                            onClick={() => setActiveTab('header')} 
-                            className={`flex items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-all ${activeTab === 'header' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:bg-muted-foreground/10'}`}
-                        >
-                            <FileText className="h-4 w-4" /> Header & Info
-                        </button>
-                        
-                        <button 
-                            onClick={() => setActiveTab('attendees')} 
+                        <button
+                            onClick={() => setActiveTab('attendees')}
                             className={`flex items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-all ${activeTab === 'attendees' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:bg-muted-foreground/10'}`}
                         >
                             <Users className="h-4 w-4" /> Daftar Hadir ({attendees.length})
@@ -322,78 +314,6 @@ export default function DailyBriefingsShow({
 
                     </div>
                     
-                    {activeTab === 'header' && (
-                        <div className="mt-4">
-                        <Card>
-                            <CardHeader>
-                                <CardTitle>Data Header Notulen</CardTitle>
-                                <CardDescription>Data ini akan muncul di bagian atas PDF Cetak Notulen.</CardDescription>
-                            </CardHeader>
-                            <CardContent>
-                                <form onSubmit={submitHeader} className="space-y-6">
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        <div className="space-y-2">
-                                            <Label>Unit / Mesin</Label>
-                                            <Input value={headerForm.data.unit} onChange={e => headerForm.setData('unit', e.target.value)} placeholder="PLTD WANGI-WANGI #2" />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <Label>Jenis Inspeksi</Label>
-                                            <Input value={headerForm.data.jenis_inspeksi} onChange={e => headerForm.setData('jenis_inspeksi', e.target.value)} placeholder="SO" />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <Label>Rapat Framework</Label>
-                                            <Input value={headerForm.data.rapat_framework} onChange={e => headerForm.setData('rapat_framework', e.target.value)} placeholder="P1" />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <Label>Tgl Performance Test</Label>
-                                            <Input value={headerForm.data.tgl_performance_test} onChange={e => headerForm.setData('tgl_performance_test', e.target.value)} placeholder="-" />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <Label>Jam Setelah PO Terai</Label>
-                                            <Input value={headerForm.data.jam_setelah_po_terai} onChange={e => headerForm.setData('jam_setelah_po_terai', e.target.value)} placeholder="7.456 / 16.365" />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <Label>Daya Mampu</Label>
-                                            <Input value={headerForm.data.daya_mampu} onChange={e => headerForm.setData('daya_mampu', e.target.value)} placeholder="0.128 MW" />
-                                        </div>
-                                    </div>
-                                    <hr />
-                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                        <div className="space-y-2">
-                                            <Label>Nomor Dokumen</Label>
-                                            <Input value={headerForm.data.nomor_dokumen} onChange={e => headerForm.setData('nomor_dokumen', e.target.value)} />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <Label>Revisi</Label>
-                                            <Input value={headerForm.data.revisi} onChange={e => headerForm.setData('revisi', e.target.value)} />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <Label>Tanggal Terbit (Dokumen)</Label>
-                                            <Input type="date" value={headerForm.data.tanggal_terbit} onChange={e => headerForm.setData('tanggal_terbit', e.target.value)} />
-                                        </div>
-                                    </div>
-                                    <hr />
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        <div className="space-y-2">
-                                            <Label>Nama Menyetujui</Label>
-                                            <Input value={headerForm.data.nama_mengetahui} onChange={e => headerForm.setData('nama_mengetahui', e.target.value)} placeholder="ABDUL RAHMAN KADIR" />
-                                            <Input className="mt-2 text-xs text-muted-foreground" value={headerForm.data.jabatan_mengetahui} onChange={e => headerForm.setData('jabatan_mengetahui', e.target.value)} placeholder="TEAM LEADER OUTAGE MANAGEMENT" />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <Label>Nama Staf (Kanan)</Label>
-                                            <Input value={headerForm.data.nama_disetujui} onChange={e => headerForm.setData('nama_disetujui', e.target.value)} placeholder="FIRMANSYAH" />
-                                            <Input className="mt-2 text-xs text-muted-foreground" value={headerForm.data.jabatan_disetujui} onChange={e => headerForm.setData('jabatan_disetujui', e.target.value)} placeholder="OF OUTAGE MANAGEMENT" />
-                                        </div>
-                                    </div>
-
-                                    {!isTamu && (
-                                        <Button type="submit" disabled={headerForm.processing}>Simpan Perubahan Header</Button>
-                                    )}
-                                </form>
-                            </CardContent>
-                        </Card>
-                        </div>
-                    )}
 
                     {activeTab === 'issues' && (
                         <div className="mt-4">
@@ -579,6 +499,17 @@ export default function DailyBriefingsShow({
                                     )}
                                 </div>
                                 <div className="flex flex-wrap gap-2 shrink-0">
+                                    {!isTamu && (
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            className="gap-2 h-9"
+                                            onClick={() => setHeaderModal(true)}
+                                        >
+                                            <Edit className="h-4 w-4" />
+                                            Header
+                                        </Button>
+                                    )}
                                     <Button
                                         variant="outline"
                                         size="sm"
@@ -837,27 +768,11 @@ export default function DailyBriefingsShow({
                                     {/* Tanda tangan */}
                                     <div className="space-y-4">
                                         <h4 className="text-xs font-bold uppercase tracking-[0.1em] text-primary/80">Tanda Tangan</h4>
+                                        <p className="text-xs text-muted-foreground">
+                                            Nama &amp; jabatan penandatangan diatur terpusat di
+                                            <span className="font-medium"> Data Master → Tanda Tangan</span> (super admin).
+                                        </p>
                                         <div className="grid gap-4 md:grid-cols-2">
-                                            <div className="space-y-2">
-                                                <Label htmlFor="k_pn">Nama Pimpinan Rapat</Label>
-                                                <Input id="k_pn" value={kickoffForm.data.pimpinan_nama}
-                                                    onChange={(e) => kickoffForm.setData('pimpinan_nama', e.target.value)} disabled={isTamu} />
-                                            </div>
-                                            <div className="space-y-2">
-                                                <Label htmlFor="k_pj">Jabatan Pimpinan Rapat</Label>
-                                                <Input id="k_pj" value={kickoffForm.data.pimpinan_jabatan}
-                                                    onChange={(e) => kickoffForm.setData('pimpinan_jabatan', e.target.value)} disabled={isTamu} />
-                                            </div>
-                                            <div className="space-y-2">
-                                                <Label htmlFor="k_nn">Nama Notulis</Label>
-                                                <Input id="k_nn" value={kickoffForm.data.notulis_nama}
-                                                    onChange={(e) => kickoffForm.setData('notulis_nama', e.target.value)} disabled={isTamu} />
-                                            </div>
-                                            <div className="space-y-2">
-                                                <Label htmlFor="k_nj">Jabatan Notulis</Label>
-                                                <Input id="k_nj" value={kickoffForm.data.notulis_jabatan}
-                                                    onChange={(e) => kickoffForm.setData('notulis_jabatan', e.target.value)} disabled={isTamu} />
-                                            </div>
                                             <div className="space-y-2">
                                                 <Label htmlFor="k_kota">Kota Tanda Tangan</Label>
                                                 <Input id="k_kota" value={kickoffForm.data.kota_ttd}
@@ -1077,6 +992,67 @@ export default function DailyBriefingsShow({
                         </DialogFooter>
                     </form>
                 </DialogContent></Dialog>
+
+            {/* Dialog Data Header Notulen — dipindah dari tab tersendiri agar
+                tidak memakan tempat. Nama penandatangan tidak di sini; diatur di
+                Data Master → Tanda Tangan. */}
+            <Dialog open={headerModal} onOpenChange={setHeaderModal}>
+                <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+                    <DialogHeader>
+                        <DialogTitle>Data Header Notulen</DialogTitle>
+                        <DialogDescription>Data ini muncul di bagian atas berkas notulen (PDF/Excel).</DialogDescription>
+                    </DialogHeader>
+                    <form onSubmit={submitHeader} className="space-y-5">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label>Unit / Mesin</Label>
+                                <Input value={headerForm.data.unit} onChange={e => headerForm.setData('unit', e.target.value)} placeholder="PLTD WANGI-WANGI #2" disabled={isTamu} />
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Jenis Inspeksi</Label>
+                                <Input value={headerForm.data.jenis_inspeksi} onChange={e => headerForm.setData('jenis_inspeksi', e.target.value)} placeholder="SO" disabled={isTamu} />
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Rapat Framework</Label>
+                                <Input value={headerForm.data.rapat_framework} onChange={e => headerForm.setData('rapat_framework', e.target.value)} placeholder="P1" disabled={isTamu} />
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Tgl Performance Test</Label>
+                                <Input value={headerForm.data.tgl_performance_test} onChange={e => headerForm.setData('tgl_performance_test', e.target.value)} placeholder="-" disabled={isTamu} />
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Jam Setelah PO Terai</Label>
+                                <Input value={headerForm.data.jam_setelah_po_terai} onChange={e => headerForm.setData('jam_setelah_po_terai', e.target.value)} placeholder="7.456 / 16.365" disabled={isTamu} />
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Daya Mampu</Label>
+                                <Input value={headerForm.data.daya_mampu} onChange={e => headerForm.setData('daya_mampu', e.target.value)} placeholder="0.128 MW" disabled={isTamu} />
+                            </div>
+                        </div>
+                        <hr />
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div className="space-y-2">
+                                <Label>Nomor Dokumen</Label>
+                                <Input value={headerForm.data.nomor_dokumen} onChange={e => headerForm.setData('nomor_dokumen', e.target.value)} disabled={isTamu} />
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Revisi</Label>
+                                <Input value={headerForm.data.revisi} onChange={e => headerForm.setData('revisi', e.target.value)} disabled={isTamu} />
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Tanggal Terbit</Label>
+                                <Input type="date" value={headerForm.data.tanggal_terbit} onChange={e => headerForm.setData('tanggal_terbit', e.target.value)} disabled={isTamu} />
+                            </div>
+                        </div>
+                        <DialogFooter className="pt-2">
+                            <Button type="button" variant="outline" onClick={() => setHeaderModal(false)}>Tutup</Button>
+                            {!isTamu && (
+                                <Button type="submit" disabled={headerForm.processing}>Simpan Header</Button>
+                            )}
+                        </DialogFooter>
+                    </form>
+                </DialogContent>
+            </Dialog>
 
         </>
     );

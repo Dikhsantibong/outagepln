@@ -2,10 +2,14 @@
 
 namespace App\Providers;
 
+use App\Models\User;
+use App\Support\Ttd;
 use Carbon\Carbon;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Validation\Rules\Password;
 
@@ -42,8 +46,23 @@ class AppServiceProvider extends ServiceProvider
         Carbon::setLocale('id');
         CarbonImmutable::setLocale('id');
 
-        \Illuminate\Support\Facades\Gate::define('viewMeetings', function (\App\Models\User $user) {
+        Gate::define('viewMeetings', function (User $user) {
             return $user->canViewMeetings();
+        });
+
+        // Data penandatangan global dibagikan ke seluruh blade notulen/ekspor,
+        // supaya nama & jabatannya cukup diatur sekali di modul Data Master.
+        View::composer([
+            'exports.daily-briefing',
+            'exports.daily-briefing-excel',
+            'exports.briefing-kickoff',
+            'exports.briefing-kickoff-excel',
+            'exports.meeting-issues',
+            'exports.meeting-issues-excel',
+            'exports.meeting-kickoff',
+            'exports.meeting-kickoff-excel',
+        ], function ($view) {
+            $view->with('penandatangan', Ttd::data());
         });
 
         DB::prohibitDestructiveCommands(

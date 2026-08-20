@@ -166,11 +166,11 @@
     </tr>
     <tr height="66"><td colspan="3"></td><td colspan="3"></td></tr>
     <tr>
-        <td colspan="3" style="text-align: center; font-weight: bold; text-decoration: underline;">{{ $val('pimpinan_nama', '(..................)') }}</td>
-        <td colspan="3" style="text-align: center; font-weight: bold; text-decoration: underline;">{{ $val('notulis_nama', '(..................)') }}</td>
+        <td colspan="3" style="text-align: center; font-weight: bold; text-decoration: underline;">{{ $penandatangan['menyetujui_nama'] }}</td>
+        <td colspan="3" style="text-align: center; font-weight: bold; text-decoration: underline;">{{ $penandatangan['staf_nama'] }}</td>
     </tr>
     <tr>
-        <td colspan="3" style="text-align: center; font-weight: bold;">{{ $val('pimpinan_jabatan') }}</td>
-        <td colspan="3" style="text-align: center; font-weight: bold;">{{ $val('notulis_jabatan') }}</td>
+        <td colspan="3" style="text-align: center; font-weight: bold;">{{ $penandatangan['menyetujui_jabatan'] }}</td>
+        <td colspan="3" style="text-align: center; font-weight: bold;">{{ $penandatangan['staf_jabatan'] }}</td>
     </tr>
 </table>

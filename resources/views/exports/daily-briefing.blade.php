@@ -187,13 +187,13 @@
         <tr>
             <td>
                 Menyetujui,<br><br>
-                <div class="ttd-nama">{{ strtoupper($briefing->nama_mengetahui ?: 'ABDUL RAHMAN KADIR') }}</div>
-                <div class="ttd-jabatan">{{ strtoupper($briefing->jabatan_mengetahui ?: 'TEAM LEADER OUTAGE MANAGEMENT') }}</div>
+                <div class="ttd-nama">{{ strtoupper($penandatangan['menyetujui_nama']) }}</div>
+                <div class="ttd-jabatan">{{ strtoupper($penandatangan['menyetujui_jabatan']) }}</div>
             </td>
             <td>
                 Kendari, {{ \Carbon\Carbon::parse($briefing->tanggal)->translatedFormat('d F Y') }}<br><br>
-                <div class="ttd-nama">{{ strtoupper($briefing->nama_disetujui ?: 'FIRMANSYAH') }}</div>
-                <div class="ttd-jabatan">{{ strtoupper($briefing->jabatan_disetujui ?: 'OF OUTAGE MANAGEMENT') }}</div>
+                <div class="ttd-nama">{{ strtoupper($penandatangan['staf_nama']) }}</div>
+                <div class="ttd-jabatan">{{ strtoupper($penandatangan['staf_jabatan']) }}</div>
             </td>
         </tr>
     </table>

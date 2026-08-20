@@ -96,12 +96,12 @@
     {{-- Ruang untuk paraf/tanda tangan basah. --}}
     <tr height="72"><td colspan="3"></td><td colspan="3"></td></tr>
     <tr>
-        <td colspan="3" style="text-align: center; font-weight: bold; text-decoration: underline;">{{ strtoupper($meeting->nama_mengetahui ?: 'ABDUL RAHMAN KADIR') }}</td>
-        <td colspan="3" style="text-align: center; font-weight: bold; text-decoration: underline;">{{ strtoupper($meeting->nama_disetujui ?: 'FIRMANSYAH') }}</td>
+        <td colspan="3" style="text-align: center; font-weight: bold; text-decoration: underline;">{{ strtoupper($penandatangan['menyetujui_nama']) }}</td>
+        <td colspan="3" style="text-align: center; font-weight: bold; text-decoration: underline;">{{ strtoupper($penandatangan['staf_nama']) }}</td>
     </tr>
     <tr>
-        <td colspan="3" style="text-align: center; font-weight: bold;">{{ strtoupper($meeting->jabatan_mengetahui ?: 'TEAM LEADER OUTAGE MANAGEMENT') }}</td>
-        <td colspan="3" style="text-align: center; font-weight: bold;">{{ strtoupper($meeting->jabatan_disetujui ?: 'OF OUTAGE MANAGEMENT') }}</td>
+        <td colspan="3" style="text-align: center; font-weight: bold;">{{ strtoupper($penandatangan['menyetujui_jabatan']) }}</td>
+        <td colspan="3" style="text-align: center; font-weight: bold;">{{ strtoupper($penandatangan['staf_jabatan']) }}</td>
     </tr>
 
     <tr height="16"><td colspan="6"></td></tr>

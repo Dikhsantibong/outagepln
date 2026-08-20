@@ -837,27 +837,11 @@ return;
                                     {/* Tanda tangan */}
                                     <div className="space-y-4">
                                         <h4 className="text-xs font-bold uppercase tracking-[0.1em] text-primary/80">Tanda Tangan</h4>
+                                        <p className="text-xs text-muted-foreground">
+                                            Nama &amp; jabatan penandatangan diatur terpusat di
+                                            <span className="font-medium"> Data Master → Tanda Tangan</span> (super admin).
+                                        </p>
                                         <div className="grid gap-4 md:grid-cols-2">
-                                            <div className="space-y-2">
-                                                <Label htmlFor="k_pn">Nama Pimpinan Rapat</Label>
-                                                <Input id="k_pn" value={kickoffForm.data.pimpinan_nama}
-                                                    onChange={(e) => kickoffForm.setData('pimpinan_nama', e.target.value)} disabled={isTamu} />
-                                            </div>
-                                            <div className="space-y-2">
-                                                <Label htmlFor="k_pj">Jabatan Pimpinan Rapat</Label>
-                                                <Input id="k_pj" value={kickoffForm.data.pimpinan_jabatan}
-                                                    onChange={(e) => kickoffForm.setData('pimpinan_jabatan', e.target.value)} disabled={isTamu} />
-                                            </div>
-                                            <div className="space-y-2">
-                                                <Label htmlFor="k_nn">Nama Notulis</Label>
-                                                <Input id="k_nn" value={kickoffForm.data.notulis_nama}
-                                                    onChange={(e) => kickoffForm.setData('notulis_nama', e.target.value)} disabled={isTamu} />
-                                            </div>
-                                            <div className="space-y-2">
-                                                <Label htmlFor="k_nj">Jabatan Notulis</Label>
-                                                <Input id="k_nj" value={kickoffForm.data.notulis_jabatan}
-                                                    onChange={(e) => kickoffForm.setData('notulis_jabatan', e.target.value)} disabled={isTamu} />
-                                            </div>
                                             <div className="space-y-2">
                                                 <Label htmlFor="k_kota">Kota Tanda Tangan</Label>
                                                 <Input id="k_kota" value={kickoffForm.data.kota_ttd}
