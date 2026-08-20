@@ -53,6 +53,8 @@ class KinerjaQualityController extends Controller
     private function mapPlan(OutagePlan $plan): array
     {
         $k = $plan->kinerjaQuality;
+        $evSebelum = $this->evidenPayload($k?->eviden_sebelum, 'quality', $k?->id ?? 0, 'sebelum');
+        $evSesudah = $this->evidenPayload($k?->eviden_sesudah, 'quality', $k?->id ?? 0, 'sesudah');
 
         return [
             'id' => $plan->id,
@@ -64,10 +66,12 @@ class KinerjaQualityController extends Controller
             'kinerja_quality' => $k ? [
                 'dm_sebelum' => $k->dm_sebelum,
                 'sfc_sebelum' => $k->sfc_sebelum,
-                'eviden_sebelum_url' => $k->eviden_sebelum ? Storage::url($k->eviden_sebelum) : null,
+                'eviden_sebelum_url' => $evSebelum['url'],
+                'eviden_sebelum_type' => $evSebelum['type'],
                 'dm_sesudah' => $k->dm_sesudah,
                 'sfc_sesudah' => $k->sfc_sesudah,
-                'eviden_sesudah_url' => $k->eviden_sesudah ? Storage::url($k->eviden_sesudah) : null,
+                'eviden_sesudah_url' => $evSesudah['url'],
+                'eviden_sesudah_type' => $evSesudah['type'],
                 // Penilaian dihitung di model supaya rumusnya sama persis
                 // dengan yang dipakai dashboard.
                 'dm_naik_persen' => $k->dm_naik_persen,
@@ -129,7 +133,8 @@ class KinerjaQualityController extends Controller
 
         $evidenPath = null;
         if ($request->hasFile('eviden')) {
-            $evidenPath = $request->file('eviden')->store('eviden_kinerja', 'public');
+            // Disk privat: berkas eviden tidak boleh diakses langsung lewat /storage.
+            $evidenPath = $request->file('eviden')->store('eviden_kinerja', 'local');
         }
 
         if ($request->tipe === 'sebelum') {

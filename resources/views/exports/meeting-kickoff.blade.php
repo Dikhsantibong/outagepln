@@ -213,5 +213,7 @@
             </tr>
         </table>
     </div>
+
+    @include('exports.partials.daftar-hadir')
 </body>
 </html>

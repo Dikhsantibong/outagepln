@@ -268,16 +268,18 @@ class LaporanHarianData
             $workItems = $dp->work_items ?? [];
             foreach ($workItems as $wi) {
                 $uraian = trim($wi['uraian'] ?? '');
-                if ($uraian === '') continue;
-                
-                $progress = $wi['progress'] ?? null;
-                if ($progress !== null && $progress !== '') {
-                    $progress = (float) $progress;
-                } else {
-                    $progress = null;
+                if ($uraian === '') {
+                    continue;
                 }
 
-                $items[$uraian] = $progress;
+                // Hanya panggil uraian pekerjaan yang progresnya sudah terisi.
+                // Item tanpa progress dilewati, tidak ikut tampil di lembar Kurva S.
+                $progress = $wi['progress'] ?? null;
+                if ($progress === null || $progress === '') {
+                    continue;
+                }
+
+                $items[$uraian] = (float) $progress;
             }
         }
         

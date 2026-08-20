@@ -287,5 +287,7 @@
     </div>
     @endif
 
+    @include('exports.partials.daftar-hadir')
+
 </body>
 </html>

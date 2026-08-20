@@ -96,6 +96,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
     
     Route::get('kinerja/on-cost', [KinerjaCostController::class, 'index'])->name('kinerja.on-cost');
     Route::post('kinerja/on-cost', [KinerjaCostController::class, 'store'])->name('kinerja.on-cost.store');
+    // Penyaji berkas eviden kinerja dari disk privat (bukan /storage publik).
+    Route::get('kinerja/eviden/{jenis}/{id}/{tipe?}', [\App\Http\Controllers\KinerjaEvidenController::class, 'show'])
+        ->where('jenis', 'quality|time|cost')
+        ->name('kinerja.eviden');
     Route::get('kinerja/on-scope', fn() => inertia('kinerja/on-scope'))->name('kinerja.on-scope');
     Route::get('kinerja/on-safety', fn() => inertia('kinerja/on-safety'))->name('kinerja.on-safety');
 

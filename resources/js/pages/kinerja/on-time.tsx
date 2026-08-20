@@ -33,6 +33,7 @@ import {
     countActiveFilters,
 } from '@/components/data-filter-bar';
 import { EvidenInput } from '@/components/eviden-input';
+import { EvidenPreview } from '@/components/eviden-preview';
 import { Button } from '@/components/ui/button';
 import {
     Card,
@@ -59,6 +60,7 @@ type Kinerja = {
     selesai_aktual: string | null;
     catatan: string | null;
     eviden_url: string | null;
+    eviden_type?: string | null;
 } | null;
 
 type Plan = {
@@ -822,6 +824,9 @@ export default function OnTime({
                                         Status
                                     </TableHead>
                                     <TableHead className="px-4 text-center font-bold">
+                                        Eviden
+                                    </TableHead>
+                                    <TableHead className="px-4 text-center font-bold">
                                         Aksi
                                     </TableHead>
                                 </TableRow>
@@ -865,6 +870,11 @@ export default function OnTime({
                                                     <StatusBadge plan={plan} />
                                                 </TableCell>
                                                 <TableCell className="px-4 text-center">
+                                                    <EvidenPreview
+                                                        files={[{ label: 'Eviden On Time', url: kt?.eviden_url, type: kt?.eviden_type }]}
+                                                    />
+                                                </TableCell>
+                                                <TableCell className="px-4 text-center">
                                                     <Button
                                                         variant={isOpen ? 'default' : 'outline'}
                                                         size="sm"
@@ -881,7 +891,7 @@ export default function OnTime({
                                 ) : (
                                     <TableRow>
                                         <TableCell
-                                            colSpan={7}
+                                            colSpan={8}
                                             className="h-32 text-center text-muted-foreground"
                                         >
                                             <Clock className="mx-auto mb-2 h-10 w-10 opacity-20" />

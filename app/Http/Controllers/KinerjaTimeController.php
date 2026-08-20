@@ -54,6 +54,7 @@ class KinerjaTimeController extends Controller
     private function mapPlan(OutagePlan $plan): array
     {
         $k = $plan->kinerjaTime;
+        $ev = $this->evidenPayload($k?->eviden, 'time', $k?->id ?? 0);
 
         return [
             'id' => $plan->id,
@@ -69,7 +70,8 @@ class KinerjaTimeController extends Controller
                 'start_date_aktual' => $k->start_date_aktual,
                 'selesai_aktual' => $k->selesai_aktual,
                 'catatan' => $k->catatan,
-                'eviden_url' => $k->eviden ? Storage::url($k->eviden) : null,
+                'eviden_url' => $ev['url'],
+                'eviden_type' => $ev['type'],
             ] : null,
         ];
     }
@@ -118,7 +120,8 @@ class KinerjaTimeController extends Controller
             if ($kinerja->eviden) {
                 Storage::disk('public')->delete($kinerja->eviden);
             }
-            $path = $request->file('eviden')->store('kinerja-time', 'public');
+            // Disk privat: berkas eviden tidak boleh diakses langsung lewat /storage.
+            $path = $request->file('eviden')->store('kinerja-time', 'local');
             $kinerja->eviden = $path;
         }
 

@@ -35,6 +35,7 @@ import {
     countActiveFilters,
 } from '@/components/data-filter-bar';
 import { EvidenInput } from '@/components/eviden-input';
+import { EvidenPreview } from '@/components/eviden-preview';
 import { Button } from '@/components/ui/button';
 import {
     Card,
@@ -58,6 +59,7 @@ type Kinerja = {
     anggaran_rencana: number | string | null;
     anggaran_aktual: number | string | null;
     eviden_url: string | null;
+    eviden_type?: string | null;
 } | null;
 
 type Plan = {
@@ -817,6 +819,9 @@ export default function OnCost({
                                         Status
                                     </TableHead>
                                     <TableHead className="px-4 text-center font-bold">
+                                        Eviden
+                                    </TableHead>
+                                    <TableHead className="px-4 text-center font-bold">
                                         Aksi
                                     </TableHead>
                                 </TableRow>
@@ -873,6 +878,11 @@ export default function OnCost({
                                                     <StatusBadge plan={plan} />
                                                 </TableCell>
                                                 <TableCell className="px-4 text-center">
+                                                    <EvidenPreview
+                                                        files={[{ label: 'Eviden On Cost', url: kc?.eviden_url, type: kc?.eviden_type }]}
+                                                    />
+                                                </TableCell>
+                                                <TableCell className="px-4 text-center">
                                                     <Button
                                                         variant={isOpen ? 'default' : 'outline'}
                                                         size="sm"
@@ -889,7 +899,7 @@ export default function OnCost({
                                 ) : (
                                     <TableRow>
                                         <TableCell
-                                            colSpan={8}
+                                            colSpan={9}
                                             className="h-32 text-center text-muted-foreground"
                                         >
                                             <DollarSign className="mx-auto mb-2 h-10 w-10 opacity-20" />

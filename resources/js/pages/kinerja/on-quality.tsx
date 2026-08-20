@@ -36,6 +36,7 @@ import {
     countActiveFilters,
 } from '@/components/data-filter-bar';
 import { EvidenInput } from '@/components/eviden-input';
+import { EvidenPreview } from '@/components/eviden-preview';
 import { Button } from '@/components/ui/button';
 import {
     Card,
@@ -59,9 +60,11 @@ type Kinerja = {
     dm_sebelum: number | null;
     sfc_sebelum: number | null;
     eviden_sebelum_url: string | null;
+    eviden_sebelum_type?: string | null;
     dm_sesudah: number | null;
     sfc_sesudah: number | null;
     eviden_sesudah_url: string | null;
+    eviden_sesudah_type?: string | null;
     /** Kenaikan daya mampu dalam persen; positif = naik. */
     dm_naik_persen: number | null;
     /** Penurunan SFC dalam persen; positif = turun (arah yang diinginkan). */
@@ -1225,6 +1228,9 @@ export default function OnQuality({
                                         Status
                                     </TableHead>
                                     <TableHead className="px-4 text-center font-bold">
+                                        Eviden
+                                    </TableHead>
+                                    <TableHead className="px-4 text-center font-bold">
                                         Aksi
                                     </TableHead>
                                 </TableRow>
@@ -1303,6 +1309,14 @@ export default function OnQuality({
                                                     <StatusBadge plan={plan} />
                                                 </TableCell>
                                                 <TableCell className="px-4 text-center">
+                                                    <EvidenPreview
+                                                        files={[
+                                                            { label: 'Eviden Sebelum Overhaul', url: kq?.eviden_sebelum_url, type: kq?.eviden_sebelum_type },
+                                                            { label: 'Eviden Sesudah Overhaul', url: kq?.eviden_sesudah_url, type: kq?.eviden_sesudah_type },
+                                                        ]}
+                                                    />
+                                                </TableCell>
+                                                <TableCell className="px-4 text-center">
                                                     <Button
                                                         variant={isOpen ? 'default' : 'outline'}
                                                         size="sm"
@@ -1319,7 +1333,7 @@ export default function OnQuality({
                                 ) : (
                                     <TableRow>
                                         <TableCell
-                                            colSpan={9}
+                                            colSpan={10}
                                             className="h-32 text-center text-muted-foreground"
                                         >
                                             <ShieldCheck className="mx-auto mb-2 h-10 w-10 opacity-20" />

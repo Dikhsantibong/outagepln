@@ -18,6 +18,40 @@ trait FiltersOutagePlans
         'search', 'tahun', 'scope', 'jenis', 'sistem', 'status',
     ];
 
+    /**
+     * URL penyaji privat + jenis berkas untuk satu kolom eviden.
+     *
+     * Berkas eviden kini disimpan di disk privat (local), jadi tidak bisa
+     * diakses lewat /storage. URL yang dikembalikan menunjuk route penyaji yang
+     * membaca path-nya dari basis data dan mengalirkan berkas dengan autentikasi.
+     * `type` membantu frontend memilih cara pratinjau (gambar / PDF / lainnya)
+     * tanpa menebak dari ekstensi pada URL.
+     *
+     * @return array{url: string|null, type: string|null}
+     */
+    protected function evidenPayload(?string $path, string $jenis, int|string $id, ?string $tipe = null): array
+    {
+        if (blank($path)) {
+            return ['url' => null, 'type' => null];
+        }
+
+        $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+        $type = match (true) {
+            in_array($ext, ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'svg'], true) => 'image',
+            $ext === 'pdf' => 'pdf',
+            default => 'other',
+        };
+
+        return [
+            'url' => route('kinerja.eviden', array_filter([
+                'jenis' => $jenis,
+                'id' => $id,
+                'tipe' => $tipe,
+            ], fn ($v) => $v !== null && $v !== '')),
+            'type' => $type,
+        ];
+    }
+
     protected function applyPlanFilters(Builder $query, Request $request): Builder
     {
         // Each account manages one engine brand; admin/tamu see everything.

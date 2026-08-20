@@ -130,4 +130,34 @@
     <tr>
         <td colspan="6" style="border: 1px solid #000;">{{ url('/daily-briefings/attend/' . $meeting->token) }}</td>
     </tr>
+
+    {{-- ════════════════ DAFTAR HADIR ════════════════ --}}
+    <tr height="10"><td colspan="6"></td></tr>
+    <tr>
+        <td colspan="6" style="font-weight: bold; text-align: center; background-color: #f2f2f2; border: 1px solid #000;">DAFTAR HADIR PESERTA RAPAT</td>
+    </tr>
+    <tr>
+        <th style="font-weight: bold; background-color: #f2f2f2; border: 1px solid #000; text-align: center;">No</th>
+        <th style="font-weight: bold; background-color: #f2f2f2; border: 1px solid #000; text-align: center;">Nama</th>
+        <th style="font-weight: bold; background-color: #f2f2f2; border: 1px solid #000; text-align: center;">NID</th>
+        <th style="font-weight: bold; background-color: #f2f2f2; border: 1px solid #000; text-align: center;">Instansi / Divisi</th>
+        <th style="font-weight: bold; background-color: #f2f2f2; border: 1px solid #000; text-align: center;">Jabatan</th>
+        <th style="font-weight: bold; background-color: #f2f2f2; border: 1px solid #000; text-align: center;">Tanda Tangan</th>
+    </tr>
+    @forelse($meeting->attendees as $i => $att)
+    <tr height="42">
+        <td style="border: 1px solid #000; text-align: center;">{{ $i + 1 }}</td>
+        <td style="border: 1px solid #000;">{{ $att->nama }}</td>
+        <td style="border: 1px solid #000; text-align: center;">{{ $att->nid ?: '-' }}</td>
+        <td style="border: 1px solid #000;">{{ $att->instansi ?: ($att->divisi ?: '-') }}</td>
+        <td style="border: 1px solid #000;">{{ $att->jabatan ?: '-' }}</td>
+        <td style="border: 1px solid #000; text-align: center;">
+            @if($att->signature)<img src="{{ $att->signature }}" width="110" alt="TTD">@endif
+        </td>
+    </tr>
+    @empty
+    <tr>
+        <td colspan="6" style="border: 1px solid #000; text-align: center; font-style: italic; color: #777;">Belum ada peserta yang mengisi daftar hadir.</td>
+    </tr>
+    @endforelse
 </table>
