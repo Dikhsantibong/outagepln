@@ -5,6 +5,7 @@ import {
     CalendarClock,
     ChevronDown,
     ChevronRight,
+    Lock,
     Plus,
     Save,
     Sparkles,
@@ -12,12 +13,21 @@ import {
 } from 'lucide-react';
 import type { FormEventHandler, KeyboardEvent } from 'react';
 import { useMemo, useState } from 'react';
+import { toast } from 'sonner';
 import {
     SparePartsInput,
     WorkItemsInput,
 } from '@/components/daily-list-input';
 import { DailyPhotoCell } from '@/components/daily-photo-cell';
 import type { FotoItem } from '@/components/daily-photo-cell';
+import {
+    KOLOM_RAPAT,
+    TabelRiwayatRevisi,
+    jadwalDariStart,
+    selisihHari,
+    tambahHari,
+} from '@/components/outage-revisi';
+import type { RevisiRencana } from '@/components/outage-revisi';
 import { Button } from '@/components/ui/button';
 import {
     Card,
@@ -35,7 +45,6 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
-import { toast } from 'sonner';
 import {
     Table,
     TableBody,
@@ -91,7 +100,26 @@ type OutagePlan = {
         keterangan: string | null;
         photos: string[] | null;
     }[];
+    revisions?: RevisiRencana[];
 };
+
+/** Sel label pada tabel form; disamakan supaya kolom kirinya rata. */
+function SelLabel({ children, htmlFor }: { children: React.ReactNode; htmlFor?: string }) {
+    return (
+        <th className="w-[30%] border-b px-3 py-2 text-left align-middle">
+            <Label
+                htmlFor={htmlFor}
+                className="text-[10px] font-bold tracking-wider text-muted-foreground uppercase"
+            >
+                {children}
+            </Label>
+        </th>
+    );
+}
+
+function SelIsi({ children }: { children: React.ReactNode }) {
+    return <td className="border-b px-3 py-2 align-middle">{children}</td>;
+}
 
 /**
  * Textarea yang tingginya mengikuti isi.
@@ -133,30 +161,22 @@ function AutoTextarea({
     );
 }
 
-function Field({
-    label,
-    htmlFor,
-    children,
-    hint,
+export default function OutagePlanEdit({
+    outagePlan,
+    offsetRapat = {},
+    maksRevisi = 3,
+    bolehUbahJadwal = true,
 }: {
-    label: string;
-    htmlFor?: string;
-    children: React.ReactNode;
-    hint?: string;
+    outagePlan: OutagePlan;
+    offsetRapat?: Record<string, number>;
+    maksRevisi?: number;
+    bolehUbahJadwal?: boolean;
 }) {
-    return (
-        <div className="space-y-1.5">
-            <Label htmlFor={htmlFor} className="text-xs">
-                {label}
-            </Label>
-            {children}
-            {hint && <p className="text-[11px] text-muted-foreground">{hint}</p>}
-        </div>
-    );
-}
-
-export default function OutagePlanEdit({ outagePlan }: { outagePlan: OutagePlan }) {
     const existing = outagePlan.daily_progresses ?? [];
+    const revisi = outagePlan.revisions ?? [];
+    // Urutan 0 adalah rencana awal, bukan revisi — sama seperti hitungan server.
+    const revisiTerpakai = Math.max(0, revisi.length - 1);
+    const jadwalTerkunci = revisiTerpakai >= maksRevisi;
 
     const { data, setData, processing, errors } = useForm({
         mesin_pembangkit: outagePlan.mesin_pembangkit || '',
@@ -189,6 +209,53 @@ export default function OutagePlanEdit({ outagePlan }: { outagePlan: OutagePlan 
             existing,
         ) as DailyProgressRow[],
     });
+
+    /**
+     * Menggeser rencana start ikut menggeser jadwal rapat dan rencana selesai.
+     *
+     * Rumus mundurnya datang dari server dan sama persis dengan yang dipakai
+     * menu Rapat Outage, jadi kedua layar tidak pernah menghasilkan tanggal
+     * yang berbeda. Tanggal rapatnya tetap bisa ditimpa manual setelahnya.
+     */
+    const ubahRencanaStart = (nilai: string) => {
+        const jadwal = jadwalDariStart(nilai, offsetRapat);
+        const geser = data.start_date && nilai ? selisihHari(data.start_date, nilai) : 0;
+
+        setData({
+            ...data,
+            start_date: nilai,
+            selesai:
+                geser !== 0 && data.selesai
+                    ? tambahHari(data.selesai, geser)
+                    : data.selesai,
+            rapat_r2: jadwal.rapat_r2 ?? data.rapat_r2,
+            rapat_r3: jadwal.rapat_r3 ?? data.rapat_r3,
+            rapat_p1: jadwal.rapat_p1 ?? data.rapat_p1,
+            rapat_p2: jadwal.rapat_p2 ?? data.rapat_p2,
+            rapat_p3: jadwal.rapat_p3 ?? data.rapat_p3,
+        });
+    };
+
+    /** Kembalikan kelima tanggal rapat ke hasil hitungan rencana start. */
+    const hitungUlangJadwalRapat = () => {
+        const jadwal = jadwalDariStart(data.start_date, offsetRapat);
+
+        if (!jadwal.rapat_r2) {
+            toast.error('Isi Mulai (Rencana) lebih dulu.');
+
+            return;
+        }
+
+        setData({
+            ...data,
+            rapat_r2: jadwal.rapat_r2,
+            rapat_r3: jadwal.rapat_r3,
+            rapat_p1: jadwal.rapat_p1,
+            rapat_p2: jadwal.rapat_p2,
+            rapat_p3: jadwal.rapat_p3,
+        });
+        toast.success('Jadwal rapat dihitung ulang dari rencana start.');
+    };
 
     // --- Photo state (per row, keyed by tanggal) ---
     const [retainedPhotos, setRetainedPhotos] = useState<Record<string, string[]>>(() => {
@@ -527,7 +594,10 @@ export default function OutagePlanEdit({ outagePlan }: { outagePlan: OutagePlan 
                             <div>
                                 <CardTitle className="text-base">Data Pekerjaan</CardTitle>
                                 <CardDescription>
-                                    Jadwal, rapat, dan realisasi &middot; Real Start{' '}
+                                    {bolehUbahJadwal
+                                        ? 'Jadwal, rapat, dan realisasi'
+                                        : 'Identitas mesin dan realisasi lapangan'}{' '}
+                                    &middot; Real Start{' '}
                                     {data.real_start ? formatDMY(data.real_start) : 'belum diisi'}
                                 </CardDescription>
                             </div>
@@ -549,177 +619,341 @@ export default function OutagePlanEdit({ outagePlan }: { outagePlan: OutagePlan 
                     </CardHeader>
 
                     {dataTerbuka && (
-                        <CardContent className="grid gap-4 md:grid-cols-3 lg:grid-cols-4">
-                            <Field label="Mesin Pembangkit" htmlFor="mesin_pembangkit">
-                                <Input
-                                    id="mesin_pembangkit"
-                                    value={data.mesin_pembangkit}
-                                    onChange={(e) =>
-                                        setData('mesin_pembangkit', e.target.value)
-                                    }
-                                />
-                            </Field>
+                        <CardContent className="space-y-6 p-0 pb-6">
+                            {/* Identitas & jadwal — dua tabel berdampingan di layar lebar */}
+                            <div className="grid gap-x-8 border-t lg:grid-cols-2">
+                                <table className="w-full border-collapse">
+                                    <tbody>
+                                        <tr>
+                                            <SelLabel htmlFor="mesin_pembangkit">
+                                                Mesin Pembangkit
+                                            </SelLabel>
+                                            <SelIsi>
+                                                <Input
+                                                    id="mesin_pembangkit"
+                                                    value={data.mesin_pembangkit}
+                                                    onChange={(e) =>
+                                                        setData('mesin_pembangkit', e.target.value)
+                                                    }
+                                                />
+                                            </SelIsi>
+                                        </tr>
+                                        <tr>
+                                            <SelLabel>Scope</SelLabel>
+                                            <SelIsi>
+                                                <Select
+                                                    value={data.scope}
+                                                    onValueChange={(v) => setData('scope', v)}
+                                                >
+                                                    <SelectTrigger>
+                                                        <SelectValue placeholder="Pilih Scope" />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        {SCOPES.map((s) => (
+                                                            <SelectItem key={s} value={s}>
+                                                                {s}
+                                                            </SelectItem>
+                                                        ))}
+                                                    </SelectContent>
+                                                </Select>
+                                            </SelIsi>
+                                        </tr>
+                                        <tr>
+                                            <SelLabel>Jenis Pembangkit</SelLabel>
+                                            <SelIsi>
+                                                <Select
+                                                    value={data.jenis_pembangkit}
+                                                    onValueChange={(v) =>
+                                                        setData('jenis_pembangkit', v)
+                                                    }
+                                                >
+                                                    <SelectTrigger>
+                                                        <SelectValue placeholder="Pilih Jenis" />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        {JENIS_PEMBANGKIT.map((j) => (
+                                                            <SelectItem key={j} value={j}>
+                                                                {j}
+                                                            </SelectItem>
+                                                        ))}
+                                                    </SelectContent>
+                                                </Select>
+                                            </SelIsi>
+                                        </tr>
+                                        <tr>
+                                            <SelLabel htmlFor="sistem">Sistem</SelLabel>
+                                            <SelIsi>
+                                                <Input
+                                                    id="sistem"
+                                                    placeholder="cth: RAHA, BAUBAU"
+                                                    value={data.sistem}
+                                                    onChange={(e) =>
+                                                        setData('sistem', e.target.value)
+                                                    }
+                                                />
+                                            </SelIsi>
+                                        </tr>
+                                        <tr>
+                                            <SelLabel>Keterangan</SelLabel>
+                                            <SelIsi>
+                                                <Select
+                                                    value={data.ket}
+                                                    onValueChange={(v) => setData('ket', v)}
+                                                >
+                                                    <SelectTrigger>
+                                                        <SelectValue placeholder="Pilih status" />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        {KET_OPTIONS.map((k) => (
+                                                            <SelectItem key={k} value={k}>
+                                                                {k}
+                                                            </SelectItem>
+                                                        ))}
+                                                    </SelectContent>
+                                                </Select>
+                                            </SelIsi>
+                                        </tr>
+                                    </tbody>
+                                </table>
 
-                            <Field label="Scope">
-                                <Select
-                                    value={data.scope}
-                                    onValueChange={(v) => setData('scope', v)}
-                                >
-                                    <SelectTrigger>
-                                        <SelectValue placeholder="Pilih Scope" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {SCOPES.map((s) => (
-                                            <SelectItem key={s} value={s}>
-                                                {s}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </Field>
-
-                            <Field label="Jenis">
-                                <Select
-                                    value={data.jenis_pembangkit}
-                                    onValueChange={(v) => setData('jenis_pembangkit', v)}
-                                >
-                                    <SelectTrigger>
-                                        <SelectValue placeholder="Pilih Jenis" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {JENIS_PEMBANGKIT.map((j) => (
-                                            <SelectItem key={j} value={j}>
-                                                {j}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </Field>
-
-                            <Field label="Sistem" htmlFor="sistem">
-                                <Input
-                                    id="sistem"
-                                    placeholder="cth: RAHA, BAUBAU"
-                                    value={data.sistem}
-                                    onChange={(e) => setData('sistem', e.target.value)}
-                                />
-                            </Field>
-
-                            <Field
-                                label="Durasi (Hari)"
-                                htmlFor="durasi"
-                                hint="Menentukan jumlah baris progress harian."
-                            >
-                                <Input
-                                    id="durasi"
-                                    type="number"
-                                    min={0}
-                                    value={data.durasi}
-                                    onChange={(e) => setData('durasi', e.target.value)}
-                                />
-                            </Field>
-
-                            <Field label="Mulai (Rencana)" htmlFor="start_date">
-                                <Input
-                                    id="start_date"
-                                    type="date"
-                                    value={data.start_date}
-                                    onChange={(e) => setData('start_date', e.target.value)}
-                                />
-                            </Field>
-
-                            <Field label="Selesai (Rencana)" htmlFor="selesai">
-                                <Input
-                                    id="selesai"
-                                    type="date"
-                                    value={data.selesai}
-                                    onChange={(e) => setData('selesai', e.target.value)}
-                                />
-                            </Field>
-
-                            <Field
-                                label="Keterangan"
-                                hint="OPEN = masih berjalan, CLOSE = sudah ditutup."
-                            >
-                                <Select
-                                    value={data.ket}
-                                    onValueChange={(v) => setData('ket', v)}
-                                >
-                                    <SelectTrigger>
-                                        <SelectValue placeholder="Pilih status" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {KET_OPTIONS.map((k) => (
-                                            <SelectItem key={k} value={k}>
-                                                {k}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </Field>
-
-                            <Field
-                                label="Real Start"
-                                htmlFor="real_start"
-                                hint="Acuan hari pertama progress harian."
-                            >
-                                <Input
-                                    id="real_start"
-                                    type="date"
-                                    value={data.real_start}
-                                    onChange={(e) => setData('real_start', e.target.value)}
-                                />
-                            </Field>
-
-                            <Field label="Real Stop" htmlFor="real_stop">
-                                <Input
-                                    id="real_stop"
-                                    type="date"
-                                    value={data.real_stop}
-                                    onChange={(e) => setData('real_stop', e.target.value)}
-                                />
-                            </Field>
-
-                            <Field label="Ket. Realisasi" htmlFor="ket_realisasi">
-                                <Input
-                                    id="ket_realisasi"
-                                    placeholder="cth: Selesai"
-                                    value={data.ket_realisasi}
-                                    onChange={(e) =>
-                                        setData('ket_realisasi', e.target.value)
-                                    }
-                                />
-                            </Field>
-
-                            <div className="md:col-span-3 lg:col-span-4">
-                                <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
-                                    <CalendarClock className="h-3.5 w-3.5" />
-                                    Jadwal Rapat
-                                </p>
-                                <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-5">
-                                    {(
-                                        [
-                                            ['rapat_r2', 'R2'],
-                                            ['rapat_r3', 'R3'],
-                                            ['rapat_p1', 'P1'],
-                                            ['rapat_p2', 'P2'],
-                                            ['rapat_p3', 'P3'],
-                                        ] as const
-                                    ).map(([key, label]) => (
-                                        <Field key={key} label={`Rapat ${label}`} htmlFor={key}>
-                                            <Input
-                                                id={key}
-                                                type="date"
-                                                value={data[key]}
-                                                onChange={(e) => setData(key, e.target.value)}
-                                            />
-                                        </Field>
-                                    ))}
-                                </div>
+                                <table className="w-full border-collapse">
+                                    <tbody>
+                                        {bolehUbahJadwal && (
+                                            <>
+                                                <tr>
+                                                    <SelLabel htmlFor="start_date">
+                                                        Mulai (Rencana)
+                                                    </SelLabel>
+                                                    <SelIsi>
+                                                        <Input
+                                                            id="start_date"
+                                                            type="date"
+                                                            value={data.start_date}
+                                                            disabled={jadwalTerkunci}
+                                                            onChange={(e) =>
+                                                                ubahRencanaStart(e.target.value)
+                                                            }
+                                                        />
+                                                        {errors.start_date && (
+                                                            <p className="mt-1 text-[11px] text-destructive">
+                                                                {errors.start_date}
+                                                            </p>
+                                                        )}
+                                                    </SelIsi>
+                                                </tr>
+                                                <tr>
+                                                    <SelLabel htmlFor="selesai">
+                                                        Selesai (Rencana)
+                                                    </SelLabel>
+                                                    <SelIsi>
+                                                        <Input
+                                                            id="selesai"
+                                                            type="date"
+                                                            value={data.selesai}
+                                                            disabled={jadwalTerkunci}
+                                                            onChange={(e) =>
+                                                                setData('selesai', e.target.value)
+                                                            }
+                                                        />
+                                                    </SelIsi>
+                                                </tr>
+                                            </>
+                                        )}
+                                        <tr>
+                                            <SelLabel htmlFor="durasi">Durasi (Hari)</SelLabel>
+                                            <SelIsi>
+                                                <Input
+                                                    id="durasi"
+                                                    type="number"
+                                                    min={0}
+                                                    value={data.durasi}
+                                                    onChange={(e) =>
+                                                        setData('durasi', e.target.value)
+                                                    }
+                                                />
+                                            </SelIsi>
+                                        </tr>
+                                        <tr>
+                                            <SelLabel htmlFor="real_start">Real Start</SelLabel>
+                                            <SelIsi>
+                                                <Input
+                                                    id="real_start"
+                                                    type="date"
+                                                    value={data.real_start}
+                                                    onChange={(e) =>
+                                                        setData('real_start', e.target.value)
+                                                    }
+                                                />
+                                            </SelIsi>
+                                        </tr>
+                                        <tr>
+                                            <SelLabel htmlFor="real_stop">Real Stop</SelLabel>
+                                            <SelIsi>
+                                                <Input
+                                                    id="real_stop"
+                                                    type="date"
+                                                    value={data.real_stop}
+                                                    onChange={(e) =>
+                                                        setData('real_stop', e.target.value)
+                                                    }
+                                                />
+                                            </SelIsi>
+                                        </tr>
+                                        <tr>
+                                            <SelLabel htmlFor="ket_realisasi">
+                                                Ket. Realisasi
+                                            </SelLabel>
+                                            <SelIsi>
+                                                <Input
+                                                    id="ket_realisasi"
+                                                    placeholder="cth: Selesai"
+                                                    value={data.ket_realisasi}
+                                                    onChange={(e) =>
+                                                        setData('ket_realisasi', e.target.value)
+                                                    }
+                                                />
+                                            </SelIsi>
+                                        </tr>
+                                    </tbody>
+                                </table>
                             </div>
+
+                            <p className="px-3 text-[11px] text-muted-foreground">
+                                Durasi menentukan jumlah baris progress harian; Real Start
+                                menjadi acuan hari pertamanya.
+                            </p>
+
+                            {/* Rencana dan jadwal rapat ditetapkan terpusat, jadi pengelola
+                                hanya diberi rujukan ke halaman detail. */}
+                            {!bolehUbahJadwal && (
+                                <p className="mx-3 rounded-md border bg-muted/40 px-3 py-2 text-[11px] text-muted-foreground">
+                                    Rencana outage dan jadwal rapat R2&ndash;P3 ditetapkan
+                                    terpusat dan tidak diubah dari halaman ini. Tanggalnya bisa
+                                    dilihat di{' '}
+                                    <Link
+                                        href={`/outage-plans/${outagePlan.id}`}
+                                        className="font-semibold text-foreground underline underline-offset-2"
+                                    >
+                                        halaman detail pekerjaan
+                                    </Link>
+                                    .
+                                </p>
+                            )}
+
+                            {/* Jadwal rapat — tergenerate dari rencana start */}
+                            {bolehUbahJadwal && (
+                            <div className="space-y-2 px-3">
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                    <p className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
+                                        <CalendarClock className="h-3.5 w-3.5" />
+                                        Jadwal Rapat
+                                    </p>
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        className="h-8 gap-1.5 text-xs"
+                                        disabled={jadwalTerkunci}
+                                        onClick={hitungUlangJadwalRapat}
+                                    >
+                                        <Sparkles className="h-3.5 w-3.5" />
+                                        Hitung Ulang dari Rencana Start
+                                    </Button>
+                                </div>
+
+                                <div className="overflow-x-auto rounded-md border">
+                                    <table className="w-full min-w-[620px] border-collapse">
+                                        <thead>
+                                            <tr className="border-b bg-muted/40">
+                                                {KOLOM_RAPAT.map((r) => (
+                                                    <th
+                                                        key={r.kolom}
+                                                        className="px-3 py-2 text-left text-[10px] font-bold tracking-wider text-muted-foreground uppercase"
+                                                    >
+                                                        Rapat {r.label}
+                                                        <span className="ml-1 font-normal normal-case">
+                                                            (&minus;{offsetRapat[r.kolom] ?? 0} hari)
+                                                        </span>
+                                                    </th>
+                                                ))}
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr>
+                                                {KOLOM_RAPAT.map((r) => (
+                                                    <td key={r.kolom} className="px-2 py-2">
+                                                        <Input
+                                                            id={r.kolom}
+                                                            type="date"
+                                                            value={data[r.kolom]}
+                                                            disabled={jadwalTerkunci}
+                                                            onChange={(e) =>
+                                                                setData(r.kolom, e.target.value)
+                                                            }
+                                                        />
+                                                    </td>
+                                                ))}
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+
+                                {jadwalTerkunci ? (
+                                    <p className="flex items-start gap-1.5 rounded-md border border-rose-500/30 bg-rose-500/[0.07] px-3 py-2 text-[11px] text-rose-700 dark:text-rose-400">
+                                        <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                                        <span>
+                                            Rencana ini sudah direvisi {maksRevisi} kali, jadi
+                                            tanggal rencana dan jadwal rapatnya dikunci. Data
+                                            lain di halaman ini tetap bisa diubah dan disimpan.
+                                        </span>
+                                    </p>
+                                ) : (
+                                    <p className="text-[11px] text-muted-foreground">
+                                        Terisi otomatis saat Mulai (Rencana) diubah, dan masih
+                                        bisa ditimpa manual. Perubahan jadwal tersimpan sebagai
+                                        revisi baru — terpakai {revisiTerpakai} dari {maksRevisi},
+                                        sisa {maksRevisi - revisiTerpakai} kali.
+                                    </p>
+                                )}
+                            </div>
+                            )}
                         </CardContent>
                     )}
                 </Card>
+
+                {/* Riwayat revisi rencana */}
+                {bolehUbahJadwal && (
+                <Card>
+                    <CardHeader className="pb-3">
+                        <div className="flex flex-wrap items-start justify-between gap-2">
+                            <div>
+                                <CardTitle className="text-base">
+                                    Riwayat Revisi Rencana
+                                </CardTitle>
+                                <CardDescription>
+                                    Versi rencana yang pernah berlaku, termasuk revisi dari
+                                    menu Rapat Outage
+                                </CardDescription>
+                            </div>
+                            <span
+                                className={`inline-flex items-center gap-1 rounded px-2 py-1 text-[11px] font-semibold ${
+                                    jadwalTerkunci
+                                        ? 'bg-rose-500/15 text-rose-700 dark:text-rose-400'
+                                        : 'bg-muted text-muted-foreground'
+                                }`}
+                            >
+                                {jadwalTerkunci && <Lock className="h-3 w-3" />}
+                                {revisiTerpakai} dari {maksRevisi} revisi terpakai
+                            </span>
+                        </div>
+                    </CardHeader>
+                    <CardContent className="p-0">
+                        <div className="border-t">
+                            <TabelRiwayatRevisi revisions={revisi} />
+                        </div>
+                    </CardContent>
+                </Card>
+                )}
 
                 {/* Progress harian */}
                 <Card>

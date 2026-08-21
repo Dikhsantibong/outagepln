@@ -70,6 +70,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
         // Rapat Outage routes
         Route::resource('daily-meetings', DailyMeetingController::class)->only(['index', 'store', 'show', 'destroy']);
+        // Revisi rencana: tanggal rapat R2-P3 dihitung ulang dari rencana start.
+        Route::post('daily-meetings/rencana/{outage_plan}/revisi', [DailyMeetingController::class, 'storeRevisiRencana'])->name('daily-meetings.rencana.revisi');
         Route::get('daily-meetings/{dailyMeeting}/qr', [DailyMeetingController::class, 'qrDisplay'])->name('daily-meetings.qr');
         Route::post('daily-meetings/{dailyMeeting}/complete', [DailyMeetingController::class, 'complete'])->name('daily-meetings.complete');
         Route::post('daily-meetings/{dailyMeeting}/realisasi', [DailyMeetingController::class, 'setRealisasi'])->name('daily-meetings.realisasi');

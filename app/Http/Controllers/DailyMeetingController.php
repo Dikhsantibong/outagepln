@@ -11,12 +11,14 @@ use App\Models\MeetingKickoffPhoto;
 use App\Models\Mesin;
 use App\Models\OutagePlan;
 use App\Models\Unit;
+use App\Support\JadwalRapatOutage;
 use App\Support\TahunFilter;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Maatwebsite\Excel\Facades\Excel;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
@@ -90,7 +92,10 @@ class DailyMeetingController extends Controller
         }
 
         // Ordered by id so the listing mirrors the row order.
-        $outagePlans = $query->with('dailyMeetings')->orderBy('id')->paginate(20)->withQueryString();
+        $outagePlans = $query->with(['dailyMeetings', 'revisions.user:id,name'])
+            ->orderBy('id')
+            ->paginate(20)
+            ->withQueryString();
 
         // Get filter options
         $tahunOptions = TahunFilter::options(OutagePlan::visibleTo($user), 'start_date');
@@ -119,7 +124,45 @@ class DailyMeetingController extends Controller
                 'scope' => array_values(array_unique(array_merge(['Semua'], $scopeOptions))),
                 'jenis_rapat' => ['Semua', 'RAPAT P1', 'RAPAT P2', 'RAPAT P3', 'RAPAT R2', 'RAPAT R3'],
             ],
+            // Dikirim ke layar supaya pratinjau tanggal di formulir revisi
+            // memakai angka yang sama persis dengan hitungan di server.
+            'offsetRapat' => JadwalRapatOutage::OFFSET_HARI,
+            'maksRevisi' => OutagePlan::MAKS_REVISI,
         ]);
+    }
+
+    /**
+     * Catat revisi rencana outage.
+     *
+     * Yang diminta hanya rencana start dan finish; tanggal rapat R2-P3 dihitung
+     * ulang dari rencana start, dan versi sebelumnya tetap tersimpan sebagai
+     * riwayat. Lihat [OutagePlan::catatRevisi()].
+     */
+    public function storeRevisiRencana(Request $request, OutagePlan $outagePlan)
+    {
+        abort_unless($request->user()?->canWrite(), 403);
+
+        $validated = $request->validate([
+            'start_date' => 'required|date',
+            'selesai' => 'nullable|date|after_or_equal:start_date',
+            'catatan' => 'nullable|string|max:255',
+        ]);
+
+        if ($outagePlan->sudahMencapaiBatasRevisi()) {
+            throw ValidationException::withMessages([
+                'start_date' => 'Rencana ini sudah direvisi '.OutagePlan::MAKS_REVISI
+                    .' kali — batas maksimal revisi tercapai.',
+            ]);
+        }
+
+        $outagePlan->catatRevisi(
+            $validated['start_date'],
+            $validated['selesai'] ?? null,
+            $validated['catatan'] ?? null,
+            $request->user()?->id,
+        );
+
+        return redirect()->back()->with('success', 'Revisi rencana tersimpan dan jadwal rapat diperbarui.');
     }
 
     public function store(Request $request)

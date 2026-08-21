@@ -2,22 +2,33 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Http\Request;
-
-use Inertia\Inertia;
 use App\Models\OutagePlan;
+use App\Models\OutagePlanProgress;
+use App\Models\Unit;
 use App\Support\DailyRingkas;
+use App\Support\JadwalRapatOutage;
 use App\Support\LaporanHarianData;
 use App\Support\OutagePhotos;
 use App\Support\SCurveChartRenderer;
 use App\Support\TahunFilter;
-use Illuminate\Validation\Rule;
 use Barryvdh\DomPDF\Facade\Pdf;
+use Carbon\Carbon;
+use Illuminate\Http\Request;
+use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
+use Inertia\Inertia;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
+use PhpOffice\PhpSpreadsheet\Style\Border;
+use PhpOffice\PhpSpreadsheet\Style\Color;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
 use PhpOffice\PhpSpreadsheet\Worksheet\Drawing;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+use setasign\Fpdi\Fpdi;
+use setasign\Fpdi\PdfParser\StreamReader;
 
 class OutagePlanController extends Controller
 {
@@ -75,7 +86,7 @@ class OutagePlanController extends Controller
 
         // Ordered by id so the listing mirrors the row order of the source sheet.
         $outagePlans = $query->with('dailyProgresses')->orderBy('id')->paginate(20)->withQueryString();
-        $units = \App\Models\Unit::with('mesins')->get();
+        $units = Unit::with('mesins')->get();
 
         return Inertia::render('outage-plans/index', [
             'outagePlans' => $outagePlans,
@@ -124,7 +135,7 @@ class OutagePlanController extends Controller
 
     public function show(OutagePlan $outagePlan)
     {
-        $outagePlan->load('dailyProgresses');
+        $outagePlan->load(['dailyProgresses', 'revisions.user:id,name']);
         $summary = $this->summarize($outagePlan);
 
         return Inertia::render('outage-plans/show', [
@@ -147,11 +158,16 @@ class OutagePlanController extends Controller
             403,
         );
 
-        $outagePlan->load('dailyProgresses');
+        $outagePlan->load(['dailyProgresses', 'revisions.user:id,name']);
 
         return Inertia::render('outage-plans/edit', [
             'outagePlan' => $outagePlan,
-            'units' => \App\Models\Unit::with('mesins')->get(),
+            'units' => Unit::with('mesins')->get(),
+            // Rumus yang sama dengan halaman Rapat Outage, supaya tanggal rapat
+            // yang tergenerate di kedua layar selalu identik.
+            'offsetRapat' => JadwalRapatOutage::OFFSET_HARI,
+            'maksRevisi' => OutagePlan::MAKS_REVISI,
+            'bolehUbahJadwal' => (bool) $request->user()?->canEditJadwalRapat(),
         ]);
     }
 
@@ -183,6 +199,7 @@ class OutagePlanController extends Controller
     private function getDynamicChartHeight(array $wbs): int
     {
         $targetHeight = 1600 * ((20 + count($wbs) * 12) / 455);
+
         return (int) max(880, min(1600, $targetHeight));
     }
 
@@ -194,8 +211,8 @@ class OutagePlanController extends Controller
     {
         $totalHari = null;
         if ($outagePlan->start_date && $outagePlan->selesai) {
-            $totalHari = \Carbon\Carbon::parse($outagePlan->start_date)
-                ->diffInDays(\Carbon\Carbon::parse($outagePlan->selesai)) + 1;
+            $totalHari = Carbon::parse($outagePlan->start_date)
+                ->diffInDays(Carbon::parse($outagePlan->selesai)) + 1;
         }
 
         // Cari hari terakhir di mana progress aktual sudah diisi
@@ -227,7 +244,7 @@ class OutagePlanController extends Controller
         $summary = $this->summarize($outagePlan);
 
         // Data dummy LaporanHarianData untuk mengambil Kop, WBS, dsb.
-        $lastDp = $outagePlan->dailyProgresses->last() ?? new \App\Models\OutagePlanProgress();
+        $lastDp = $outagePlan->dailyProgresses->last() ?? new OutagePlanProgress;
         $data = new LaporanHarianData($outagePlan, $lastDp, $outagePlan->dailyProgresses->count());
         $wbs = $data->wbs();
         $chartHeight = $this->getDynamicChartHeight($wbs);
@@ -250,9 +267,9 @@ class OutagePlanController extends Controller
             'logoVendor' => null,
         ])->setPaper('a4', 'landscape')->output();
 
-        $fpdi = new \setasign\Fpdi\Fpdi();
+        $fpdi = new Fpdi;
 
-        $pageCount1 = $fpdi->setSourceFile(\setasign\Fpdi\PdfParser\StreamReader::createByString($pdfPortrait));
+        $pageCount1 = $fpdi->setSourceFile(StreamReader::createByString($pdfPortrait));
         for ($pageNo = 1; $pageNo <= $pageCount1; $pageNo++) {
             $templateId = $fpdi->importPage($pageNo);
             $size = $fpdi->getTemplateSize($templateId);
@@ -260,7 +277,7 @@ class OutagePlanController extends Controller
             $fpdi->useTemplate($templateId);
         }
 
-        $pageCount2 = $fpdi->setSourceFile(\setasign\Fpdi\PdfParser\StreamReader::createByString($pdfLandscape));
+        $pageCount2 = $fpdi->setSourceFile(StreamReader::createByString($pdfLandscape));
         for ($pageNo = 1; $pageNo <= $pageCount2; $pageNo++) {
             $templateId = $fpdi->importPage($pageNo);
             $size = $fpdi->getTemplateSize($templateId);
@@ -273,7 +290,7 @@ class OutagePlanController extends Controller
 
         return response($mergedPdf, 200, [
             'Content-Type' => 'application/pdf',
-            'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+            'Content-Disposition' => 'attachment; filename="'.$filename.'"',
         ]);
     }
 
@@ -285,7 +302,7 @@ class OutagePlanController extends Controller
             return null;
         }
 
-        return 'data:image/png;base64,' . base64_encode(file_get_contents($path));
+        return 'data:image/png;base64,'.base64_encode(file_get_contents($path));
     }
 
     /**
@@ -330,10 +347,10 @@ class OutagePlanController extends Controller
         ])->setPaper('a4', 'landscape')->output();
 
         // 3. Merge them using FPDI
-        $fpdi = new \setasign\Fpdi\Fpdi();
+        $fpdi = new Fpdi;
 
         // Add pages from Laporan Harian
-        $pageCount1 = $fpdi->setSourceFile(\setasign\Fpdi\PdfParser\StreamReader::createByString($pdfHarian));
+        $pageCount1 = $fpdi->setSourceFile(StreamReader::createByString($pdfHarian));
         for ($pageNo = 1; $pageNo <= $pageCount1; $pageNo++) {
             $templateId = $fpdi->importPage($pageNo);
             $size = $fpdi->getTemplateSize($templateId);
@@ -342,7 +359,7 @@ class OutagePlanController extends Controller
         }
 
         // Add pages from Kurva S
-        $pageCount2 = $fpdi->setSourceFile(\setasign\Fpdi\PdfParser\StreamReader::createByString($pdfKurva));
+        $pageCount2 = $fpdi->setSourceFile(StreamReader::createByString($pdfKurva));
         for ($pageNo = 1; $pageNo <= $pageCount2; $pageNo++) {
             $templateId = $fpdi->importPage($pageNo);
             $size = $fpdi->getTemplateSize($templateId);
@@ -356,7 +373,7 @@ class OutagePlanController extends Controller
 
         return response($mergedPdf, 200, [
             'Content-Type' => 'application/pdf',
-            'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+            'Content-Disposition' => 'attachment; filename="'.$filename.'"',
         ]);
     }
 
@@ -371,7 +388,7 @@ class OutagePlanController extends Controller
         [$hari, $hariKe] = $this->cariHari($request, $outagePlan, $tanggal);
         $data = new LaporanHarianData($outagePlan, $hari, $hariKe);
 
-        $spreadsheet = new Spreadsheet();
+        $spreadsheet = new Spreadsheet;
 
         $this->sheetLaporanHarian($spreadsheet->getActiveSheet(), $data);
         $this->sheetLaporanFoto($spreadsheet->createSheet(), $data, $hari);
@@ -395,7 +412,7 @@ class OutagePlanController extends Controller
     {
         $logoPath = public_path('sidebar-logo.png');
         if (is_file($logoPath)) {
-            $drawing = new \PhpOffice\PhpSpreadsheet\Worksheet\Drawing();
+            $drawing = new Drawing;
             $drawing->setName('Logo');
             $drawing->setDescription('Logo');
             $drawing->setPath($logoPath);
@@ -406,7 +423,7 @@ class OutagePlanController extends Controller
             $drawing->setWorksheet($sheet);
         }
 
-        $sheet->setCellValue('A1', 'LAPORAN KEGIATAN HARIAN ' . $info['jenis_pekerjaan']);
+        $sheet->setCellValue('A1', 'LAPORAN KEGIATAN HARIAN '.$info['jenis_pekerjaan']);
         $sheet->mergeCells('A1:E1');
         $sheet->getStyle('A1')->getFont()->setBold(true)->setSize(13);
         $sheet->getStyle('A1')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
@@ -420,14 +437,14 @@ class OutagePlanController extends Controller
         $sheet->getStyle('A3')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
         $sheet->setCellValue('A5', 'HARI KE');
-        $sheet->setCellValue('B5', ': ' . $hari['ke']);
-        $sheet->setCellValue('C5', 'PROGRESS HARI KE ' . $hari['ke']);
-        $sheet->setCellValue('D5', ': ' . $hari['progress'] . ' %');
+        $sheet->setCellValue('B5', ': '.$hari['ke']);
+        $sheet->setCellValue('C5', 'PROGRESS HARI KE '.$hari['ke']);
+        $sheet->setCellValue('D5', ': '.$hari['progress'].' %');
 
         $sheet->setCellValue('A6', 'TANGGAL');
-        $sheet->setCellValue('B6', ': ' . $hari['tanggal']);
+        $sheet->setCellValue('B6', ': '.$hari['tanggal']);
         $sheet->setCellValue('C6', 'LEMBAR');
-        $sheet->setCellValue('D6', ': ' . $judulLembar);
+        $sheet->setCellValue('D6', ': '.$judulLembar);
 
         $sheet->getStyle('A5:A6')->getFont()->setBold(true);
         $sheet->getStyle('C5:C6')->getFont()->setBold(true);
@@ -479,7 +496,7 @@ class OutagePlanController extends Controller
             $row++;
         }
 
-        $this->beriGaris($sheet, "A{$headerRow}:D" . ($row - 1));
+        $this->beriGaris($sheet, "A{$headerRow}:D".($row - 1));
         $row += 2;
 
         // ── Spare part ──────────────────────────────────────────────────
@@ -511,7 +528,7 @@ class OutagePlanController extends Controller
             }
         }
 
-        $this->beriGaris($sheet, "A{$headerRow}:E" . ($row - 1));
+        $this->beriGaris($sheet, "A{$headerRow}:E".($row - 1));
         $row += 2;
 
         // ── Tanda tangan ────────────────────────────────────────────────
@@ -527,8 +544,8 @@ class OutagePlanController extends Controller
         // Jumlahnya dibaca dari data, bukan dipatok, supaya PDF dan Excel tidak
         // pernah menampilkan penandatangan yang berbeda.
         foreach (['A', 'B', 'C', 'D'] as $i => $kol) {
-            $nama = $ttd['nama_' . ($i + 1)] ?? null;
-            $jabatan = $ttd['jabatan_' . ($i + 1)] ?? null;
+            $nama = $ttd['nama_'.($i + 1)] ?? null;
+            $jabatan = $ttd['jabatan_'.($i + 1)] ?? null;
 
             if ($nama === null && $jabatan === null) {
                 continue;
@@ -536,7 +553,7 @@ class OutagePlanController extends Controller
 
             $sheet->setCellValue("{$kol}{$row}", $nama ?? '');
             $sheet->getStyle("{$kol}{$row}")->getFont()->setBold(true)->setUnderline(true);
-            $sheet->setCellValue("{$kol}" . ($row + 1), $jabatan ?? '');
+            $sheet->setCellValue("{$kol}".($row + 1), $jabatan ?? '');
         }
 
         $sheet->getColumnDimension('A')->setWidth(8);
@@ -578,14 +595,14 @@ class OutagePlanController extends Controller
             $sheet->getRowDimension($row)->setRowHeight(150);
 
             foreach ($pasangan as $i => $path) {
-                $drawing = new \PhpOffice\PhpSpreadsheet\Worksheet\Drawing();
+                $drawing = new Drawing;
                 $drawing->setName('Foto Dokumentasi');
                 $drawing->setDescription('Foto Dokumentasi');
                 $drawing->setPath($path);
                 $drawing->setHeight(140);
                 $drawing->setOffsetX(6);
                 $drawing->setOffsetY(4);
-                $drawing->setCoordinates(($i === 0 ? 'A' : 'C') . $row);
+                $drawing->setCoordinates(($i === 0 ? 'A' : 'C').$row);
                 $drawing->setWorksheet($sheet);
             }
 
@@ -614,9 +631,9 @@ class OutagePlanController extends Controller
             ['ULPLTD', $info['ulpltd'], 'TANGGAL', $kontrak['surat_tanggal']],
         ] as $baris) {
             $sheet->setCellValue("A{$row}", $baris[0]);
-            $sheet->setCellValue("B{$row}", ': ' . $baris[1]);
+            $sheet->setCellValue("B{$row}", ': '.$baris[1]);
             $sheet->setCellValue("C{$row}", $baris[2]);
-            $sheet->setCellValue("D{$row}", ': ' . $baris[3]);
+            $sheet->setCellValue("D{$row}", ': '.$baris[3]);
             $sheet->getStyle("A{$row}")->getFont()->setBold(true);
             $sheet->getStyle("C{$row}")->getFont()->setBold(true);
             $row++;
@@ -657,7 +674,7 @@ class OutagePlanController extends Controller
             $row++;
         }
 
-        $this->beriGaris($sheet, "A{$headerRow}:E" . ($row - 1));
+        $this->beriGaris($sheet, "A{$headerRow}:E".($row - 1));
         $row += 2;
 
         // ── Grafik ──────────────────────────────────────────────────────
@@ -676,7 +693,7 @@ class OutagePlanController extends Controller
             $displayHeight = (int) ($chartHeight / 2.2);
             $chart->setHeight($displayHeight);
             $chart->setWorksheet($sheet);
-            
+
             // Calculate how many rows the chart takes up (approx 20px per row)
             $rowsTaken = (int) ceil($displayHeight / 20) + 2;
             $row += $rowsTaken;
@@ -715,7 +732,7 @@ class OutagePlanController extends Controller
             $plan = $dp->plan_progress === null ? null : (float) $dp->plan_progress;
             $actual = $dp->actual_progress === null ? null : (float) $dp->actual_progress;
 
-            $sheet->setCellValue("A{$row}", 'Hari ' . ($idx + 1));
+            $sheet->setCellValue("A{$row}", 'Hari '.($idx + 1));
             $sheet->setCellValue("B{$row}", $this->tgl($dp->tanggal));
             $sheet->setCellValue("C{$row}", $plan ?? '');
             $sheet->setCellValue("D{$row}", $actual ?? '');
@@ -726,13 +743,13 @@ class OutagePlanController extends Controller
             $row++;
         }
 
-        $this->beriGaris($sheet, "A{$headerRow}:{$kolomAkhir}" . ($row - 1));
+        $this->beriGaris($sheet, "A{$headerRow}:{$kolomAkhir}".($row - 1));
     }
 
     /**
      * Baris harian pada tanggal tertentu, beserta nomor harinya.
      *
-     * @return array{0: \App\Models\OutagePlanProgress, 1: int}
+     * @return array{0: OutagePlanProgress, 1: int}
      */
     private function cariHari(Request $request, OutagePlan $outagePlan, string $tanggal): array
     {
@@ -753,7 +770,7 @@ class OutagePlanController extends Controller
 
     private function laporanFilename(OutagePlan $outagePlan, int $hariKe, string $jenis, string $ext): string
     {
-        $slug = \Illuminate\Support\Str::slug($outagePlan->mesin_pembangkit ?: 'outage');
+        $slug = Str::slug($outagePlan->mesin_pembangkit ?: 'outage');
 
         return "{$jenis}-{$slug}-hari-{$hariKe}.{$ext}";
     }
@@ -770,7 +787,7 @@ class OutagePlanController extends Controller
         $outagePlan->load('dailyProgresses');
         $summary = $this->summarize($outagePlan);
 
-        $spreadsheet = new Spreadsheet();
+        $spreadsheet = new Spreadsheet;
         $sheet = $spreadsheet->getActiveSheet();
         $sheet->setTitle('Rekap Outage');
 
@@ -808,7 +825,7 @@ class OutagePlanController extends Controller
     private function tulisHeader($sheet, array $headers, int $row): string
     {
         foreach ($headers as $i => $label) {
-            $sheet->setCellValue(chr(65 + $i) . $row, $label);
+            $sheet->setCellValue(chr(65 + $i).$row, $label);
         }
 
         $kolomAkhir = chr(65 + count($headers) - 1);
@@ -824,7 +841,7 @@ class OutagePlanController extends Controller
     private function beriGaris($sheet, string $range): void
     {
         $sheet->getStyle($range)->getBorders()->getAllBorders()
-            ->setBorderStyle(\PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN);
+            ->setBorderStyle(Border::BORDER_THIN);
     }
 
     /**
@@ -851,13 +868,13 @@ class OutagePlanController extends Controller
         // di Windows tempnam menghasilkan berkas .tmp yang tidak semua Excel
         // perlakukan sebagai gambar.
         $base = tempnam(sys_get_temp_dir(), 'kurva-s');
-        $path = $base . '.png';
+        $path = $base.'.png';
         @rename($base, $path);
         imagepng($image, $path);
         imagedestroy($image);
         $this->chartTempFiles[] = $path;
 
-        $drawing = new Drawing();
+        $drawing = new Drawing;
         $drawing->setName('Kurva S');
         $drawing->setDescription('Kurva S - Plan vs Actual');
         $drawing->setPath($path);
@@ -879,7 +896,7 @@ class OutagePlanController extends Controller
 
     private function tgl($value): string
     {
-        return $value ? \Carbon\Carbon::parse($value)->format('d-m-Y') : '-';
+        return $value ? Carbon::parse($value)->format('d-m-Y') : '-';
     }
 
     /** Judul satu bagian rekap, dilatarbelakangi abu-abu selebar A:F. */
@@ -907,7 +924,7 @@ class OutagePlanController extends Controller
         $sheet->setCellValue('A2', $outagePlan->mesin_pembangkit);
         $sheet->mergeCells('A2:F2');
         $sheet->getStyle('A2')->getFont()->setItalic(true)
-            ->setColor(new \PhpOffice\PhpSpreadsheet\Style\Color('64748B'));
+            ->setColor(new Color('64748B'));
         $sheet->getStyle('A2')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
         $infoRows = [
@@ -915,7 +932,7 @@ class OutagePlanController extends Controller
             ['Jenis Pembangkit', $outagePlan->jenis_pembangkit ?? '-', 'Status', $outagePlan->ket ?? 'OPEN'],
             ['Waktu Mulai', $this->tgl($outagePlan->start_date), 'Waktu Selesai', $this->tgl($outagePlan->selesai)],
             ['Real Start', $this->tgl($outagePlan->real_start), 'Real Stop', $this->tgl($outagePlan->real_stop)],
-            ['Total Hari', $summary['totalHari'] ? $summary['totalHari'] . ' Hari' : '-', 'Progress Keseluruhan', 'Plan ' . number_format($summary['overallPlan'], 0) . '% / Actual ' . number_format($summary['overallActual'], 0) . '%'],
+            ['Total Hari', $summary['totalHari'] ? $summary['totalHari'].' Hari' : '-', 'Progress Keseluruhan', 'Plan '.number_format($summary['overallPlan'], 0).'% / Actual '.number_format($summary['overallActual'], 0).'%'],
         ];
 
         $row = 4;
@@ -952,7 +969,7 @@ class OutagePlanController extends Controller
 
             if ($items->isEmpty()) {
                 // Hari tanpa work items: satu baris biasa
-                $sheet->setCellValue("A{$row}", 'Day ' . ($idx + 1));
+                $sheet->setCellValue("A{$row}", 'Day '.($idx + 1));
                 $sheet->setCellValue("B{$row}", $this->tgl($dp->tanggal));
                 $sheet->setCellValue("C{$row}", $dp->uraian_pekerjaan ?: '-');
                 $sheet->setCellValue("D{$row}", '-');
@@ -971,9 +988,9 @@ class OutagePlanController extends Controller
                 $count = $items->count();
 
                 foreach ($items as $itemIdx => $w) {
-                    $sheet->setCellValue("C{$row}", ($itemIdx + 1) . '. ' . $w['uraian']);
+                    $sheet->setCellValue("C{$row}", ($itemIdx + 1).'. '.$w['uraian']);
                     $progress = $w['progress'] ?? null;
-                    $sheet->setCellValue("D{$row}", filled($progress) ? number_format((float) $progress, 2, ',', '.') . '%' : '-');
+                    $sheet->setCellValue("D{$row}", filled($progress) ? number_format((float) $progress, 2, ',', '.').'%' : '-');
                     $sheet->getStyle("D{$row}")->getAlignment()
                         ->setHorizontal(Alignment::HORIZONTAL_CENTER);
                     $sheet->getStyle("C{$row}:E{$row}")->getAlignment()->setWrapText(true);
@@ -983,7 +1000,7 @@ class OutagePlanController extends Controller
                 }
 
                 $endRow = $row - 1;
-                $sheet->setCellValue("A{$startRow}", 'Day ' . ($idx + 1));
+                $sheet->setCellValue("A{$startRow}", 'Day '.($idx + 1));
                 $sheet->setCellValue("B{$startRow}", $this->tgl($dp->tanggal));
                 $sheet->setCellValue("E{$startRow}", $dp->keterangan ?: '-');
                 $sheet->getStyle("A{$startRow}:B{$startRow}")->getAlignment()
@@ -1003,7 +1020,7 @@ class OutagePlanController extends Controller
             $row++;
         }
 
-        $this->beriGaris($sheet, "A{$headerRow}:{$kolomAkhir}" . ($row - 1));
+        $this->beriGaris($sheet, "A{$headerRow}:{$kolomAkhir}".($row - 1));
 
         return $row + 2;
     }
@@ -1025,7 +1042,7 @@ class OutagePlanController extends Controller
         foreach ($outagePlan->dailyProgresses as $idx => $dp) {
             foreach (DailyRingkas::materialRows($dp) as $m) {
                 $ada = true;
-                $sheet->setCellValue("A{$row}", 'Day ' . ($idx + 1));
+                $sheet->setCellValue("A{$row}", 'Day '.($idx + 1));
                 $sheet->setCellValue("B{$row}", $this->tgl($dp->tanggal));
                 $sheet->setCellValue("C{$row}", $m['nama'] ?: '-');
                 $sheet->setCellValue("D{$row}", $m['part_number'] ?: '-');
@@ -1046,7 +1063,7 @@ class OutagePlanController extends Controller
             $row++;
         }
 
-        $this->beriGaris($sheet, "A{$headerRow}:{$kolomAkhir}" . ($row - 1));
+        $this->beriGaris($sheet, "A{$headerRow}:{$kolomAkhir}".($row - 1));
 
         return $row + 2;
     }
@@ -1070,7 +1087,7 @@ class OutagePlanController extends Controller
             }
 
             $ada = true;
-            $sheet->setCellValue("A{$row}", 'Day ' . ($idx + 1) . ' · ' . $this->tgl($dp->tanggal));
+            $sheet->setCellValue("A{$row}", 'Day '.($idx + 1).' · '.$this->tgl($dp->tanggal));
             $sheet->mergeCells("A{$row}:F{$row}");
             $sheet->getStyle("A{$row}")->getFont()->setBold(true);
             $row++;
@@ -1087,7 +1104,7 @@ class OutagePlanController extends Controller
 
             $sheet->getRowDimension($row)->setRowHeight(120);
             foreach ($fotos as $i => $path) {
-                $drawing = new Drawing();
+                $drawing = new Drawing;
                 $drawing->setName('Foto Dokumentasi');
                 $drawing->setDescription('Foto Dokumentasi');
                 $drawing->setPath($path);
@@ -1116,8 +1133,8 @@ class OutagePlanController extends Controller
         $row = $this->judulBagian($sheet, 'KURVA S - PLAN VS ACTUAL', $row);
 
         // Calculate dynamic height based on WBS size
-        $lastDp = $outagePlan->dailyProgresses->last() ?? new \App\Models\OutagePlanProgress();
-        $data = new \App\Support\LaporanHarianData($outagePlan, $lastDp, $outagePlan->dailyProgresses->count());
+        $lastDp = $outagePlan->dailyProgresses->last() ?? new OutagePlanProgress;
+        $data = new LaporanHarianData($outagePlan, $lastDp, $outagePlan->dailyProgresses->count());
         $wbs = $data->wbs();
         $chartHeight = $this->getDynamicChartHeight($wbs);
 
@@ -1127,7 +1144,7 @@ class OutagePlanController extends Controller
             $displayHeight = (int) ($chartHeight / 2.2);
             $chart->setHeight($displayHeight);
             $chart->setWorksheet($sheet);
-            
+
             $rowsTaken = (int) ceil($displayHeight / 20) + 2;
             $row += $rowsTaken;
         }
@@ -1145,7 +1162,7 @@ class OutagePlanController extends Controller
             $plan = $dp->plan_progress === null ? null : (float) $dp->plan_progress;
             $actual = $dp->actual_progress === null ? null : (float) $dp->actual_progress;
 
-            $sheet->setCellValue("A{$row}", 'Day ' . ($idx + 1));
+            $sheet->setCellValue("A{$row}", 'Day '.($idx + 1));
             $sheet->setCellValue("B{$row}", $this->tgl($dp->tanggal));
             $sheet->setCellValue("C{$row}", $plan ?? '');
             $sheet->setCellValue("D{$row}", $actual ?? '');
@@ -1163,7 +1180,7 @@ class OutagePlanController extends Controller
             $row++;
         }
 
-        $this->beriGaris($sheet, "A{$headerRow}:{$kolomAkhir}" . ($row - 1));
+        $this->beriGaris($sheet, "A{$headerRow}:{$kolomAkhir}".($row - 1));
 
         return $row;
     }
@@ -1225,13 +1242,13 @@ class OutagePlanController extends Controller
             ->value('photos') ?? [];
 
         foreach (array_diff($lama, $photosBaru) as $path) {
-            \Illuminate\Support\Facades\Storage::disk('public')->delete($path);
+            Storage::disk('public')->delete($path);
         }
     }
 
     private function exportFilename(OutagePlan $outagePlan, string $extension): string
     {
-        $slug = \Illuminate\Support\Str::slug($outagePlan->mesin_pembangkit ?: 'outage-plan');
+        $slug = Str::slug($outagePlan->mesin_pembangkit ?: 'outage-plan');
 
         return "Outage-{$slug}-{$outagePlan->id}.{$extension}";
     }
@@ -1315,7 +1332,40 @@ class OutagePlanController extends Controller
         $dailyProgress = $validated['daily_progress'] ?? null;
         unset($validated['daily_progress']);
 
+        // Pengelola tidak menetapkan jadwal. Kolomnya dibuang dari payload —
+        // bukan ditolak — supaya menyimpan progres harian tidak pernah gagal
+        // hanya karena formulirnya ikut membawa tanggal rencana.
+        if (! $request->user()?->canEditJadwalRapat()) {
+            $validated = Arr::except($validated, OutagePlan::KOLOM_JADWAL);
+        }
+
+        // Riwayat hanya disentuh kalau jadwalnya memang bergeser; menyimpan
+        // progres harian saja tidak boleh meninggalkan jejak revisi.
+        $jadwalBerubah = $outagePlan->jadwalBerubah($validated);
+
+        if ($jadwalBerubah) {
+            // Batas revisi berlaku di jalur ini juga; kalau tidak, jadwal bisa
+            // digeser terus dari sini tanpa pernah tercatat sebagai revisi.
+            if ($outagePlan->sudahMencapaiBatasRevisi()) {
+                throw ValidationException::withMessages([
+                    'start_date' => 'Rencana ini sudah direvisi '.OutagePlan::MAKS_REVISI
+                        .' kali — jadwal tidak dapat diubah lagi. Data lain tetap bisa disimpan.',
+                ]);
+            }
+
+            // Rencana lama diabadikan lebih dulu; setelah update nilainya sudah
+            // tertimpa dan riwayatnya kehilangan titik awal.
+            $outagePlan->pastikanRencanaAwalTercatat();
+        }
+
         $outagePlan->update($validated);
+
+        if ($jadwalBerubah && $outagePlan->wasChanged(OutagePlan::KOLOM_JADWAL)) {
+            $outagePlan->catatVersiBerjalan(
+                'Diubah dari halaman Ubah Data Pekerjaan',
+                $request->user()?->id,
+            );
+        }
 
         if ($dailyProgress !== null && count($dailyProgress) > 0) {
             $tanggalList = collect($dailyProgress)->pluck('tanggal')->all();

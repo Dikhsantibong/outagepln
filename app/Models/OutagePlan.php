@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use App\Support\JadwalRapatOutage;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Model;
 
 class OutagePlan extends Model
@@ -40,6 +42,22 @@ class OutagePlan extends Model
      * gara-gara variasi ejaan.
      */
     public const KET_OPTIONS = ['OPEN', 'CLOSE'];
+
+    /**
+     * Kolom yang membentuk satu versi rencana; sekali salah satunya berubah,
+     * versinya dicatat utuh ke riwayat.
+     */
+    public const KOLOM_JADWAL = [
+        'start_date', 'selesai', 'rapat_r2', 'rapat_r3', 'rapat_p1', 'rapat_p2', 'rapat_p3',
+    ];
+
+    /**
+     * Batas jumlah revisi rencana: RENC lalu REV 1 sampai REV 3.
+     *
+     * Rencana yang sudah tiga kali digeser dianggap perlu ditinjau ulang, bukan
+     * direvisi lagi diam-diam.
+     */
+    public const MAKS_REVISI = 3;
 
     /**
      * Spelling variants found in the source sheet, folded onto one brand so a
@@ -114,6 +132,133 @@ class OutagePlan extends Model
         return $this->hasMany(DailyMeeting::class);
     }
 
+    /** Riwayat revisi rencana, urut dari rencana awal ke revisi terbaru. */
+    public function revisions()
+    {
+        return $this->hasMany(OutagePlanRevision::class)->orderBy('urutan');
+    }
+
+    /**
+     * Berapa kali rencana sudah direvisi.
+     *
+     * Urutan 0 adalah rencana awal (RENC), bukan revisi, jadi tidak ikut dihitung.
+     */
+    public function jumlahRevisi(): int
+    {
+        return $this->revisions()->where('urutan', '>', 0)->count();
+    }
+
+    public function sisaRevisi(): int
+    {
+        return max(0, self::MAKS_REVISI - $this->jumlahRevisi());
+    }
+
+    public function sudahMencapaiBatasRevisi(): bool
+    {
+        return $this->sisaRevisi() === 0;
+    }
+
+    /**
+     * Apakah nilai yang masuk benar-benar menggeser jadwal yang berlaku?
+     *
+     * Hanya kunci yang ada di payload yang dibandingkan, sehingga penyimpanan
+     * yang tidak menyentuh jadwal tidak dianggap sebagai revisi. Tanggal
+     * dipotong ke bagian YYYY-MM-DD supaya beda format tidak terbaca sebagai
+     * perubahan.
+     *
+     * @param  array<string, mixed>  $nilai
+     */
+    public function jadwalBerubah(array $nilai): bool
+    {
+        $samakan = fn ($v) => substr((string) $v, 0, 10);
+
+        foreach (self::KOLOM_JADWAL as $kolom) {
+            if (! array_key_exists($kolom, $nilai)) {
+                continue;
+            }
+
+            if ($samakan($nilai[$kolom]) !== $samakan($this->{$kolom})) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Simpan rencana baru sebagai revisi berikutnya, lalu terapkan.
+     *
+     * Rencana yang sedang berlaku dicatat lebih dulu sebagai RENC bila riwayatnya
+     * masih kosong, supaya revisi pertama tetap punya pembanding. Tanggal kelima
+     * rapat tidak diminta dari pemanggil melainkan dihitung dari rencana start —
+     * lihat [JadwalRapatOutage]. Memperbarui kolom rapat_* di sini otomatis
+     * menyinkronkan DailyMeeting lewat hook `updated` di bawah.
+     */
+    public function catatRevisi(
+        string $startDate,
+        ?string $selesai = null,
+        ?string $catatan = null,
+        ?int $userId = null,
+    ): OutagePlanRevision {
+        $this->pastikanRencanaAwalTercatat();
+
+        $this->update([
+            'start_date' => $startDate,
+            'selesai' => $selesai,
+            'durasi' => self::hitungDurasi($startDate, $selesai),
+            ...JadwalRapatOutage::dariStart($startDate),
+        ]);
+
+        return $this->catatVersiBerjalan($catatan, $userId);
+    }
+
+    /**
+     * Abadikan rencana yang sedang berlaku sebagai versi awal (RENC).
+     *
+     * Tidak melakukan apa pun bila riwayatnya sudah ada. Panggil sebelum
+     * rencananya diubah, supaya yang terekam benar-benar kondisi sebelumnya.
+     */
+    public function pastikanRencanaAwalTercatat(): void
+    {
+        if ($this->revisions()->exists()) {
+            return;
+        }
+
+        $this->revisions()->create([
+            'urutan' => 0,
+            'catatan' => 'Rencana awal',
+            ...$this->only(self::KOLOM_JADWAL),
+        ]);
+    }
+
+    /**
+     * Catat kondisi rencana saat ini sebagai versi berikutnya.
+     *
+     * Dipakai halaman Ubah Data Pekerjaan, yang menyimpan tanggalnya lebih dulu
+     * lalu merekam hasilnya — berbeda dengan [catatRevisi()] yang menghitung
+     * jadwal rapatnya sendiri dari rencana start.
+     */
+    public function catatVersiBerjalan(?string $catatan = null, ?int $userId = null): OutagePlanRevision
+    {
+        return $this->revisions()->create([
+            'urutan' => (int) $this->revisions()->max('urutan') + 1,
+            'catatan' => $catatan,
+            'user_id' => $userId,
+            ...$this->only(self::KOLOM_JADWAL),
+        ]);
+    }
+
+    /** Lama pekerjaan dalam hari, menghitung hari start dan finish. */
+    private static function hitungDurasi(string $startDate, ?string $selesai): ?int
+    {
+        if (blank($selesai)) {
+            return null;
+        }
+
+        return CarbonImmutable::parse($startDate)->startOfDay()
+            ->diffInDays(CarbonImmutable::parse($selesai)->startOfDay()) + 1;
+    }
+
     public function dailyProgresses()
     {
         return $this->hasMany(OutagePlanProgress::class)->orderBy('tanggal');
@@ -157,7 +302,7 @@ class OutagePlan extends Model
                             'tipe_rapat' => strtoupper(str_replace('_', ' ', $jenis)),
                         ],
                         [
-                            'judul' => strtoupper(str_replace('_', ' ', $jenis)) . ' - ' . ($plan->mesin_pembangkit ?? 'Unit'),
+                            'judul' => strtoupper(str_replace('_', ' ', $jenis)).' - '.($plan->mesin_pembangkit ?? 'Unit'),
                             'tanggal' => $plan->$jenis,
                             'waktu_mulai' => '09:00', // Default time
                             'lokasi' => 'Online',

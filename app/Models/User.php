@@ -77,4 +77,15 @@ class User extends Authenticatable
     {
         return $this->role !== 'pengelola';
     }
+
+    /**
+     * Rencana outage dan jadwal rapatnya ditetapkan terpusat, sealasan dengan
+     * [canViewMeetings()]. Pengelola mengisi realisasi dan progres harian mesin
+     * yang dikelolanya, tapi tidak menggeser tanggal rencananya — jadwal itu
+     * cukup dibacanya di halaman detail.
+     */
+    public function canEditJadwalRapat(): bool
+    {
+        return $this->role !== 'pengelola';
+    }
 }
