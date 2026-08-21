@@ -114,6 +114,18 @@ class DailyBriefingController extends Controller
     {
         $dailyBriefing->load(['attendees', 'issues', 'findings', 'kickoff', 'kickoffPhotos']);
 
+        // Semua hari dalam rangkaian rapat mesin yang sama, untuk navigasi antar hari.
+        $days = $dailyBriefing->seriesDays()
+            ->withCount('attendees')
+            ->get()
+            ->map(fn ($d) => [
+                'id' => $d->id,
+                'tanggal' => $d->tanggal?->toDateString(),
+                'status' => $d->status,
+                'attendees_count' => $d->attendees_count,
+                'is_current' => $d->id === $dailyBriefing->id,
+            ]);
+
         return Inertia::render('daily-briefings/show', [
             'briefing' => $dailyBriefing,
             'attendees' => $dailyBriefing->attendees,
@@ -124,7 +136,52 @@ class DailyBriefingController extends Controller
             'findingInfo' => $this->findingInfo($dailyBriefing),
             'kickoffDefaults' => $this->kickoffDefaults($dailyBriefing),
             'attendUrl' => $this->attendUrl($dailyBriefing),
+            'days' => $days,
         ]);
+    }
+
+    /**
+     * Menambah hari baru pada rapat mesin yang sama.
+     *
+     * Rapat bisa berlangsung beberapa hari; tiap hari punya notulen & daftar
+     * hadir sendiri. Hari baru mewarisi identitas mesin dan kop dokumen, tetapi
+     * daftar hadir serta notulennya mulai kosong. Tergabung dalam satu rangkaian
+     * lewat parent_id yang menunjuk ke hari pertama.
+     */
+    public function addDay(DailyBriefing $dailyBriefing)
+    {
+        $head = $dailyBriefing->seriesHeadId();
+
+        $lastTanggal = DailyBriefing::query()
+            ->where('id', $head)
+            ->orWhere('parent_id', $head)
+            ->max('tanggal');
+
+        $tanggalBaru = $lastTanggal
+            ? Carbon::parse($lastTanggal)->addDay()->toDateString()
+            : today()->toDateString();
+
+        $baru = DailyBriefing::create([
+            'parent_id' => $head,
+            'status' => 'active',
+            'tanggal' => $tanggalBaru,
+            // Identitas mesin + kop dokumen diwarisi dari hari sebelumnya.
+            'judul' => $dailyBriefing->judul,
+            'lokasi' => $dailyBriefing->lokasi,
+            'waktu_mulai' => $dailyBriefing->waktu_mulai,
+            'unit' => $dailyBriefing->unit,
+            'jenis_inspeksi' => $dailyBriefing->jenis_inspeksi,
+            'rapat_framework' => $dailyBriefing->rapat_framework,
+            'tgl_performance_test' => $dailyBriefing->tgl_performance_test,
+            'jam_setelah_po_terai' => $dailyBriefing->jam_setelah_po_terai,
+            'daya_mampu' => $dailyBriefing->daya_mampu,
+            'nomor_dokumen' => $dailyBriefing->nomor_dokumen,
+            'revisi' => $dailyBriefing->revisi,
+            'tanggal_terbit' => $dailyBriefing->tanggal_terbit,
+        ]);
+
+        return redirect()->route('daily-briefings.show', $baru->id)
+            ->with('success', 'Hari rapat baru dibuat untuk mesin yang sama.');
     }
 
     /**

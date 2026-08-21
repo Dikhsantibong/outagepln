@@ -35,6 +35,7 @@ export default function DailyBriefingsShow({
     findingInfo,
     kickoffDefaults,
     attendUrl = '',
+    days = [],
 }: {
     briefing: any;
     attendees: any[];
@@ -45,6 +46,7 @@ export default function DailyBriefingsShow({
     findingInfo?: any;
     kickoffDefaults?: any;
     attendUrl?: string;
+    days?: Array<{ id: number; tanggal: string | null; status: string; attendees_count: number; is_current: boolean }>;
 }) {
 
     const { auth } = usePage<any>().props;
@@ -287,6 +289,47 @@ export default function DailyBriefingsShow({
                             </Button>
                         )}
                     </div>
+                </div>
+
+                {/* Navigasi hari — satu rapat mesin bisa berlangsung beberapa hari,
+                    tiap hari punya notulen & daftar hadir tersendiri. */}
+                <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/30 p-2">
+                    <span className="px-1 text-xs font-semibold text-muted-foreground">Hari rapat:</span>
+                    {days.map((d, i) => (
+                        <button
+                            key={d.id}
+                            onClick={() => { if (!d.is_current) router.visit(`/daily-briefings/${d.id}`); }}
+                            className={`flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs transition-colors ${
+                                d.is_current
+                                    ? 'border-primary bg-primary text-primary-foreground'
+                                    : 'bg-background hover:bg-muted'
+                            }`}
+                            title={d.tanggal ? new Date(d.tanggal).toLocaleDateString('id-ID', { dateStyle: 'long' }) : ''}
+                        >
+                            <span className="font-bold">Hari {i + 1}</span>
+                            {d.tanggal && (
+                                <span className={d.is_current ? 'text-primary-foreground/80' : 'text-muted-foreground'}>
+                                    {new Date(d.tanggal).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}
+                                </span>
+                            )}
+                            {d.status === 'completed' && <CheckCircle2 className="h-3 w-3" />}
+                        </button>
+                    ))}
+                    {briefing.status !== 'completed' && !isTamu && (
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8 gap-1.5"
+                            onClick={() => {
+                                if (confirm('Tambah hari rapat baru untuk mesin yang sama? Notulen & daftar hadir hari baru dimulai kosong.')) {
+                                    router.post(`/daily-briefings/${briefing.id}/add-day`);
+                                }
+                            }}
+                        >
+                            <Plus className="h-4 w-4" />
+                            Tambah Hari
+                        </Button>
+                    )}
                 </div>
 
                 <div className="w-full">
