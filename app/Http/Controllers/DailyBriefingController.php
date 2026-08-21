@@ -395,6 +395,7 @@ class DailyBriefingController extends Controller
 
         $validated['foto'] = $this->encodePhoto($request->file('foto'));
         $validated['target'] = $validated['target'] ?: 'Open';
+        $validated['tanggal'] = $validated['tanggal'] ?: $dailyBriefing->tanggal?->toDateString();
 
         $dailyBriefing->findings()->create($validated);
 

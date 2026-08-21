@@ -112,8 +112,9 @@ export default function DailyBriefingsShow({
     
     const [findingDialogOpen, setFindingDialogOpen] = useState(false);
     const [editingFinding, setEditingFinding] = useState<any>(null);
+    const briefingTanggal = briefing.tanggal ? new Date(briefing.tanggal).toISOString().split('T')[0] : '';
     const findingForm = useForm({
-        tanggal: '',
+        tanggal: briefingTanggal,
         uraian: '',
         part_number: '',
         qty: '',
@@ -140,7 +141,17 @@ export default function DailyBriefingsShow({
             });
         } else {
             setEditingFinding(null);
-            findingForm.reset();
+            findingForm.setData({
+                tanggal: briefingTanggal,
+                uraian: '',
+                part_number: '',
+                qty: '',
+                satuan: '',
+                keterangan: '',
+                tindak_lanjut: '',
+                target: 'Open',
+                foto: null,
+            });
         }
         setFindingDialogOpen(true);
     };
