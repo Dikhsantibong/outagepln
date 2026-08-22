@@ -2,6 +2,7 @@
 
 // trigger
 
+use App\Http\Controllers\ActivityLogController;
 use App\Http\Controllers\DailyBriefingController;
 use App\Http\Controllers\DailyMeetingController;
 use App\Http\Controllers\DashboardController;
@@ -108,6 +109,11 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->name('kinerja.eviden');
     Route::get('kinerja/on-scope', fn () => inertia('kinerja/on-scope'))->name('kinerja.on-scope');
     Route::get('kinerja/on-safety', fn () => inertia('kinerja/on-safety'))->name('kinerja.on-safety');
+
+    // Jejak aktivitas seluruh peran — bacaan saja, khusus Super Admin.
+    Route::middleware([EnsureSuperAdmin::class])
+        ->get('aktivitas', [ActivityLogController::class, 'index'])
+        ->name('aktivitas.index');
 
     // Data Master (Super Admin Only)
     Route::middleware([EnsureSuperAdmin::class])->prefix('master')->name('master.')->group(function () {

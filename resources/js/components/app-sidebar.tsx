@@ -10,6 +10,7 @@ import {
     MessageSquare,
     PenLine,
     PieChart,
+    ScrollText,
     ShieldCheck,
     Users,
 } from 'lucide-react';
@@ -99,6 +100,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                 { title: 'Data Unit & Mesin', href: '/master/units', icon: LayoutGrid },
                 { title: 'Data Material', href: '/master/materials', icon: Crosshair },
                 { title: 'Tanda Tangan', href: '/master/ttd', icon: PenLine },
+                { title: 'Aktivitas', href: '/aktivitas', icon: ScrollText },
             ],
         }] : []),
     ].filter(g => g.items.length > 0);
