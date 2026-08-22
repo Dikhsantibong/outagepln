@@ -77,11 +77,11 @@ export default function MesinsIndex({ unit }: { unit: Unit }) {
     const submitMesin = (e: React.FormEvent) => {
         e.preventDefault();
         if (editingMesin?.id_mesin) {
-            mesinForm.put(route('master.mesins.update', editingMesin.id_mesin), {
+            mesinForm.put(`/master/mesins/${editingMesin.id_mesin}`, {
                 onSuccess: () => setEditingMesin(null),
             });
         } else {
-            mesinForm.post(route('master.mesins.store', unit.id_unit), {
+            mesinForm.post(`/master/units/${unit.id_unit}/mesins`, {
                 onSuccess: () => setEditingMesin(null),
             });
         }
@@ -89,7 +89,7 @@ export default function MesinsIndex({ unit }: { unit: Unit }) {
 
     const deleteMesin = (id: number) => {
         if (confirm('Hapus mesin ini?')) {
-            router.delete(route('master.mesins.destroy', id));
+            router.delete(`/master/mesins/${id}`);
         }
     };
 
@@ -101,7 +101,7 @@ export default function MesinsIndex({ unit }: { unit: Unit }) {
                 
                 <div className="mb-4">
                     <Button variant="ghost" className="text-muted-foreground hover:text-slate-900 dark:hover:text-white pl-0" asChild>
-                        <Link href={route('master.units.index')}>
+                        <Link href={`/master/units`}>
                             <ArrowLeft className="h-4 w-4 mr-2" />
                             Kembali ke Daftar Unit
                         </Link>
@@ -246,4 +246,4 @@ export default function MesinsIndex({ unit }: { unit: Unit }) {
     );
 }
 
-MesinsIndex.layout = (page: any) => <AppLayout children={page} breadcrumbs={[{ title: 'Data Master', url: '#' }, { title: 'Unit & Mesin', url: route('master.units.index') }, { title: 'Data Mesin' }]} />;
+MesinsIndex.layout = (page: any) => <AppLayout children={page} breadcrumbs={[{ title: 'Data Master', url: '#' }, { title: 'Unit & Mesin', url: '/master/units' }, { title: 'Data Mesin' }]} />;

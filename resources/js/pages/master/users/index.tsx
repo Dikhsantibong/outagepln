@@ -75,11 +75,11 @@ export default function UsersIndex({
     const submit = (e: React.FormEvent) => {
         e.preventDefault();
         if (editingUser?.id) {
-            put(route('master.users.update', editingUser.id), {
+            put(`/master/users/${editingUser.id}`, {
                 onSuccess: () => setEditingUser(null),
             });
         } else {
-            post(route('master.users.store'), {
+            post(`/master/users`, {
                 onSuccess: () => setEditingUser(null),
             });
         }
@@ -95,7 +95,7 @@ export default function UsersIndex({
 
     const handleDelete = (id: number) => {
         if (confirm('Yakin ingin menghapus user ini?')) {
-            router.delete(route('master.users.destroy', id));
+            router.delete(`/master/users/${id}`);
         }
     };
 

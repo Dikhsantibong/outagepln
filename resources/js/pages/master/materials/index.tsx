@@ -60,11 +60,11 @@ export default function MaterialsIndex({ materials }: { materials: Material[] })
     const submit = (e: React.FormEvent) => {
         e.preventDefault();
         if (editing?.id) {
-            put(route('master.materials.update', editing.id), {
+            put(`/master/materials/${editing.id}`, {
                 onSuccess: () => setEditing(null),
             });
         } else {
-            post(route('master.materials.store'), {
+            post(`/master/materials`, {
                 onSuccess: () => setEditing(null),
             });
         }
@@ -72,7 +72,7 @@ export default function MaterialsIndex({ materials }: { materials: Material[] })
 
     const handleDelete = (id: number) => {
         if (confirm('Yakin ingin menghapus material ini?')) {
-            router.delete(route('master.materials.destroy', id));
+            router.delete(`/master/materials/${id}`);
         }
     };
 

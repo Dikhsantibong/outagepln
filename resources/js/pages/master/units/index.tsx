@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Head, router, useForm } from '@inertiajs/react';
+import { Head, router, useForm, Link } from '@inertiajs/react';
 import AppLayout from '@/layouts/app-layout';
 import {
     Table,
@@ -75,11 +75,11 @@ export default function UnitsIndex({ units }: { units: Unit[] }) {
     const submitUnit = (e: React.FormEvent) => {
         e.preventDefault();
         if (editingUnit?.id_unit) {
-            unitForm.put(route('master.units.update', editingUnit.id_unit), {
+            unitForm.put(`/master/units/${editingUnit.id_unit}`, {
                 onSuccess: () => setEditingUnit(null),
             });
         } else {
-            unitForm.post(route('master.units.store'), {
+            unitForm.post(`/master/units`, {
                 onSuccess: () => setEditingUnit(null),
             });
         }
@@ -87,7 +87,7 @@ export default function UnitsIndex({ units }: { units: Unit[] }) {
 
     const deleteUnit = (id: number) => {
         if (confirm('Hapus unit ini?')) {
-            router.delete(route('master.units.destroy', id));
+            router.delete(`/master/units/${id}`);
         }
     };
 
@@ -172,9 +172,9 @@ export default function UnitsIndex({ units }: { units: Unit[] }) {
                                                 className="h-7 px-3 text-xs font-semibold rounded-full hover:bg-slate-200 dark:hover:bg-slate-700"
                                                 asChild
                                             >
-                                                <a href={route('master.units.mesins.index', u.id_unit)}>
+                                                <Link href={`/master/units/${u.id_unit}/mesins`}>
                                                     {u.mesins.length} Mesin
-                                                </a>
+                                                </Link>
                                             </Button>
                                         </TableCell>
                                         <TableCell className="text-right pr-6 space-x-1">
