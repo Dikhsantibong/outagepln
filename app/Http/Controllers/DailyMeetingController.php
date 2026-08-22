@@ -10,6 +10,7 @@ use App\Models\MeetingKickoff;
 use App\Models\MeetingKickoffPhoto;
 use App\Models\Mesin;
 use App\Models\OutagePlan;
+use App\Models\OutagePlanRevision;
 use App\Models\Unit;
 use App\Support\JadwalRapatOutage;
 use App\Support\TahunFilter;
@@ -17,6 +18,7 @@ use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
@@ -91,6 +93,10 @@ class DailyMeetingController extends Controller
             }
         }
 
+        // Diambil sebelum paginasi supaya ringkasannya mencakup seluruh hasil
+        // filter, bukan hanya halaman yang sedang dibuka.
+        $idTersaring = (clone $query)->pluck('id');
+
         // Ordered by id so the listing mirrors the row order.
         $outagePlans = $query->with(['dailyMeetings', 'revisions.user:id,name'])
             ->orderBy('id')
@@ -128,7 +134,34 @@ class DailyMeetingController extends Controller
             // memakai angka yang sama persis dengan hitungan di server.
             'offsetRapat' => JadwalRapatOutage::OFFSET_HARI,
             'maksRevisi' => OutagePlan::MAKS_REVISI,
+            'ringkasan' => $this->ringkasan($idTersaring),
         ]);
+    }
+
+    /**
+     * Angka ringkas di atas tabel, dihitung dari seluruh hasil filter.
+     *
+     * @param  Collection<int, int>  $idPlan
+     * @return array{mesin: int, rapatSelesai: int, rapatTerjadwal: int, direvisi: int, terkunci: int}
+     */
+    private function ringkasan(Collection $idPlan): array
+    {
+        $rapat = fn () => DailyMeeting::whereIn('outage_plan_id', $idPlan);
+
+        $revisi = fn () => OutagePlanRevision::whereIn('outage_plan_id', $idPlan)
+            ->where('urutan', '>', 0);
+
+        return [
+            'mesin' => $idPlan->count(),
+            'rapatSelesai' => $rapat()->where('status', 'completed')->count(),
+            'rapatTerjadwal' => $rapat()->where('status', '!=', 'completed')->count(),
+            'direvisi' => $revisi()->distinct()->count('outage_plan_id'),
+            'terkunci' => $revisi()
+                ->groupBy('outage_plan_id')
+                ->havingRaw('count(*) >= ?', [OutagePlan::MAKS_REVISI])
+                ->pluck('outage_plan_id')
+                ->count(),
+        ];
     }
 
     /**

@@ -144,6 +144,7 @@ export default function DailyMeetingsIndex({
     filterOptions,
     offsetRapat,
     maksRevisi = 3,
+    ringkasan,
 }: {
     outagePlans: any; // Paginated data
     filters: {
@@ -161,6 +162,13 @@ export default function DailyMeetingsIndex({
     };
     offsetRapat: Record<string, number>;
     maksRevisi?: number;
+    ringkasan: {
+        mesin: number;
+        rapatSelesai: number;
+        rapatTerjadwal: number;
+        direvisi: number;
+        terkunci: number;
+    };
 }) {
     const { auth } = usePage<any>().props;
     const bolehEdit = auth?.can?.write ?? false;
@@ -389,6 +397,52 @@ export default function DailyMeetingsIndex({
                         Jadwal rapat R2, R3, P1, P2, dan P3 tiap mesin — dihitung
                         mundur dari rencana start
                     </p>
+                </div>
+
+                {/* Ringkasan — dihitung dari seluruh hasil filter, bukan halaman ini saja */}
+                <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+                    <div className="rounded-md border bg-muted/40 px-4 py-3">
+                        <p className="text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
+                            Mesin
+                        </p>
+                        <p className="mt-0.5 font-mono text-xl font-bold">
+                            {ringkasan.mesin}
+                        </p>
+                    </div>
+                    <div className="rounded-md border border-l-[3px] border-l-emerald-500 bg-muted/40 px-4 py-3">
+                        <p className="text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
+                            Rapat Selesai
+                        </p>
+                        <p className="mt-0.5 font-mono text-xl font-bold">
+                            {ringkasan.rapatSelesai}
+                        </p>
+                    </div>
+                    <div className="rounded-md border bg-muted/40 px-4 py-3">
+                        <p className="text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
+                            Rapat Terjadwal
+                        </p>
+                        <p className="mt-0.5 font-mono text-xl font-bold">
+                            {ringkasan.rapatTerjadwal}
+                        </p>
+                    </div>
+                    <div className="rounded-md border border-l-[3px] border-l-amber-500 bg-muted/40 px-4 py-3">
+                        <p className="flex items-center gap-1.5 text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
+                            <History className="h-3 w-3" />
+                            Pernah Direvisi
+                        </p>
+                        <p className="mt-0.5 font-mono text-xl font-bold">
+                            {ringkasan.direvisi}
+                        </p>
+                    </div>
+                    <div className="rounded-md border border-l-[3px] border-l-rose-500 bg-muted/40 px-4 py-3">
+                        <p className="flex items-center gap-1.5 text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
+                            <Lock className="h-3 w-3" />
+                            Revisi Habis
+                        </p>
+                        <p className="mt-0.5 font-mono text-xl font-bold">
+                            {ringkasan.terkunci}
+                        </p>
+                    </div>
                 </div>
 
                 <Card className="flex flex-1 flex-col overflow-hidden rounded-md border-sidebar-border/60 py-0 shadow-sm">

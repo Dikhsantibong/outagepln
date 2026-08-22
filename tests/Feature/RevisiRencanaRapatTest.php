@@ -214,6 +214,48 @@ class RevisiRencanaRapatTest extends TestCase
         $this->assertSame('KENDARI', $terkini->sistem);
     }
 
+    public function test_ringkasan_dihitung_dari_seluruh_hasil_filter(): void
+    {
+        $this->actingAs(User::factory()->create(['role' => 'admin']));
+        $plan = $this->plan();
+
+        $this->post("/daily-meetings/rencana/{$plan->id}/revisi", ['start_date' => '2027-01-07'])
+            ->assertRedirect();
+
+        $this->get('/daily-meetings')
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->where('ringkasan.mesin', 1)
+                ->where('ringkasan.direvisi', 1)
+                ->where('ringkasan.terkunci', 0)
+                ->where('ringkasan.rapatSelesai', 0)
+                ->where('ringkasan.rapatTerjadwal', DailyMeeting::where('outage_plan_id', $plan->id)->count()));
+
+        // Filter yang tidak cocok membuat seluruh angkanya nol.
+        $this->get('/daily-meetings?search=TIDAK-ADA')
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->where('ringkasan.mesin', 0)
+                ->where('ringkasan.direvisi', 0));
+    }
+
+    public function test_ringkasan_menghitung_rencana_yang_jatah_revisinya_habis(): void
+    {
+        $this->actingAs(User::factory()->create(['role' => 'admin']));
+        $plan = $this->plan();
+
+        foreach (['2027-01-07', '2027-02-07', '2027-03-07'] as $start) {
+            $this->post("/daily-meetings/rencana/{$plan->id}/revisi", ['start_date' => $start])
+                ->assertRedirect();
+        }
+
+        $this->get('/daily-meetings')
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->where('ringkasan.direvisi', 1)
+                ->where('ringkasan.terkunci', 1));
+    }
+
     public function test_halaman_mengirim_batas_revisi_ke_layar(): void
     {
         $this->actingAs(User::factory()->create(['role' => 'admin']));
