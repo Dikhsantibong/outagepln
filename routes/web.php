@@ -121,6 +121,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
         Route::get('units', [MasterUnitController::class, 'index'])->name('units.index');
         Route::post('units', [MasterUnitController::class, 'storeUnit'])->name('units.store');
+        Route::get('units/{unit}/mesins', [MasterUnitController::class, 'mesinsIndex'])->name('units.mesins.index');
         Route::put('units/{unit}', [MasterUnitController::class, 'updateUnit'])->name('units.update');
         Route::delete('units/{unit}', [MasterUnitController::class, 'destroyUnit'])->name('units.destroy');
 

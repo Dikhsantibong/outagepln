@@ -18,7 +18,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Edit, Trash2, Search, Plus, Package } from 'lucide-react';
+import { Edit, Trash2, Search, Plus, Package, Filter } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 interface Material {
@@ -98,22 +98,35 @@ export default function MaterialsIndex({ materials }: { materials: Material[] })
 
                 <Card className="shadow-sm border-slate-200 dark:border-slate-800">
                     <CardHeader className="pb-3 border-b">
-                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                            <CardTitle className="text-lg font-semibold flex items-center gap-2">
-                                <Package className="h-5 w-5 text-muted-foreground" /> 
-                                Daftar Material
-                            </CardTitle>
-                            <div className="relative w-full sm:w-72">
-                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                                <Input
-                                    placeholder="Cari Nama Material, Part Number..."
-                                    value={searchQuery}
-                                    onChange={(e) => setSearchQuery(e.target.value)}
-                                    className="pl-9 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800"
-                                />
-                            </div>
-                        </div>
+                        <CardTitle className="text-lg font-semibold flex items-center gap-2">
+                            <Package className="h-5 w-5 text-muted-foreground" /> 
+                            Daftar Material
+                        </CardTitle>
                     </CardHeader>
+                    
+                    {/* Filter Bar */}
+                    <div className="flex flex-col justify-between gap-3 border-b bg-muted/50 px-4 py-3 xl:flex-row xl:items-end">
+                        <div className="flex flex-wrap items-end gap-3">
+                            <div className="mb-1 flex items-center gap-2 border-r pr-3">
+                                <Filter className="h-4 w-4 text-muted-foreground" />
+                                <span className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
+                                    Filter
+                                </span>
+                            </div>
+                            {/* Tambahkan dropdown filter lain di sini jika ada */}
+                        </div>
+
+                        <div className="relative w-full sm:w-64">
+                            <Search className="absolute top-2 left-2.5 h-4 w-4 text-muted-foreground" />
+                            <Input
+                                placeholder="Cari Nama Material, Part Number..."
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                className="h-8 rounded-sm bg-background pl-8 text-xs"
+                            />
+                        </div>
+                    </div>
+
                     <CardContent className="p-0">
                         <Table>
                             <TableHeader className="bg-slate-50/50 dark:bg-slate-800/50">

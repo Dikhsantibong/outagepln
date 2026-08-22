@@ -17,6 +17,14 @@ class UnitController extends Controller
         ]);
     }
 
+    public function mesinsIndex(Unit $unit)
+    {
+        $unit->load('mesins');
+        return inertia('master/units/mesin', [
+            'unit' => $unit,
+        ]);
+    }
+
     public function storeUnit(Request $request)
     {
         $validated = $request->validate([
