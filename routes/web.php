@@ -72,6 +72,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
         // Rapat Outage routes
         Route::resource('daily-meetings', DailyMeetingController::class)->only(['index', 'store', 'show', 'destroy']);
         // Revisi rencana: tanggal rapat R2-P3 dihitung ulang dari rencana start.
+        // Formulirnya berdiri sendiri, bukan dialog, supaya daftar rapat tetap ringkas.
+        Route::get('daily-meetings/rencana/{outage_plan}/revisi', [DailyMeetingController::class, 'formRevisiRencana'])->name('daily-meetings.rencana.form');
         Route::post('daily-meetings/rencana/{outage_plan}/revisi', [DailyMeetingController::class, 'storeRevisiRencana'])->name('daily-meetings.rencana.revisi');
         Route::get('daily-meetings/{dailyMeeting}/qr', [DailyMeetingController::class, 'qrDisplay'])->name('daily-meetings.qr');
         Route::post('daily-meetings/{dailyMeeting}/complete', [DailyMeetingController::class, 'complete'])->name('daily-meetings.complete');

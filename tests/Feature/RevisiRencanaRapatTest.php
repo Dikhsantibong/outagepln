@@ -416,12 +416,74 @@ class RevisiRencanaRapatTest extends TestCase
         $this->post("/daily-meetings/rencana/{$plan->id}/revisi", ['start_date' => '2027-01-07'])
             ->assertRedirect();
 
+        // Daftar hanya membawa jumlahnya; rinciannya ada di halaman revisi.
         $this->get('/daily-meetings')
             ->assertOk()
             ->assertInertia(fn ($page) => $page
-                ->has('outagePlans.data.0.revisions', 2)
-                ->where('outagePlans.data.0.revisions.1.label', 'REV 1')
+                ->where('outagePlans.data.0.jumlah_revisi', 1)
+                ->missing('outagePlans.data.0.revisions')
                 ->where('offsetRapat.rapat_r2', 365)
                 ->where('offsetRapat.rapat_p3', 7));
+    }
+
+    // ------------------------------------------- Halaman revisi tersendiri
+
+    public function test_halaman_revisi_menampilkan_rencana_dan_riwayatnya(): void
+    {
+        $this->actingAs(User::factory()->create(['role' => 'admin']));
+        $plan = $this->plan();
+
+        $this->post("/daily-meetings/rencana/{$plan->id}/revisi", [
+            'start_date' => '2027-01-07',
+            'catatan' => 'Menunggu material',
+        ])->assertRedirect();
+
+        $this->get("/daily-meetings/rencana/{$plan->id}/revisi")
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->component('daily-meetings/revisi')
+                ->where('plan.id', $plan->id)
+                ->where('plan.mesin_pembangkit', 'PLTD POASIA #02 (MIRRLEES)')
+                ->where('jumlahRevisi', 1)
+                ->where('maksRevisi', 3)
+                ->where('offsetRapat.rapat_r2', 365)
+                ->has('plan.revisions', 2)
+                ->where('plan.revisions.1.catatan', 'Menunggu material'));
+    }
+
+    public function test_halaman_revisi_tetap_terbuka_saat_jatahnya_habis(): void
+    {
+        $this->actingAs(User::factory()->create(['role' => 'admin']));
+        $plan = $this->plan();
+
+        foreach (['2027-01-07', '2027-02-07', '2027-03-07'] as $start) {
+            $this->post("/daily-meetings/rencana/{$plan->id}/revisi", ['start_date' => $start])
+                ->assertRedirect();
+        }
+
+        // Halamannya tetap bisa dibuka untuk membaca riwayat, hanya formulirnya
+        // yang dikunci — itu ditentukan dari jumlahRevisi.
+        $this->get("/daily-meetings/rencana/{$plan->id}/revisi")
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page->where('jumlahRevisi', 3));
+    }
+
+    public function test_simpan_revisi_mengembalikan_ke_daftar_rapat(): void
+    {
+        $this->actingAs(User::factory()->create(['role' => 'admin']));
+        $plan = $this->plan();
+
+        $this->post("/daily-meetings/rencana/{$plan->id}/revisi", ['start_date' => '2027-01-07'])
+            ->assertRedirect(route('daily-meetings.index'));
+    }
+
+    public function test_tamu_tidak_boleh_membuka_halaman_revisi(): void
+    {
+        $plan = $this->plan();
+
+        $this->actingAs(User::factory()->create(['role' => 'tamu']));
+        $this->get("/daily-meetings/rencana/{$plan->id}/revisi")->assertForbidden();
+
+        $this->get('/daily-meetings')->assertOk();
     }
 }

@@ -98,7 +98,10 @@ class DailyMeetingController extends Controller
         $idTersaring = (clone $query)->pluck('id');
 
         // Ordered by id so the listing mirrors the row order.
-        $outagePlans = $query->with(['dailyMeetings', 'revisions.user:id,name'])
+        // Riwayat revisinya tidak ikut dimuat — daftar ini cukup tahu sudah
+        // berapa kali direvisi, rinciannya ada di halaman revisi.
+        $outagePlans = $query->with('dailyMeetings')
+            ->withCount(['revisions as jumlah_revisi' => fn ($q) => $q->where('urutan', '>', 0)])
             ->orderBy('id')
             ->paginate(20)
             ->withQueryString();
@@ -165,6 +168,31 @@ class DailyMeetingController extends Controller
     }
 
     /**
+     * Halaman revisi rencana satu mesin.
+     *
+     * Berdiri sendiri, bukan dialog di atas daftar: formulirnya berdampingan
+     * dengan riwayat versinya, sehingga dampak revisi bisa dibaca utuh tanpa
+     * membuka-tutup baris tabel.
+     */
+    public function formRevisiRencana(Request $request, OutagePlan $outagePlan)
+    {
+        abort_unless($request->user()?->canWrite(), 403);
+        abort_unless(
+            OutagePlan::visibleTo($request->user())->whereKey($outagePlan->id)->exists(),
+            403,
+        );
+
+        $outagePlan->load(['revisions.user:id,name', 'dailyMeetings']);
+
+        return Inertia::render('daily-meetings/revisi', [
+            'plan' => $outagePlan,
+            'offsetRapat' => JadwalRapatOutage::OFFSET_HARI,
+            'maksRevisi' => OutagePlan::MAKS_REVISI,
+            'jumlahRevisi' => $outagePlan->jumlahRevisi(),
+        ]);
+    }
+
+    /**
      * Catat revisi rencana outage.
      *
      * Yang diminta hanya rencana start dan finish; tanggal rapat R2-P3 dihitung
@@ -195,7 +223,10 @@ class DailyMeetingController extends Controller
             $request->user()?->id,
         );
 
-        return redirect()->back()->with('success', 'Revisi rencana tersimpan dan jadwal rapat diperbarui.');
+        // Kembali ke daftar: pekerjaannya selesai, dan versi barunya sudah
+        // terlihat pada baris mesin yang bersangkutan.
+        return redirect()->route('daily-meetings.index')
+            ->with('success', 'Revisi rencana tersimpan dan jadwal rapat diperbarui.');
     }
 
     public function store(Request $request)
