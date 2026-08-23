@@ -86,10 +86,42 @@ function SidebarProvider({
     [setOpenProp, open]
   )
 
+  // Track whether the sidebar was manually set by the user (vs auto-collapsed).
+  const userPreferredOpen = React.useRef(open)
+
   // Helper to toggle the sidebar.
   const toggleSidebar = React.useCallback(() => {
-    return isMobile ? setOpenMobile((open) => !open) : setOpen((open) => !open)
-  }, [isMobile, setOpen, setOpenMobile])
+    if (isMobile) {
+      return setOpenMobile((open) => !open)
+    }
+    // When the user manually toggles, store their preference.
+    userPreferredOpen.current = !open
+    return setOpen((open) => !open)
+  }, [isMobile, setOpen, setOpenMobile, open])
+
+  // Auto-collapse on medium screens (between mobile and XL breakpoint).
+  const COMPACT_BREAKPOINT = 1280
+  React.useEffect(() => {
+    if (isMobile) return // Mobile uses Sheet, no auto-collapse needed.
+
+    const mqlCompact = window.matchMedia(`(max-width: ${COMPACT_BREAKPOINT - 1}px)`)
+
+    const handleCompactChange = (e: MediaQueryListEvent | MediaQueryList) => {
+      if (e.matches) {
+        // Window is narrow → auto-collapse to icon mode
+        _setOpen(false)
+      } else {
+        // Window is wide → restore user's last manual preference
+        _setOpen(userPreferredOpen.current)
+      }
+    }
+
+    // Apply immediately on mount / when isMobile changes
+    handleCompactChange(mqlCompact)
+
+    mqlCompact.addEventListener("change", handleCompactChange)
+    return () => mqlCompact.removeEventListener("change", handleCompactChange)
+  }, [isMobile]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Adds a keyboard shortcut to toggle the sidebar.
   React.useEffect(() => {
