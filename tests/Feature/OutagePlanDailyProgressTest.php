@@ -72,6 +72,93 @@ class OutagePlanDailyProgressTest extends TestCase
     }
 
     /**
+     * Menghapus kembali aktual yang sudah diisi harus menarik plan-nya keluar
+     * dari hitungan "sedang berjalan" di dashboard.
+     *
+     * Dulu kolom `progress` hanya ditimpa kalau aktualnya ada isinya, jadi
+     * mengosongkan isian meninggalkan angka lama — mesinnya terus terhitung
+     * berjalan padahal progresnya sudah dihapus.
+     */
+    public function test_menghapus_aktual_mengembalikan_progress_ke_nol(): void
+    {
+        $plan = $this->plan();
+
+        $this->put("/outage-plans/{$plan->id}", $this->payload($plan, [
+            ['tanggal' => '2024-11-10', 'plan_progress' => '45', 'actual_progress' => '44', 'keterangan' => ''],
+        ]))->assertRedirect();
+
+        $this->assertSame(44.0, (float) $plan->fresh()->progress);
+
+        // Aktual dikosongkan lagi dari halaman edit.
+        $this->put("/outage-plans/{$plan->id}", $this->payload($plan, [
+            ['tanggal' => '2024-11-10', 'plan_progress' => '45', 'actual_progress' => '', 'keterangan' => ''],
+        ]))->assertRedirect();
+
+        $this->assertSame(0.0, (float) $plan->fresh()->progress);
+    }
+
+    /** Setelah aktual dihapus, mesinnya tidak lagi masuk hitungan berjalan. */
+    public function test_mesin_tanpa_aktual_tidak_terhitung_sedang_berjalan(): void
+    {
+        $plan = $this->plan();
+        $berjalan = fn () => OutagePlan::where('progress', '>', 0)
+            ->where('progress', '<', 100)
+            ->whereKey($plan->id)
+            ->count();
+
+        $this->put("/outage-plans/{$plan->id}", $this->payload($plan, [
+            ['tanggal' => '2024-11-10', 'plan_progress' => '45', 'actual_progress' => '44', 'keterangan' => ''],
+        ]))->assertRedirect();
+
+        $this->assertSame(1, $berjalan());
+
+        $this->put("/outage-plans/{$plan->id}", $this->payload($plan, [
+            ['tanggal' => '2024-11-10', 'plan_progress' => '45', 'actual_progress' => '', 'keterangan' => ''],
+        ]))->assertRedirect();
+
+        $this->assertSame(0, $berjalan());
+    }
+
+    /** Menurunkan aktual juga harus menurunkan progres, bukan menahan yang lama. */
+    public function test_menurunkan_aktual_ikut_menurunkan_progress(): void
+    {
+        $plan = $this->plan();
+
+        $this->put("/outage-plans/{$plan->id}", $this->payload($plan, [
+            ['tanggal' => '2024-11-10', 'plan_progress' => '50', 'actual_progress' => '80', 'keterangan' => ''],
+        ]))->assertRedirect();
+
+        $this->assertSame(80.0, (float) $plan->fresh()->progress);
+
+        $this->put("/outage-plans/{$plan->id}", $this->payload($plan, [
+            ['tanggal' => '2024-11-10', 'plan_progress' => '50', 'actual_progress' => '30', 'keterangan' => ''],
+        ]))->assertRedirect();
+
+        $this->assertSame(30.0, (float) $plan->fresh()->progress);
+    }
+
+    /**
+     * Rencana hasil impor membawa progres dari lembar sumber tanpa baris
+     * harian. Menyimpan tanpa menyertakan daily_progress sama sekali tidak
+     * boleh menghapus angka itu.
+     */
+    public function test_progress_impor_tidak_terhapus_saat_daily_progress_tidak_dikirim(): void
+    {
+        $plan = $this->plan();
+        $plan->update(['progress' => 98]);
+
+        $this->put("/outage-plans/{$plan->id}", [
+            'mesin_pembangkit' => $plan->mesin_pembangkit,
+            'scope' => $plan->scope,
+            'jenis_pembangkit' => $plan->jenis_pembangkit,
+            'start_date' => $plan->start_date,
+            'selesai' => $plan->selesai,
+        ])->assertRedirect();
+
+        $this->assertSame(98.0, (float) $plan->fresh()->progress);
+    }
+
+    /**
      * Hari tambahan di luar durasi rencana harus ikut tersimpan — aktual bisa
      * melewati rencana, dan barisnya dikirim apa adanya oleh form.
      */

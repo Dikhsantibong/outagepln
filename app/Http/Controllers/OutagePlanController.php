@@ -1417,10 +1417,14 @@ class OutagePlanController extends Controller
             // Progress is cumulative, so the highest recorded actual value is the
             // current overall progress. Keep it authoritative on the plan itself
             // so every listing/dashboard that reads `progress` stays in sync.
-            $overallActual = $outagePlan->dailyProgresses()->max('actual_progress');
-            if ($overallActual !== null) {
-                $outagePlan->update(['progress' => $overallActual]);
-            }
+            //
+            // Recomputed unconditionally, including back down to null: clearing
+            // the last actual means the work has no recorded progress any more,
+            // and a stale value would keep the machine counted as "sedang
+            // berjalan" on the dashboard long after its progress was removed.
+            $outagePlan->update([
+                'progress' => $outagePlan->dailyProgresses()->max('actual_progress'),
+            ]);
         }
 
         return redirect()->back()->with('success', 'Data berhasil diperbarui.');
