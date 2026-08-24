@@ -176,6 +176,60 @@ class OutagePlan extends Model
     }
 
     /**
+     * Pekerjaan yang sedang berjalan di lapangan.
+     *
+     * Memakai definisi yang sama dengan kartu "Sedang Berjalan" di dashboard,
+     * supaya satu pekerjaan tidak pernah terhitung berjalan di satu layar tapi
+     * tidak di layar lain.
+     */
+    public function scopeSedangBerjalan($query)
+    {
+        return $query->where('progress', '>', 0)->where('progress', '<', 100);
+    }
+
+    /**
+     * Tanggal tiap hari pelaksanaan outage, hari ke-1 sampai hari terakhir.
+     *
+     * Titik mulanya Real Start — tanggal pekerjaan benar-benar dimulai — dan
+     * jatuh kembali ke rencana start selama Real Start belum diisi. Banyaknya
+     * hari diambil dari kolom durasi; bila durasi kosong, rentang rencana
+     * start sampai rencana selesai yang dipakai.
+     *
+     * Aturan ini sengaja sama persis dengan pembentukan baris progres harian di
+     * halaman Ubah Data Pekerjaan, sehingga hari rapat dan hari progres selalu
+     * jatuh pada tanggal yang sama.
+     *
+     * @return array<int, string> daftar tanggal Y-m-d, terurut
+     */
+    public function tanggalHarianOutage(): array
+    {
+        $awal = $this->real_start ?: $this->start_date;
+
+        if (blank($awal)) {
+            return [];
+        }
+
+        $jumlah = (int) $this->durasi;
+
+        if ($jumlah <= 0) {
+            $jumlah = blank($this->selesai)
+                ? 0
+                : self::hitungDurasi((string) $this->start_date, (string) $this->selesai) ?? 0;
+        }
+
+        if ($jumlah <= 0) {
+            return [];
+        }
+
+        $mulai = CarbonImmutable::parse($awal)->startOfDay();
+
+        return array_map(
+            fn (int $i) => $mulai->addDays($i)->toDateString(),
+            range(0, $jumlah - 1),
+        );
+    }
+
+    /**
      * Baris harian terakhir yang realisasinya sudah diisi.
      *
      * Titik inilah yang dipakai membandingkan rencana dengan realisasi: hari

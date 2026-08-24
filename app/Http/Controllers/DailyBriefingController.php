@@ -10,7 +10,7 @@ use App\Models\DailyBriefingFinding;
 use App\Models\DailyBriefingIssue;
 use App\Models\DailyBriefingKickoff;
 use App\Models\DailyBriefingKickoffPhoto;
-use App\Models\OutagePlan;
+use App\Support\RapatHarianOtomatis;
 use App\Support\TahunFilter;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
@@ -33,6 +33,11 @@ class DailyBriefingController extends Controller
 {
     public function index(Request $request)
     {
+        // Rapat tidak lagi dibuat manual: harinya disiapkan dari pekerjaan yang
+        // sedang berjalan setiap daftar ini dibuka, jadi rapat mesin yang baru
+        // mulai langsung muncul tanpa ada yang perlu menambahkannya.
+        RapatHarianOtomatis::sinkronkanYangBerjalan();
+
         $query = DailyBriefing::withCount('attendees');
 
         if ($request->filled('search')) {
@@ -73,17 +78,8 @@ class DailyBriefingController extends Controller
             ->paginate(12)
             ->withQueryString();
 
-        $activeMachines = OutagePlan::where('progress', '>', 0)
-            ->where('progress', '<', 100)
-            ->pluck('mesin_pembangkit')
-            ->filter()
-            ->unique()
-            ->values()
-            ->toArray();
-
         return Inertia::render('daily-briefings/index', [
             'briefings' => $briefings,
-            'activeMachines' => $activeMachines,
             'filters' => array_merge(
                 $request->only(['search', 'status', 'tahun', 'bulan']),
                 ['tahun' => TahunFilter::label($tahun)],
@@ -94,35 +90,37 @@ class DailyBriefingController extends Controller
         ]);
     }
 
-    public function store(Request $request)
-    {
-        $validated = $request->validate([
-            'judul' => 'required|string|max:255',
-            'tanggal' => 'required|date',
-            'waktu_mulai' => 'nullable|date_format:H:i',
-            'lokasi' => 'nullable|string|max:255',
-        ]);
-
-        $validated['status'] = 'active';
-
-        DailyBriefing::create($validated);
-
-        return redirect()->back()->with('success', 'Meeting berhasil dibuat.');
-    }
-
     public function show(DailyBriefing $dailyBriefing)
     {
         $dailyBriefing->load(['attendees', 'issues', 'findings', 'kickoff', 'kickoffPhotos']);
 
-        // Semua hari dalam rangkaian rapat mesin yang sama, untuk navigasi antar hari.
+        // Pekerjaan yang jalan bisa berubah durasinya setelah rapat dibuka;
+        // disinkronkan lagi di sini supaya hari yang baru bertambah langsung
+        // ikut terlihat tanpa perlu kembali ke daftar.
+        if ($dailyBriefing->outagePlan) {
+            RapatHarianOtomatis::sinkronkan($dailyBriefing->outagePlan);
+        }
+
+        // Semua hari dalam rangkaian rapat mesin yang sama, untuk navigasi antar
+        // hari. Hari yang rapatnya dilewat tetap ada di daftar — kosong, tapi
+        // penomorannya tidak melompat — dan tiap hari menyimpan notulen serta
+        // temuannya sendiri sehingga hari lama tetap bisa dibuka dan diperbarui.
         $days = $dailyBriefing->seriesDays()
-            ->withCount('attendees')
+            ->withCount(['attendees', 'findings', 'issues'])
+            ->with('kickoff:id,daily_briefing_id')
             ->get()
             ->map(fn ($d) => [
                 'id' => $d->id,
+                'hari_ke' => $d->hari_ke,
                 'tanggal' => $d->tanggal?->toDateString(),
                 'status' => $d->status,
                 'attendees_count' => $d->attendees_count,
+                'findings_count' => $d->findings_count,
+                'issues_count' => $d->issues_count,
+                'ada_isi' => $d->attendees_count > 0
+                    || $d->findings_count > 0
+                    || $d->issues_count > 0
+                    || $d->kickoff !== null,
                 'is_current' => $d->id === $dailyBriefing->id,
             ]);
 
@@ -138,50 +136,6 @@ class DailyBriefingController extends Controller
             'attendUrl' => $this->attendUrl($dailyBriefing),
             'days' => $days,
         ]);
-    }
-
-    /**
-     * Menambah hari baru pada rapat mesin yang sama.
-     *
-     * Rapat bisa berlangsung beberapa hari; tiap hari punya notulen & daftar
-     * hadir sendiri. Hari baru mewarisi identitas mesin dan kop dokumen, tetapi
-     * daftar hadir serta notulennya mulai kosong. Tergabung dalam satu rangkaian
-     * lewat parent_id yang menunjuk ke hari pertama.
-     */
-    public function addDay(DailyBriefing $dailyBriefing)
-    {
-        $head = $dailyBriefing->seriesHeadId();
-
-        $lastTanggal = DailyBriefing::query()
-            ->where('id', $head)
-            ->orWhere('parent_id', $head)
-            ->max('tanggal');
-
-        $tanggalBaru = $lastTanggal
-            ? Carbon::parse($lastTanggal)->addDay()->toDateString()
-            : today()->toDateString();
-
-        $baru = DailyBriefing::create([
-            'parent_id' => $head,
-            'status' => 'active',
-            'tanggal' => $tanggalBaru,
-            // Identitas mesin + kop dokumen diwarisi dari hari sebelumnya.
-            'judul' => $dailyBriefing->judul,
-            'lokasi' => $dailyBriefing->lokasi,
-            'waktu_mulai' => $dailyBriefing->waktu_mulai,
-            'unit' => $dailyBriefing->unit,
-            'jenis_inspeksi' => $dailyBriefing->jenis_inspeksi,
-            'rapat_framework' => $dailyBriefing->rapat_framework,
-            'tgl_performance_test' => $dailyBriefing->tgl_performance_test,
-            'jam_setelah_po_terai' => $dailyBriefing->jam_setelah_po_terai,
-            'daya_mampu' => $dailyBriefing->daya_mampu,
-            'nomor_dokumen' => $dailyBriefing->nomor_dokumen,
-            'revisi' => $dailyBriefing->revisi,
-            'tanggal_terbit' => $dailyBriefing->tanggal_terbit,
-        ]);
-
-        return redirect()->route('daily-briefings.show', $baru->id)
-            ->with('success', 'Hari rapat baru dibuat untuk mesin yang sama.');
     }
 
     /**
@@ -394,8 +348,11 @@ class DailyBriefingController extends Controller
         ]);
 
         $validated['foto'] = $this->encodePhoto($request->file('foto'));
-        $validated['target'] = $validated['target'] ?: 'Open';
-        $validated['tanggal'] = $validated['tanggal'] ?: $dailyBriefing->tanggal?->toDateString();
+        // Kolom opsional bisa tidak ikut terkirim sama sekali, bukan sekadar
+        // kosong — jadi kuncinya diambil dengan ?? agar tidak memicu galat.
+        $validated['target'] = ($validated['target'] ?? null) ?: 'Open';
+        $validated['tanggal'] = ($validated['tanggal'] ?? null)
+            ?: $dailyBriefing->tanggal?->toDateString();
 
         $dailyBriefing->findings()->create($validated);
 
@@ -424,7 +381,7 @@ class DailyBriefingController extends Controller
             unset($validated['foto']);
         }
 
-        $validated['target'] = $validated['target'] ?: 'Open';
+        $validated['target'] = ($validated['target'] ?? null) ?: 'Open';
         $finding->update($validated);
 
         return redirect()->back()->with('success', 'Temuan berhasil diperbarui.');

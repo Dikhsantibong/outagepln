@@ -267,18 +267,29 @@ class RapatOutageDanDailyMeetingTest extends TestCase
             ->assertInertia(fn ($page) => $page->has('briefings.data', 1));
     }
 
-    public function test_daily_meeting_bisa_dibuat_dan_header_disimpan(): void
+    /**
+     * Rapat tidak lagi dibuat manual — harinya dibentuk otomatis dari pekerjaan
+     * yang berjalan — sehingga rute pembuatannya memang sudah tidak ada.
+     */
+    public function test_pembuatan_rapat_manual_tidak_tersedia_lagi(): void
     {
         $this->admin();
 
+        // 405, bukan 404: alamatnya masih melayani GET untuk daftar rapat,
+        // hanya metode POST-nya yang sudah tidak ada.
         $this->post('/daily-briefings', [
             'judul' => 'Daily Meeting Baru',
             'tanggal' => '2026-04-17',
-            'waktu_mulai' => '08:30',
-            'lokasi' => 'Ruang A',
-        ])->assertRedirect();
+        ])->assertMethodNotAllowed();
 
-        $briefing = DailyBriefing::where('judul', 'Daily Meeting Baru')->firstOrFail();
+        $this->assertSame(0, DailyBriefing::where('judul', 'Daily Meeting Baru')->count());
+    }
+
+    public function test_header_daily_meeting_disimpan(): void
+    {
+        $this->admin();
+
+        $briefing = $this->briefing();
 
         $this->put("/daily-briefings/{$briefing->id}", [
             'unit' => 'PLTD Poasia',

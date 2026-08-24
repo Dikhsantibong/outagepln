@@ -38,16 +38,27 @@ class DailyBriefing extends Model
         return $this->parent_id ?? $this->id;
     }
 
+    /** Pekerjaan outage yang rapat ini dibentuk untuknya. */
+    public function outagePlan()
+    {
+        return $this->belongsTo(OutagePlan::class);
+    }
+
     /**
-     * Seluruh hari dalam satu rangkaian (kepala + lanjutan), terurut tanggal.
+     * Seluruh hari dalam satu rangkaian (kepala + lanjutan), terurut hari.
+     *
+     * Nomor hari yang jadi acuan utama, bukan tanggal: rapat yang dilewat tetap
+     * memegang nomornya sendiri, jadi urutannya tidak bergeser. Rapat lama yang
+     * dibuat manual belum bernomor, dan untuk itu tanggal yang dipakai.
      */
     public function seriesDays()
     {
         $head = $this->seriesHeadId();
 
         return static::query()
-            ->where('id', $head)
-            ->orWhere('parent_id', $head)
+            ->where(fn ($q) => $q->where('id', $head)->orWhere('parent_id', $head))
+            ->orderByRaw('hari_ke IS NULL')
+            ->orderBy('hari_ke')
             ->orderBy('tanggal')
             ->orderBy('id');
     }

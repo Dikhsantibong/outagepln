@@ -9,13 +9,12 @@ import {
     Filter,
     X,
     Search,
-    Plus,
 } from 'lucide-react';
 import { useState } from 'react';
 import { FilterTahun } from '@/components/data-filter-bar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardTitle, CardDescription } from '@/components/ui/card';
+import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -26,15 +25,6 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import {
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogFooter,
-    DialogHeader,
-    DialogTitle,
-    DialogTrigger,
-} from '@/components/ui/dialog';
-import {
     Table,
     TableBody,
     TableCell,
@@ -42,7 +32,6 @@ import {
     TableHeader,
     TableRow,
 } from '@/components/ui/table';
-import { useForm } from '@inertiajs/react';
 
 type Meeting = {
     id: number;
@@ -111,27 +100,16 @@ function FilterSelect({
 
 export default function DailyBriefingsIndex({
     briefings,
-    activeMachines = [],
     filters,
     filterOptions,
 }: {
     briefings: any;
-    activeMachines?: string[];
     filters?: any;
     filterOptions?: any;
 }) {
     const { auth } = usePage<any>().props;
-    const isTamu = !(auth?.can?.write ?? false);
     const bolehHapus = auth?.can?.delete ?? false;
     const [searchTerm, setSearchTerm] = useState(filters?.search || '');
-    const [createOpen, setCreateOpen] = useState(false);
-
-    const { data, setData, post, processing, errors, reset } = useForm({
-        judul: '',
-        tanggal: new Date().toISOString().split('T')[0],
-        waktu_mulai: '08:00',
-        lokasi: 'Via Zoom',
-    });
 
     const opts = filterOptions ?? {
         tahun: [],
@@ -184,16 +162,6 @@ export default function DailyBriefingsIndex({
         }
     };
 
-    const handleCreate = (e: React.FormEvent) => {
-        e.preventDefault();
-        post('/daily-briefings', {
-            onSuccess: () => {
-                setCreateOpen(false);
-                reset();
-            },
-        });
-    };
-
     const renderStatusBadge = (status: string) => {
         switch (status) {
             case 'berlangsung':
@@ -238,7 +206,8 @@ export default function DailyBriefingsIndex({
                             Daily Meeting
                         </h1>
                         <p className="mt-1 text-sm text-muted-foreground">
-                            Kelola rapat harian manual (notulen format P1)
+                            Terbentuk otomatis dari mesin yang sedang berjalan —
+                            langsung buka detailnya untuk mengisi notulen
                         </p>
                     </div>
                     <div className="flex items-center gap-2">
@@ -259,143 +228,6 @@ export default function DailyBriefingsIndex({
                         <div className="rounded-md border bg-muted px-2 py-1 text-xs font-medium whitespace-nowrap text-muted-foreground">
                             Total: {briefings.total || 0}
                         </div>
-                        {!isTamu && (
-                            <Dialog
-                                open={createOpen}
-                                onOpenChange={setCreateOpen}
-                            >
-                                <DialogTrigger asChild>
-                                    <Button size="sm" className="h-9 gap-1">
-                                        <Plus className="h-4 w-4" /> Buat
-                                        Meeting
-                                    </Button>
-                                </DialogTrigger>
-                                <DialogContent>
-                                    <DialogHeader>
-                                        <DialogTitle>
-                                            Buat Daily Meeting Baru
-                                        </DialogTitle>
-                                        <DialogDescription>
-                                            Masukkan detail awal meeting untuk
-                                            mulai mencatat absensi dan notulen.
-                                        </DialogDescription>
-                                    </DialogHeader>
-                                    <form
-                                        onSubmit={handleCreate}
-                                        className="space-y-4"
-                                    >
-                                        <div className="space-y-2">
-                                            <Label>Judul Meeting</Label>
-                                            <div className="flex gap-2">
-                                                {activeMachines && activeMachines.length > 0 && (
-                                                    <Select onValueChange={(val) => setData('judul', `Rapat Harian - ${val}`)}>
-                                                        <SelectTrigger className="w-[180px] shrink-0">
-                                                            <SelectValue placeholder="Pilih Mesin..." />
-                                                        </SelectTrigger>
-                                                        <SelectContent>
-                                                            {activeMachines.map((m) => (
-                                                                <SelectItem key={m} value={m}>{m}</SelectItem>
-                                                            ))}
-                                                        </SelectContent>
-                                                    </Select>
-                                                )}
-                                                <Input
-                                                    value={data.judul}
-                                                    onChange={(e) =>
-                                                        setData(
-                                                            'judul',
-                                                            e.target.value,
-                                                        )
-                                                    }
-                                                    placeholder="Contoh: Rapat Persiapan Outage P1"
-                                                    required
-                                                    className="flex-1"
-                                                />
-                                            </div>
-                                            {errors.judul && (
-                                                <p className="text-sm text-red-500">
-                                                    {errors.judul}
-                                                </p>
-                                            )}
-                                        </div>
-                                        <div className="grid grid-cols-2 gap-4">
-                                            <div className="space-y-2">
-                                                <Label>Tanggal</Label>
-                                                <Input
-                                                    type="date"
-                                                    value={data.tanggal}
-                                                    onChange={(e) =>
-                                                        setData(
-                                                            'tanggal',
-                                                            e.target.value,
-                                                        )
-                                                    }
-                                                    required
-                                                />
-                                                {errors.tanggal && (
-                                                    <p className="text-sm text-red-500">
-                                                        {errors.tanggal}
-                                                    </p>
-                                                )}
-                                            </div>
-                                            <div className="space-y-2">
-                                                <Label>Waktu Mulai</Label>
-                                                <Input
-                                                    type="time"
-                                                    value={data.waktu_mulai}
-                                                    onChange={(e) =>
-                                                        setData(
-                                                            'waktu_mulai',
-                                                            e.target.value,
-                                                        )
-                                                    }
-                                                />
-                                                {errors.waktu_mulai && (
-                                                    <p className="text-sm text-red-500">
-                                                        {errors.waktu_mulai}
-                                                    </p>
-                                                )}
-                                            </div>
-                                        </div>
-                                        <div className="space-y-2">
-                                            <Label>Lokasi (Opsional)</Label>
-                                            <Input
-                                                value={data.lokasi}
-                                                onChange={(e) =>
-                                                    setData(
-                                                        'lokasi',
-                                                        e.target.value,
-                                                    )
-                                                }
-                                                placeholder="Room Zoom atau Ruang Rapat"
-                                            />
-                                            {errors.lokasi && (
-                                                <p className="text-sm text-red-500">
-                                                    {errors.lokasi}
-                                                </p>
-                                            )}
-                                        </div>
-                                        <DialogFooter>
-                                            <Button
-                                                type="button"
-                                                variant="outline"
-                                                onClick={() =>
-                                                    setCreateOpen(false)
-                                                }
-                                            >
-                                                Batal
-                                            </Button>
-                                            <Button
-                                                type="submit"
-                                                disabled={processing}
-                                            >
-                                                Simpan Meeting
-                                            </Button>
-                                        </DialogFooter>
-                                    </form>
-                                </DialogContent>
-                            </Dialog>
-                        )}
                     </div>
                 </div>
 
@@ -584,8 +416,9 @@ export default function DailyBriefingsIndex({
                                             ) : (
                                                 <span className="flex items-center justify-center gap-2">
                                                     <QrCode className="h-4 w-4 opacity-50" />
-                                                    Belum ada meeting. Silakan
-                                                    buat meeting baru.
+                                                    Belum ada mesin yang sedang
+                                                    berjalan, jadi belum ada rapat
+                                                    yang terbentuk.
                                                 </span>
                                             )}
                                         </TableCell>

@@ -46,7 +46,17 @@ export default function DailyBriefingsShow({
     findingInfo?: any;
     kickoffDefaults?: any;
     attendUrl?: string;
-    days?: Array<{ id: number; tanggal: string | null; status: string; attendees_count: number; is_current: boolean }>;
+    days?: Array<{
+        id: number;
+        hari_ke: number | null;
+        tanggal: string | null;
+        status: string;
+        attendees_count: number;
+        findings_count: number;
+        issues_count: number;
+        ada_isi: boolean;
+        is_current: boolean;
+    }>;
 }) {
 
     const { auth } = usePage<any>().props;
@@ -302,45 +312,63 @@ export default function DailyBriefingsShow({
                     </div>
                 </div>
 
-                {/* Navigasi hari — satu rapat mesin bisa berlangsung beberapa hari,
-                    tiap hari punya notulen & daftar hadir tersendiri. */}
-                <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/30 p-2">
-                    <span className="px-1 text-xs font-semibold text-muted-foreground">Hari rapat:</span>
-                    {days.map((d, i) => (
-                        <button
-                            key={d.id}
-                            onClick={() => { if (!d.is_current) router.visit(`/daily-briefings/${d.id}`); }}
-                            className={`flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs transition-colors ${
-                                d.is_current
-                                    ? 'border-primary bg-primary text-primary-foreground'
-                                    : 'bg-background hover:bg-muted'
-                            }`}
-                            title={d.tanggal ? new Date(d.tanggal).toLocaleDateString('id-ID', { dateStyle: 'long' }) : ''}
-                        >
-                            <span className="font-bold">Hari {i + 1}</span>
-                            {d.tanggal && (
-                                <span className={d.is_current ? 'text-primary-foreground/80' : 'text-muted-foreground'}>
-                                    {new Date(d.tanggal).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}
-                                </span>
-                            )}
-                            {d.status === 'completed' && <CheckCircle2 className="h-3 w-3" />}
-                        </button>
-                    ))}
-                    {briefing.status !== 'completed' && !isTamu && (
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-8 gap-1.5"
-                            onClick={() => {
-                                if (confirm('Tambah hari rapat baru untuk mesin yang sama? Notulen & daftar hadir hari baru dimulai kosong.')) {
-                                    router.post(`/daily-briefings/${briefing.id}/add-day`);
+                {/* Navigasi hari. Seluruh hari pelaksanaan sudah terbentuk dari
+                    Real Start dan durasinya, jadi tidak ada penambahan manual.
+                    Hari yang rapatnya dilewat tetap muncul dalam keadaan kosong,
+                    dan hari yang sudah terisi ditandai supaya mudah dibuka lagi
+                    untuk diperbarui. */}
+                <div className="rounded-lg border bg-muted/30 p-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                        <span className="px-1 text-xs font-semibold text-muted-foreground">
+                            Hari rapat:
+                        </span>
+                        {days.map((d, i) => (
+                            <button
+                                key={d.id}
+                                onClick={() => {
+                                    if (!d.is_current) router.visit(`/daily-briefings/${d.id}`);
+                                }}
+                                className={`flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs transition-colors ${
+                                    d.is_current
+                                        ? 'border-primary bg-primary text-primary-foreground'
+                                        : d.ada_isi
+                                          ? 'border-emerald-300 bg-emerald-50 hover:bg-emerald-100 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:hover:bg-emerald-950/50'
+                                          : 'bg-background hover:bg-muted'
+                                }`}
+                                title={
+                                    d.ada_isi
+                                        ? `Sudah ada isi — ${d.attendees_count} hadir, ${d.findings_count} temuan`
+                                        : 'Belum ada rapat pada hari ini'
                                 }
-                            }}
-                        >
-                            <Plus className="h-4 w-4" />
-                            Tambah Hari
-                        </Button>
-                    )}
+                            >
+                                <span className="font-bold">Hari {d.hari_ke ?? i + 1}</span>
+                                {d.tanggal && (
+                                    <span
+                                        className={
+                                            d.is_current
+                                                ? 'text-primary-foreground/80'
+                                                : 'text-muted-foreground'
+                                        }
+                                    >
+                                        {new Date(d.tanggal).toLocaleDateString('id-ID', {
+                                            day: 'numeric',
+                                            month: 'short',
+                                        })}
+                                    </span>
+                                )}
+                                {d.ada_isi && !d.is_current && (
+                                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                                )}
+                                {d.status === 'completed' && <CheckCircle2 className="h-3 w-3" />}
+                            </button>
+                        ))}
+                    </div>
+                    <p className="mt-2 px-1 text-[11px] text-muted-foreground">
+                        Hari terbentuk otomatis dari Real Start sepanjang durasi
+                        pekerjaan. Rapat yang dilewat boleh dibiarkan kosong — notulen
+                        dan temuan tiap hari tersimpan sendiri dan tetap bisa dibuka
+                        kembali untuk diperbarui.
+                    </p>
                 </div>
 
                 <div className="w-full">

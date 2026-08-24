@@ -45,9 +45,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::middleware(['can:viewMeetings'])->group(function () {
 
         // Daily Meeting (Manual Briefing) routes
-        Route::resource('daily-briefings', DailyBriefingController::class)->parameters(['daily-briefings' => 'dailyBriefing']);
+        // Rapat harian dibentuk otomatis dari pekerjaan yang sedang berjalan, jadi
+        // tidak ada lagi rute pembuatan manual.
+        Route::resource('daily-briefings', DailyBriefingController::class)
+            ->except(['create', 'store'])
+            ->parameters(['daily-briefings' => 'dailyBriefing']);
         Route::post('daily-briefings/{dailyBriefing}/complete', [DailyBriefingController::class, 'complete'])->name('daily-briefings.complete');
-        Route::post('daily-briefings/{dailyBriefing}/add-day', [DailyBriefingController::class, 'addDay'])->name('daily-briefings.add-day');
         Route::get('daily-briefings/{dailyBriefing}/qr', [DailyBriefingController::class, 'qrDisplay'])->name('daily-briefings.qr');
         Route::get('daily-briefings/{dailyBriefing}/attendees-json', [DailyBriefingController::class, 'attendeesJson'])->name('daily-briefings.attendees-json');
         Route::post('daily-briefings/{dailyBriefing}/issues', [DailyBriefingController::class, 'storeIssue'])->name('daily-briefings.issues.store');
