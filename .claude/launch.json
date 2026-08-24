@@ -9,6 +9,15 @@
         "dev"
       ],
       "port": 5173
+    },
+    {
+      "name": "app",
+      "runtimeExecutable": "composer",
+      "runtimeArgs": [
+        "run",
+        "dev"
+      ],
+      "port": 8000
     }
   ]
 }

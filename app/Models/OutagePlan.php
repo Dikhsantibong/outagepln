@@ -23,6 +23,7 @@ class OutagePlan extends Model
         'rapat_p3',
         'ket',
         'merek',
+        'unit',
         'sistem',
         'real_start',
         'real_stop',
@@ -107,24 +108,66 @@ class OutagePlan extends Model
         return null;
     }
 
-    /** The account that manages this machine's brand. */
-    public function pengelola()
+    /**
+     * Derives the plant (unit) a machine belongs to from its name.
+     *
+     * The plant is everything before the machine number, e.g.
+     * "PLTD POASIA #01 (MIRRLEES)" -> PLTD POASIA. Anything after the number is
+     * dropped, which also throws away brand and former-location notes
+     * ("PLTD RAHA #15 (Mitsubishi) EX PLTD BAU-BAU #21" -> PLTD RAHA) so a
+     * relocated machine is attributed to where it runs now, not where it came
+     * from. Spacing around hyphens is normalised because the same plant is
+     * spelled both "PLTD WUA-WUA" and "PLTD WUA- WUA" in the source sheet.
+     */
+    public static function extractUnit(?string $nama): ?string
     {
-        return $this->belongsTo(User::class, 'merek', 'merek');
+        $nama = trim((string) $nama);
+
+        if ($nama === '') {
+            return null;
+        }
+
+        // Cut at the machine number; when there is none, drop the brackets.
+        $unit = preg_split('/#/', $nama)[0];
+        $unit = preg_replace('/\([^)]*\)/', '', $unit);
+
+        $unit = strtoupper(trim($unit));
+        $unit = preg_replace('/\s*-\s*/', '-', $unit);
+        $unit = preg_replace('/\s+/', ' ', $unit);
+
+        return $unit === '' ? null : $unit;
+    }
+
+    /** The accounts that manage this machine — one brand may span several plants. */
+    public function pengelolas()
+    {
+        return $this->hasMany(User::class, 'merek', 'merek');
     }
 
     /**
      * Limits a listing to what the given user manages. Admin and tamu (read-only
-     * observer) are not tied to a brand and keep seeing everything, so existing
-     * dashboards and reports are unaffected.
+     * observer) are tied to neither a brand nor a plant and keep seeing
+     * everything, so existing dashboards and reports are unaffected.
+     *
+     * The two filters stack: a pengelola holding only a brand manages it at
+     * every plant, while one that also holds a plant — MIRRLEES at PLTD POASIA —
+     * sees just that plant's machines of that brand.
      */
     public function scopeVisibleTo($query, $user)
     {
-        if (! $user || blank($user->merek)) {
+        if (! $user) {
             return $query;
         }
 
-        return $query->where('merek', $user->merek);
+        if (filled($user->merek)) {
+            $query->where('merek', $user->merek);
+        }
+
+        if (filled($user->unit)) {
+            $query->where('unit', $user->unit);
+        }
+
+        return $query;
     }
 
     public function dailyMeetings()
@@ -286,6 +329,10 @@ class OutagePlan extends Model
         static::saving(function (OutagePlan $plan) {
             if ($plan->isDirty('mesin_pembangkit') || blank($plan->merek)) {
                 $plan->merek = self::extractMerek($plan->mesin_pembangkit);
+            }
+
+            if ($plan->isDirty('mesin_pembangkit') || blank($plan->unit)) {
+                $plan->unit = self::extractUnit($plan->mesin_pembangkit);
             }
         });
 

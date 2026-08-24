@@ -21,7 +21,8 @@ class DashboardController extends Controller
         $tahun = TahunFilter::resolve($request->query('tahun'), $tahunOptions);
 
         // Every figure below is scoped: a pengelola only ever sees its own
-        // brand, while admin/tamu (merek = null) still see everything.
+        // brand — narrowed further to one plant when its account is pinned to
+        // one — while admin/tamu (no brand, no plant) still see everything.
         $plans = function () use ($user, $tahun) {
             $query = OutagePlan::visibleTo($user);
 
@@ -32,6 +33,7 @@ class DashboardController extends Controller
         return Inertia::render('dashboard', [
             'scope' => [
                 'merek' => $user?->merek,
+                'unit' => $user?->unit,
                 'role' => $user?->role,
             ],
             'filters' => [
@@ -77,7 +79,7 @@ class DashboardController extends Controller
     private function groupCount(callable $plans, string $column): array
     {
         return $plans()
-            ->select($column . ' as label', DB::raw('COUNT(*) as total'))
+            ->select($column.' as label', DB::raw('COUNT(*) as total'))
             ->whereNotNull($column)
             ->where($column, '!=', '')
             ->groupBy($column)
@@ -189,7 +191,7 @@ class DashboardController extends Controller
             return ['nilai' => 0, 'terisi' => 0, 'detail' => []];
         }
 
-        $sign = fn (float $v) => ($v > 0 ? '+' : '') . number_format($v, 2, ',', '.') . '%';
+        $sign = fn (float $v) => ($v > 0 ? '+' : '').number_format($v, 2, ',', '.').'%';
 
         return [
             'nilai' => $r['nilai'],

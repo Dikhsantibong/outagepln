@@ -60,7 +60,7 @@ type KinerjaDetail = { label: string; value: string; baik?: boolean };
 type KinerjaItem = { nilai: number; terisi: number; detail?: KinerjaDetail[] };
 
 interface DashboardProps {
-    scope: { merek: string | null; role: string | null };
+    scope: { merek: string | null; unit: string | null; role: string | null };
     /** `tahun` selalu terisi: tahun yang dipakai, atau 'semua'. */
     filters: { tahun: string };
     tahunOptions: string[];
@@ -424,8 +424,12 @@ export default function Dashboard({
                             <div className="flex h-8 items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3">
                                 <Factory className="h-4 w-4 text-primary" />
                                 <div className="text-xs">
-                                    <span className="text-muted-foreground">Data mesin merek</span>{' '}
-                                    <span className="font-bold text-primary">{scope.merek}</span>
+                                    <span className="text-muted-foreground">
+                                        {scope.unit ? 'Data mesin' : 'Data mesin merek'}
+                                    </span>{' '}
+                                    <span className="font-bold text-primary">
+                                        {scope.unit ? `${scope.merek} · ${scope.unit}` : scope.merek}
+                                    </span>
                                 </div>
                             </div>
                         ) : (
