@@ -247,17 +247,29 @@ class DashboardController extends Controller
             ->where('progress', '>', 0)->where('progress', '<', 100)
             ->orderByDesc('progress')
             ->take(8)
+            ->with('dailyProgresses')
             ->get()
-            ->map(fn ($p) => [
-                'id' => $p->id,
-                'mesin' => $p->mesin_pembangkit,
-                'scope' => $p->scope,
-                'jenis' => $p->jenis_pembangkit,
-                'merek' => $p->merek,
-                'progress' => (float) ($p->progress ?? 0),
-                'start_date' => $p->start_date,
-                'selesai' => $p->selesai,
-            ])
+            ->map(function ($p) {
+                // Rencana pada hari yang sama dengan realisasi terakhir, supaya
+                // deviasinya membandingkan dua angka pada titik yang sama.
+                // Null bila pekerjaan ini belum punya laporan harian sama
+                // sekali — angka rencananya belum ada untuk dibandingkan.
+                $terakhir = $p->progresHarianTerakhir();
+
+                return [
+                    'id' => $p->id,
+                    'mesin' => $p->mesin_pembangkit,
+                    'scope' => $p->scope,
+                    'jenis' => $p->jenis_pembangkit,
+                    'merek' => $p->merek,
+                    'progress' => (float) ($p->progress ?? 0),
+                    'plan' => $terakhir?->plan_progress === null
+                        ? null
+                        : (float) $terakhir->plan_progress,
+                    'start_date' => $p->start_date,
+                    'selesai' => $p->selesai,
+                ];
+            })
             ->all();
     }
 

@@ -52,6 +52,9 @@ class HandleInertiaRequests extends Middleware
                 ],
                 'menu_access' => $request->user()?->menu_access,
                 'is_super_admin' => (bool) $request->user()?->isSuperAdmin(),
+                // Admin dan super admin sama-sama true; dipakai menu yang
+                // terbuka untuk keduanya, seperti Arsip Dokumen.
+                'is_admin' => (bool) $request->user()?->isAdmin(),
             ],
             'flash' => [
                 'success' => fn () => $request->session()->get('success'),

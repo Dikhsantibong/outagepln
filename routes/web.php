@@ -3,6 +3,7 @@
 // trigger
 
 use App\Http\Controllers\ActivityLogController;
+use App\Http\Controllers\ArsipDokumenController;
 use App\Http\Controllers\DailyBriefingController;
 use App\Http\Controllers\DailyMeetingController;
 use App\Http\Controllers\DashboardController;
@@ -16,6 +17,7 @@ use App\Http\Controllers\Master\UserController as MasterUserController;
 use App\Http\Controllers\MasterTtdController;
 use App\Http\Controllers\OutagePlanController;
 use App\Http\Controllers\WelcomeController;
+use App\Http\Middleware\EnsureAdmin;
 use App\Http\Middleware\EnsureSuperAdmin;
 use Illuminate\Support\Facades\Route;
 
@@ -111,6 +113,17 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->name('kinerja.eviden');
     Route::get('kinerja/on-scope', fn () => inertia('kinerja/on-scope'))->name('kinerja.on-scope');
     Route::get('kinerja/on-safety', fn () => inertia('kinerja/on-safety'))->name('kinerja.on-safety');
+
+    // Arsip berkas overhaul — kontrak dan hasil pekerjaan — untuk admin
+    // dan super admin. Berkasnya disajikan lewat rute, bukan /storage publik.
+    Route::middleware([EnsureAdmin::class])->prefix('arsip')->name('arsip.')->group(function () {
+        Route::get('/', [ArsipDokumenController::class, 'index'])->name('index');
+        Route::post('/', [ArsipDokumenController::class, 'store'])->name('store');
+        Route::put('{arsipDokumen}', [ArsipDokumenController::class, 'update'])->name('update');
+        Route::get('{arsipDokumen}/preview', [ArsipDokumenController::class, 'preview'])->name('preview');
+        Route::get('{arsipDokumen}/download', [ArsipDokumenController::class, 'download'])->name('download');
+        Route::delete('{arsipDokumen}', [ArsipDokumenController::class, 'destroy'])->name('destroy');
+    });
 
     // Jejak aktivitas seluruh peran — bacaan saja, khusus Super Admin.
     Route::middleware([EnsureSuperAdmin::class])

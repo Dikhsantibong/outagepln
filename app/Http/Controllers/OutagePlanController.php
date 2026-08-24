@@ -216,9 +216,7 @@ class OutagePlanController extends Controller
         }
 
         // Cari hari terakhir di mana progress aktual sudah diisi
-        $lastRecorded = $outagePlan->dailyProgresses->last(function ($dp) {
-            return $dp->actual_progress !== null;
-        });
+        $lastRecorded = $outagePlan->progresHarianTerakhir();
 
         if ($lastRecorded) {
             $overallPlan = $lastRecorded->plan_progress;

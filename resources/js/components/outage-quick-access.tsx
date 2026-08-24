@@ -2,20 +2,9 @@ import { Link } from '@inertiajs/react';
 import { ExternalLink, Loader2, Search, Zap } from 'lucide-react';
 import { useMemo, useRef, useState } from 'react';
 import {
-    Bar,
-    BarChart,
-    CartesianGrid,
-    Cell,
-    LabelList,
-    ResponsiveContainer,
-    Tooltip,
-    XAxis,
-    YAxis,
-} from 'recharts';
-import {
     OutageDailyTable,
+    OutageDeviasiChart,
     OutageSCurve,
-    fmtPct,
 } from '@/components/outage-detail';
 import type { DailyProgress } from '@/components/outage-detail';
 import { Button } from '@/components/ui/button';
@@ -72,41 +61,7 @@ type Detail = {
 const warnaProgres = (v: number) =>
     v >= 100 ? '#10b981' : v >= 40 ? '#f59e0b' : v > 0 ? '#3b82f6' : '#94a3b8';
 
-/** Perbandingan rencana vs realisasi keseluruhan, sebagai pelengkap kurva S. */
-function RingkasanChart({ plan, actual }: { plan: number; actual: number }) {
-    const data = [
-        { name: 'Rencana', nilai: plan, warna: '#4472C4' },
-        { name: 'Realisasi', nilai: actual, warna: '#C00000' },
-        { name: 'Selisih', nilai: Math.abs(actual - plan), warna: warnaProgres(actual) },
-    ];
-
-    return (
-        <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={data} margin={{ top: 22, right: 10, left: -18, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} opacity={0.3} />
-                <XAxis dataKey="name" fontSize={11} tickLine={false} axisLine={false} />
-                <YAxis domain={[0, 100]} fontSize={11} tickLine={false} axisLine={false} />
-                <Tooltip
-                    contentStyle={{ borderRadius: 8, border: 'none', fontSize: 12 }}
-                    formatter={(v) => [`${fmtPct(v as number)} %`]}
-                />
-                <Bar dataKey="nilai" radius={[5, 5, 0, 0]} maxBarSize={56}>
-                    {data.map((d, i) => (
-                        <Cell key={i} fill={d.warna} />
-                    ))}
-                    <LabelList
-                        dataKey="nilai"
-                        position="top"
-                        fontSize={11}
-                        fontWeight="bold"
-                        formatter={(v: unknown) => `${fmtPct(v as number)}%`}
-                    />
-                </Bar>
-            </BarChart>
-        </ResponsiveContainer>
-    );
-}
-
+/** Satu kotak label/nilai pada ringkasan identitas pekerjaan. */
 function Baris({ label, value }: { label: string; value: string }) {
     return (
         <div className="rounded-lg border p-2.5">
@@ -299,16 +254,19 @@ export function PlanDetailDialog({
                                 <Card>
                                     <CardHeader className="pb-2">
                                         <CardTitle className="text-sm">
-                                            Rencana vs Realisasi
+                                            Kurva Leading &amp; Lagging
                                         </CardTitle>
+                                        <CardDescription>
+                                            Selisih realisasi terhadap rencana tiap hari
+                                            — di atas garis nol unggul, di bawahnya
+                                            tertinggal
+                                        </CardDescription>
                                     </CardHeader>
                                     <CardContent>
-                                        <div className="h-[240px] w-full">
-                                            <RingkasanChart
-                                                plan={detail.overallPlan ?? 0}
-                                                actual={detail.overallActual ?? 0}
-                                            />
-                                        </div>
+                                        <OutageDeviasiChart
+                                            rows={p.daily_progresses ?? []}
+                                            height={240}
+                                        />
                                     </CardContent>
                                 </Card>
                             </div>

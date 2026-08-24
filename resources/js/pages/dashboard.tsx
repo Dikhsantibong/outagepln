@@ -53,6 +53,12 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog';
+import {
+    deviasiBadgeClass,
+    formatSelisih,
+    hitungDeviasi,
+    labelDeviasi,
+} from '@/lib/outage-progress';
 import { dashboard } from '@/routes';
 
 type Bucket = { label: string; total: number };
@@ -86,6 +92,8 @@ interface DashboardProps {
         jenis: string | null;
         merek: string | null;
         progress: number;
+        /** Rencana di hari realisasi terakhir; null bila belum ada laporan harian. */
+        plan: number | null;
         start_date: string | null;
         selesai: string | null;
     }[];
@@ -666,7 +674,13 @@ export default function Dashboard({
                         </CardHeader>
                         <CardContent className="space-y-3">
                             {ongoingOutages.length > 0 ? (
-                                ongoingOutages.map((item) => (
+                                ongoingOutages.map((item) => {
+                                    const deviasi =
+                                        item.plan === null
+                                            ? null
+                                            : hitungDeviasi(item.plan, item.progress);
+
+                                    return (
                                     <Link
                                         key={item.id}
                                         href={`/outage-plans/${item.id}`}
@@ -677,10 +691,27 @@ export default function Dashboard({
                                             <p className="text-[11px] tracking-wide text-muted-foreground uppercase">
                                                 {item.jenis} · {item.scope || '-'}
                                             </p>
+                                            {/* Seberapa jauh realisasi menyimpang dari
+                                                rencananya, dalam persen. */}
+                                            {deviasi && (
+                                                <p className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px]">
+                                                    <span
+                                                        className={`inline-flex items-center rounded px-1.5 py-0.5 font-bold uppercase ${deviasiBadgeClass(deviasi.status)}`}
+                                                    >
+                                                        {labelDeviasi(deviasi.status)}
+                                                    </span>
+                                                    <span className="text-muted-foreground">
+                                                        Rencana {item.plan}% &middot; selisih{' '}
+                                                        <span className="font-semibold text-foreground">
+                                                            {formatSelisih(deviasi.selisih)}
+                                                        </span>
+                                                    </span>
+                                                </p>
+                                            )}
                                         </div>
                                         <div className="w-40 shrink-0">
                                             <div className="mb-1 flex items-end justify-between">
-                                                <span className="text-[11px] text-muted-foreground">Progres</span>
+                                                <span className="text-[11px] text-muted-foreground">Realisasi</span>
                                                 <span
                                                     className="text-sm leading-none font-bold"
                                                     style={{
@@ -711,7 +742,8 @@ export default function Dashboard({
                                             </div>
                                         </div>
                                     </Link>
-                                ))
+                                    );
+                                })
                             ) : (
                                 <div className="flex flex-col items-center justify-center py-8 text-center">
                                     <ShieldCheck className="mb-2 h-9 w-9 opacity-20" />

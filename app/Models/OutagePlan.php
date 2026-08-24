@@ -175,6 +175,20 @@ class OutagePlan extends Model
         return $this->hasMany(DailyMeeting::class);
     }
 
+    /**
+     * Baris harian terakhir yang realisasinya sudah diisi.
+     *
+     * Titik inilah yang dipakai membandingkan rencana dengan realisasi: hari
+     * setelahnya belum dilaporkan, jadi membandingkannya hanya akan terbaca
+     * sebagai tertinggal padahal waktunya memang belum tiba.
+     */
+    public function progresHarianTerakhir(): ?OutagePlanProgress
+    {
+        return $this->dailyProgresses->last(
+            fn (OutagePlanProgress $dp) => $dp->actual_progress !== null,
+        );
+    }
+
     /** Riwayat revisi rencana, urut dari rencana awal ke revisi terbaru. */
     public function revisions()
     {

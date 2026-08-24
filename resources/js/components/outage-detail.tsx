@@ -6,6 +6,7 @@ import {
     Legend,
     Line,
     LineChart,
+    ReferenceLine,
     ResponsiveContainer,
     Tooltip,
     XAxis,
@@ -27,7 +28,15 @@ import {
     TableHeader,
     TableRow,
 } from '@/components/ui/table';
-import { formatDMY, statusBadgeClass } from '@/lib/outage-progress';
+import {
+    deviasiBadgeClass,
+    formatDMY,
+    formatSelisih,
+    hitungDeviasi,
+    hitungSebaranStatus,
+    labelDeviasi,
+    statusBadgeClass,
+} from '@/lib/outage-progress';
 import type { ProgressStatus } from '@/lib/outage-progress';
 
 export type DailyProgress = {
@@ -167,17 +176,19 @@ export function OutageSCurve({
         [rows],
     );
 
-    const jumlahStatus = useMemo(() => {
-        const hitung: Record<string, number> = {};
+    // Rencana dan realisasi dibandingkan di titik yang sama, jadi selisihnya
+    // langsung terbaca sebagai seberapa jauh pekerjaan ini menyimpang.
+    const deviasi = useMemo(
+        () => hitungDeviasi(overallPlan, overallActual),
+        [overallPlan, overallActual],
+    );
 
-        rows.forEach((r) => {
-            if (r.status && r.status !== '-') {
-                hitung[r.status] = (hitung[r.status] ?? 0) + 1;
-            }
-        });
-
-        return hitung;
-    }, [rows]);
+    // Porsi hari unggul dan tertinggal — keduanya ditampilkan berdampingan,
+    // karena satu outage biasanya mengalami dua-duanya.
+    const sebaran = useMemo(
+        () => hitungSebaranStatus(rows.map((r) => r.status)),
+        [rows],
+    );
 
     return (
         <>
@@ -199,20 +210,41 @@ export function OutageSCurve({
                     </span>
                 </div>
 
-                {/* Rekap status, warnanya sama dengan titik di kurva. */}
+                {/* Porsi hari leading dan lagging — dalam persen, bukan jumlah
+                    hari — lalu selisih rencana vs realisasi saat ini. */}
                 <div className="flex flex-wrap items-center gap-2">
-                    {(['Leading', 'On Progres', 'Lagging'] as const).map((s) => (
+                    {(
+                        [
+                            ['Leading', sebaran.leadingPersen],
+                            ['Lagging', sebaran.laggingPersen],
+                        ] as const
+                    ).map(([status, persen]) => (
                         <span
-                            key={s}
-                            className={`inline-flex items-center gap-1.5 rounded px-2 py-0.5 text-[10px] font-bold uppercase ${statusBadgeClass(s)}`}
+                            key={status}
+                            className={`inline-flex items-center gap-1.5 rounded px-2 py-0.5 text-[10px] font-bold uppercase ${statusBadgeClass(status)}`}
+                            title={`${status} pada ${
+                                status === 'Leading'
+                                    ? sebaran.leadingHari
+                                    : sebaran.laggingHari
+                            } dari ${sebaran.hariTerisi} hari yang sudah diisi`}
                         >
                             <span
                                 className="h-2 w-2 rounded-full"
-                                style={{ backgroundColor: WARNA_STATUS[s] }}
+                                style={{ backgroundColor: WARNA_STATUS[status] }}
                             />
-                            {s} {jumlahStatus[s] ?? 0} hari
+                            {status} {fmtPct(persen)} %
                         </span>
                     ))}
+
+                    <span
+                        className={`inline-flex items-center rounded px-2 py-0.5 text-[10px] font-bold uppercase ${deviasiBadgeClass(deviasi.status)}`}
+                    >
+                        Selisih {formatSelisih(deviasi.selisih)}
+                    </span>
+
+                    <span className="text-[11px] text-muted-foreground">
+                        dari {sebaran.hariTerisi} hari terisi
+                    </span>
                 </div>
             </div>
 
@@ -306,6 +338,159 @@ export function OutageSCurve({
  * Tertutup secara default: statusnya sudah terbaca dari kurva S, dan tabel
  * puluhan baris ini mendorong seluruh isi halaman lain jauh ke bawah.
  */
+type DeviasiRow = {
+    label: string;
+    tanggal: string;
+    deviasi: number;
+};
+
+function TooltipDeviasi({
+    active,
+    payload,
+}: {
+    active?: boolean;
+    payload?: { payload: DeviasiRow }[];
+}) {
+    if (!active || !payload?.length) {
+        return null;
+    }
+
+    const row = payload[0].payload;
+    const status = row.deviasi > 0 ? 'Leading' : row.deviasi < 0 ? 'Lagging' : 'Tepat';
+
+    return (
+        <div className="rounded-lg border bg-background px-3 py-2 text-xs shadow-lg">
+            <p className="mb-1 font-mono font-semibold">{formatDMY(row.tanggal)}</p>
+            <p>
+                Selisih :{' '}
+                <span className="font-semibold">{formatSelisih(row.deviasi)}</span>
+            </p>
+            <p className="mt-1.5">
+                <span
+                    className={`inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-bold uppercase ${deviasiBadgeClass(
+                        status as 'Leading' | 'Lagging' | 'Tepat',
+                    )}`}
+                >
+                    {labelDeviasi(status as 'Leading' | 'Lagging' | 'Tepat')}
+                </span>
+            </p>
+        </div>
+    );
+}
+
+/**
+ * Kurva leading/lagging: jarak realisasi terhadap rencana, hari demi hari.
+ *
+ * Kurva S menumpuk dua garis yang nyaris berimpit, sehingga selisih beberapa
+ * persen sulit terlihat. Di sini yang digambar justru selisihnya sendiri
+ * terhadap garis nol — di atas nol berarti unggul, di bawah nol tertinggal —
+ * jadi besar dan arah penyimpangannya langsung terbaca.
+ */
+export function OutageDeviasiChart({
+    rows,
+    height = 240,
+}: {
+    rows: DailyProgress[];
+    height?: number;
+}) {
+    const data: DeviasiRow[] = useMemo(
+        () =>
+            rows
+                // Hari yang salah satunya belum diisi tidak punya selisih yang
+                // berarti; memasukkannya sebagai 0 akan terbaca "tepat rencana".
+                .filter((r) => r.plan_progress !== null && r.actual_progress !== null)
+                .map((r) => ({
+                    label: formatDMY(r.tanggal).replace(
+                        /^(\d{2})-(\d{2})-\d{2}(\d{2})$/,
+                        '$1/$2',
+                    ),
+                    tanggal: r.tanggal,
+                    deviasi:
+                        Math.round(
+                            (Number(r.actual_progress) - Number(r.plan_progress)) * 100,
+                        ) / 100,
+                })),
+        [rows],
+    );
+
+    const batas = useMemo(() => {
+        const puncak = Math.max(10, ...data.map((d) => Math.abs(d.deviasi)));
+
+        return Math.ceil(puncak / 5) * 5;
+    }, [data]);
+
+    if (data.length === 0) {
+        return (
+            <div className="flex h-full items-center justify-center text-xs text-muted-foreground italic">
+                Belum ada hari yang rencana dan realisasinya terisi.
+            </div>
+        );
+    }
+
+    return (
+        <div className="w-full" style={{ height }}>
+            <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={data} margin={{ top: 16, right: 12, left: -18, bottom: 4 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} opacity={0.3} />
+                    <XAxis
+                        dataKey="label"
+                        fontSize={9}
+                        tickLine={false}
+                        axisLine={false}
+                        interval="preserveStartEnd"
+                    />
+                    <YAxis
+                        domain={[-batas, batas]}
+                        fontSize={10}
+                        tickLine={false}
+                        axisLine={false}
+                        tickFormatter={(v) => `${v}%`}
+                    />
+                    <Tooltip content={<TooltipDeviasi />} />
+                    {/* Garis nol: batas antara unggul dan tertinggal. */}
+                    <ReferenceLine y={0} stroke="#64748b" strokeWidth={1.5} />
+                    <Line
+                        type="monotone"
+                        dataKey="deviasi"
+                        stroke="#64748b"
+                        strokeWidth={2}
+                        dot={<TitikDeviasi />}
+                        activeDot={{ r: 5 }}
+                    />
+                </LineChart>
+            </ResponsiveContainer>
+        </div>
+    );
+}
+
+/** Titik hijau saat unggul, merah saat tertinggal. */
+function TitikDeviasi(props: { cx?: number; cy?: number; payload?: DeviasiRow }) {
+    const { cx, cy, payload } = props;
+
+    if (cx === undefined || cy === undefined) {
+        return null;
+    }
+
+    const nilai = payload?.deviasi ?? 0;
+
+    return (
+        <circle
+            cx={cx}
+            cy={cy}
+            r={3.5}
+            fill={
+                nilai > 0
+                    ? WARNA_STATUS.Leading
+                    : nilai < 0
+                      ? WARNA_STATUS.Lagging
+                      : WARNA_STATUS['On Progres']
+            }
+            stroke="#fff"
+            strokeWidth={1}
+        />
+    );
+}
+
 export function OutageDailyTable({ rows }: { rows: DailyProgress[] }) {
     const [terbuka, setTerbuka] = useState(false);
 

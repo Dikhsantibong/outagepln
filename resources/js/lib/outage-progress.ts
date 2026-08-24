@@ -248,6 +248,102 @@ export function statusBadgeClass(status: ProgressStatus): string {
     }
 }
 
+export type SebaranStatus = {
+    /** Hari yang rencana dan realisasinya sudah diisi — jadi penyebutnya. */
+    hariTerisi: number;
+    leadingHari: number;
+    laggingHari: number;
+    /** Porsi hari leading/lagging terhadap hari terisi, dalam persen. */
+    leadingPersen: number;
+    laggingPersen: number;
+};
+
+/**
+ * Berapa besar porsi hari yang unggul dan yang tertinggal.
+ *
+ * Dinyatakan dalam persen, bukan jumlah hari: outage 10 hari dan outage 40 hari
+ * tidak sebanding kalau dibaca sebagai "5 hari lagging", tapi langsung
+ * sebanding begitu dibaca sebagai "50%" lawan "12,5%". Hari yang belum diisi
+ * tidak ikut dihitung supaya porsinya tidak mengecil hanya karena laporannya
+ * belum lengkap.
+ */
+export function hitungSebaranStatus(statuses: ProgressStatus[]): SebaranStatus {
+    const terisi = statuses.filter((s) => s !== '-');
+    const leading = terisi.filter((s) => s === 'Leading').length;
+    const lagging = terisi.filter((s) => s === 'Lagging').length;
+    const porsi = (n: number) =>
+        terisi.length === 0 ? 0 : Math.round((n / terisi.length) * 1000) / 10;
+
+    return {
+        hariTerisi: terisi.length,
+        leadingHari: leading,
+        laggingHari: lagging,
+        leadingPersen: porsi(leading),
+        laggingPersen: porsi(lagging),
+    };
+}
+
+export type DeviasiStatus = 'Leading' | 'Lagging' | 'Tepat';
+
+export type Deviasi = {
+    /** Realisasi dikurangi rencana, dalam poin persen. */
+    selisih: number;
+    status: DeviasiStatus;
+};
+
+/**
+ * Seberapa jauh realisasi menyimpang dari rencana, dalam persen.
+ *
+ * Dipakai sebagai ganti hitungan "berapa hari leading/lagging": yang menjadi
+ * ukuran keterlambatan sebuah outage adalah jarak antara kurva rencana dan
+ * kurva realisasi pada hari yang sama, bukan banyaknya hari yang berstatus
+ * tertinggal. Keduanya dibandingkan di hari terakhir yang realisasinya terisi.
+ */
+export function hitungDeviasi(
+    plan: number | null | undefined,
+    actual: number | null | undefined,
+): Deviasi {
+    const selisih = Math.round(((actual ?? 0) - (plan ?? 0)) * 100) / 100;
+
+    return {
+        selisih,
+        status: selisih > 0 ? 'Leading' : selisih < 0 ? 'Lagging' : 'Tepat',
+    };
+}
+
+/** Label yang ditampilkan untuk tiap status deviasi. */
+export function labelDeviasi(status: DeviasiStatus): string {
+    return status === 'Tepat' ? 'Tepat Rencana' : status;
+}
+
+/**
+ * Selisih bertanda dalam format Indonesia, mis. "+12,45 %" atau "−12,45 %".
+ *
+ * Memakai minus tipografis, bukan tanda hubung, supaya angka negatif tidak
+ * terbaca sebagai rentang saat berdampingan dengan angka lain.
+ */
+export function formatSelisih(selisih: number): string {
+    const tanda = selisih > 0 ? '+' : selisih < 0 ? '−' : '';
+    const angka = Math.abs(selisih).toLocaleString('id-ID', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+    });
+
+    return `${tanda}${angka} %`;
+}
+
+/** Kelas badge deviasi; warnanya sejalan dengan status harian. */
+export function deviasiBadgeClass(status: DeviasiStatus): string {
+    switch (status) {
+        case 'Leading':
+            return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400';
+        case 'Lagging':
+            return 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400';
+        default:
+            return 'bg-muted text-muted-foreground';
+    }
+}
+
 export function buildDailyRows(
     dateList: string[],
     existing: DailyProgressRecord[],

@@ -5,6 +5,7 @@ import {
     Clock,
     Crosshair,
     DollarSign,
+    FolderArchive,
     HeartPulse,
     LayoutGrid,
     MessageSquare,
@@ -93,6 +94,14 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                 ...(canAccess('kinerja.on-safety') ? [{ title: 'On Safety', href: '/kinerja/on-safety', icon: HeartPulse }] : []),
             ],
         },
+        // Arsip terbuka untuk admin sekaligus super admin, jadi tidak bisa
+        // dititipkan di grup Data Master yang khusus super admin.
+        ...(auth?.is_admin ? [{
+            label: 'Arsip',
+            items: [
+                { title: 'Arsip Dokumen', href: '/arsip', icon: FolderArchive },
+            ],
+        }] : []),
         ...(auth?.is_super_admin ? [{
             label: 'Data Master',
             items: [
