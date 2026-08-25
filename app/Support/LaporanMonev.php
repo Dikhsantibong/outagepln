@@ -5,6 +5,7 @@ namespace App\Support;
 use App\Models\KinerjaCost;
 use App\Models\KinerjaQuality;
 use App\Models\OutagePlan;
+use App\Models\OutagePlanProgress;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 
@@ -73,7 +74,122 @@ class LaporanMonev
             'contract' => $this->monitoringKontrak($plans),
             'payment' => $this->monitoringPembayaran(),
             'kpi' => $this->kpi($plans),
+            's_curve' => $this->kurvaS($plans),
             'conclusion' => $this->kesimpulan($plans),
+            'insight' => $this->insight($plans),
+        ];
+    }
+
+    /**
+     * Kurva S: rencana vs realisasi kumulatif per bulan.
+     *
+     * Titik waktunya diambil dari laporan progres harian yang benar-benar ada —
+     * bukan kurva bawaan — sehingga bulan yang belum dilaporkan memang kosong,
+     * bukan diisi angka karangan.
+     *
+     * @return array<string, mixed>
+     */
+    private function kurvaS($plans): array
+    {
+        $bulanNama = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+
+        $harian = OutagePlanProgress::whereIn('outage_plan_id', $plans->pluck('id'))
+            ->orderBy('tanggal')
+            ->get(['tanggal', 'plan_progress', 'actual_progress']);
+
+        if ($harian->isEmpty()) {
+            return [
+                'labels' => [],
+                'planned' => [],
+                'actual' => [],
+                'current' => null,
+                'target' => null,
+                'variance' => null,
+                'keterangan' => self::BELUM_ADA,
+            ];
+        }
+
+        $perBulan = $harian->groupBy(fn ($h) => CarbonImmutable::parse($h->tanggal)->format('Y-m'));
+        $kunci = $perBulan->keys()->sort()->values();
+
+        $labels = [];
+        $rencana = [];
+        $realisasi = [];
+
+        foreach ($kunci as $ym) {
+            $grup = $perBulan[$ym];
+            [$tahun, $bulan] = explode('-', $ym);
+
+            $labels[] = $bulanNama[(int) $bulan - 1].' '.substr($tahun, 2);
+            // Titik bulan diwakili nilai kumulatif tertinggi pada bulan itu.
+            $rencana[] = $this->bulat($grup->max('plan_progress'));
+            $realisasi[] = $this->bulat($grup->whereNotNull('actual_progress')->max('actual_progress'));
+        }
+
+        $terakhirRealisasi = collect($realisasi)->filter(fn ($v) => $v !== null)->last();
+        $terakhirRencana = collect($rencana)->filter(fn ($v) => $v !== null)->last();
+
+        return [
+            'labels' => $labels,
+            'planned' => $rencana,
+            'actual' => $realisasi,
+            'current' => $terakhirRealisasi,
+            'target' => $terakhirRencana,
+            'variance' => $terakhirRealisasi !== null && $terakhirRencana !== null
+                ? round($terakhirRealisasi - $terakhirRencana, 2)
+                : null,
+            'keterangan' => null,
+        ];
+    }
+
+    /**
+     * Poin Key Insight, seluruhnya diturunkan dari angka yang benar-benar ada.
+     *
+     * @return array<string, array<int, string>>
+     */
+    private function insight($plans): array
+    {
+        $total = max(1, $plans->count());
+        $s = $this->ringkasan($plans);
+        $site = $this->perSite($plans);
+        $kinerja = $this->kinerjaSetelahOh($plans);
+
+        $persen = fn (int $n) => round(($n / $total) * 100, 1);
+
+        $terendah = collect($site)->sortBy('progress')->first();
+
+        $ringkas = [
+            $s['finished'].' dari '.$plans->count().' pekerjaan selesai ('.$persen($s['finished']).'%).',
+            $s['on_progress'].' pekerjaan sedang berjalan, '.$s['not_started'].' belum dimulai.',
+        ];
+
+        if ($s['not_finished'] > 0) {
+            $ringkas[] = $s['not_finished'].' pekerjaan melewati rencana selesai dan perlu perhatian.';
+        }
+
+        $siteInsight = $terendah === null
+            ? [self::BELUM_ADA]
+            : [
+                'Site dengan progres terendah: '.$terendah['site_name'].' ('.$terendah['progress'].'%).',
+                count($site).' site tercakup pada periode ini.',
+            ];
+
+        $kinerjaInsight = $kinerja['average_sfc_improvement'] === null
+            ? ['Pengukuran SFC dan daya mampu belum lengkap, dampak OH belum dapat disimpulkan.']
+            : [
+                'Rata-rata SFC membaik '.$kinerja['average_sfc_improvement'].'% setelah overhaul.',
+                'Rata-rata daya mampu naik '.($kinerja['average_dmp_improvement'] ?? 0).'%.',
+                count($kinerja['rows']).' mesin sudah punya pengukuran sebelum dan sesudah.',
+            ];
+
+        return [
+            'ringkasan' => $ringkas,
+            'site' => $siteInsight,
+            'kinerja' => $kinerjaInsight,
+            'anggaran' => [
+                'Nilai kontrak dan pembayaran belum dicatat di aplikasi.',
+                'Bagian ini '.strtolower(self::DALAM_PENGEMBANGAN).'.',
+            ],
         ];
     }
 

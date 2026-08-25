@@ -276,6 +276,127 @@ class LaporanMonevPptxTest extends TestCase
         );
     }
 
+    /** Kedua logo tertanam di arsip dan dirujuk dari tiap slide. */
+    public function test_logo_tertanam_dan_dirujuk_tiap_slide(): void
+    {
+        $this->rencana();
+        $this->admin();
+
+        $isi = $this->isiPptx($this->unduh());
+
+        $this->assertArrayHasKey('ppt/media/image1.png', $isi, 'Logo Danantara tidak tertanam.');
+        $this->assertArrayHasKey('ppt/media/image2.png', $isi, 'Logo PLN tidak tertanam.');
+
+        // Berkasnya harus PNG sungguhan, bukan berkas kosong.
+        $this->assertSame("\x89PNG", substr((string) $isi['ppt/media/image1.png'], 0, 4));
+        $this->assertSame("\x89PNG", substr((string) $isi['ppt/media/image2.png'], 0, 4));
+
+        $rels = (string) $isi['ppt/slides/_rels/slide1.xml.rels'];
+        $this->assertStringContainsString('../media/image1.png', $rels);
+        $this->assertStringContainsString('../media/image2.png', $rels);
+
+        // Slide benar-benar memakainya lewat p:pic.
+        $this->assertStringContainsString('<p:pic>', (string) $isi['ppt/slides/slide2.xml']);
+    }
+
+    /** Laporan harus dominan visual: donat, cincin progres, batang, dan kurva. */
+    public function test_berisi_grafik_bukan_hanya_tabel(): void
+    {
+        // Status sengaja dibuat beragam: donat baru menghasilkan irisan pie bila
+        // ada lebih dari satu status — satu status penuh digambar lingkaran utuh.
+        $plan = $this->rencana(['progress' => 100]);
+        $this->rencana(['mesin_pembangkit' => 'PLTD RAHA #01 (CUMMINS)', 'progress' => 40, 'selesai' => '2099-01-01']);
+        $this->rencana(['mesin_pembangkit' => 'PLTD RAHA #02 (CUMMINS)', 'progress' => 0, 'selesai' => '2099-01-01']);
+
+        $plan->dailyProgresses()->create([
+            'tanggal' => '2026-07-01',
+            'plan_progress' => 20,
+            'actual_progress' => 15,
+        ]);
+        $plan->dailyProgresses()->create([
+            'tanggal' => '2026-08-01',
+            'plan_progress' => 60,
+            'actual_progress' => 55,
+        ]);
+
+        $this->admin();
+        $semua = implode('', array_values($this->isiPptx($this->unduh())));
+
+        // Donat dan pie chart.
+        $this->assertStringContainsString('prst="pie"', $semua);
+        // Cincin progres.
+        $this->assertStringContainsString('prst="blockArc"', $semua);
+        // Kurva S digambar sebagai custGeom.
+        $this->assertStringContainsString('<a:custGeom>', $semua);
+        // Kartu KPI memakai roundRect.
+        $this->assertStringContainsString('prst="roundRect"', $semua);
+        // Kotak Key Insight.
+        $this->assertStringContainsString('KEY INSIGHT', $semua);
+    }
+
+    /** Kurva S memakai bulan dari progres harian nyata, bukan data karangan. */
+    public function test_kurva_s_memakai_bulan_dari_progres_harian(): void
+    {
+        $plan = $this->rencana();
+        $plan->dailyProgresses()->create([
+            'tanggal' => '2026-07-10',
+            'plan_progress' => 30,
+            'actual_progress' => 25,
+        ]);
+        $plan->dailyProgresses()->create([
+            'tanggal' => '2026-08-10',
+            'plan_progress' => 80,
+            'actual_progress' => 70,
+        ]);
+
+        $sc = (new LaporanMonev(null, null))->data()['s_curve'];
+
+        $this->assertSame(['Jul 26', 'Agu 26'], $sc['labels']);
+        $this->assertSame([30.0, 80.0], $sc['planned']);
+        $this->assertSame([25.0, 70.0], $sc['actual']);
+        $this->assertSame(70.0, $sc['current']);
+        $this->assertSame(80.0, $sc['target']);
+        $this->assertSame(-10.0, $sc['variance']);
+    }
+
+    /** Tanpa progres harian, kurva S dinyatakan kosong — tidak diisi angka palsu. */
+    public function test_kurva_s_kosong_saat_belum_ada_progres_harian(): void
+    {
+        $this->rencana();
+
+        $sc = (new LaporanMonev(null, null))->data()['s_curve'];
+
+        $this->assertSame([], $sc['labels']);
+        $this->assertNull($sc['current']);
+        $this->assertSame(LaporanMonev::BELUM_ADA, $sc['keterangan']);
+    }
+
+    /** Key insight disusun dari angka yang benar-benar ada. */
+    public function test_insight_diturunkan_dari_data_nyata(): void
+    {
+        $this->rencana(['progress' => 100]);
+        $this->rencana(['mesin_pembangkit' => 'PLTD RAHA #01 (CUMMINS)', 'progress' => 40, 'selesai' => '2099-01-01']);
+
+        $insight = (new LaporanMonev(null, null))->data()['insight'];
+
+        $this->assertStringContainsString('1 dari 2 pekerjaan selesai', $insight['ringkasan'][0]);
+        $this->assertStringContainsString('50%', $insight['ringkasan'][0]);
+        $this->assertStringContainsString('1 pekerjaan sedang berjalan', $insight['ringkasan'][1]);
+    }
+
+    /** Tiap slide punya kaki halaman bernomor dan identitas unit. */
+    public function test_tiap_slide_punya_kaki_halaman(): void
+    {
+        $this->rencana();
+        $this->admin();
+
+        $isi = $this->isiPptx($this->unduh());
+
+        // Slide 2 dan seterusnya memakai kepala/kaki; sampul dikecualikan.
+        $this->assertStringContainsString('Slide 2', (string) $isi['ppt/slides/slide2.xml']);
+        $this->assertStringContainsString('Executive Dashboard', (string) $isi['ppt/slides/slide2.xml']);
+    }
+
     /** Pengelola hanya melihat mesin yang dikelolanya, termasuk di laporan ini. */
     public function test_laporan_menghormati_hak_akses_pengelola(): void
     {

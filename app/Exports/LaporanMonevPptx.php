@@ -3,19 +3,24 @@
 namespace App\Exports;
 
 use App\Support\LaporanMonev;
+use App\Support\Pptx\Kanvas;
 use RuntimeException;
 use ZipArchive;
 
 /**
- * Menulis Laporan MONEV sebagai berkas PPTX lanskap.
+ * Menulis Laporan MONEV sebagai dek PPTX lanskap bergaya korporat.
  *
  * Ditulis langsung sebagai OOXML di dalam ZIP, bukan lewat pustaka presentasi.
  * Aplikasi ini hanya memasang phpspreadsheet, dan menambah dependensi baru butuh
  * persetujuan lebih dulu — sementara sebuah .pptx pada dasarnya memang arsip ZIP
- * berisi XML, jadi seluruh berkasnya bisa disusun sendiri dengan ZipArchive yang
- * sudah tersedia.
+ * berisi XML, jadi seluruh berkasnya bisa disusun sendiri dengan ZipArchive.
  *
- * Ukuran slide 12192000 x 6858000 EMU: 16:9 lanskap, ukuran baku PowerPoint.
+ * Susunannya mendahulukan visual: dasbor KPI, donat, cincin progres, kurva S,
+ * batang, dan peringkat per site; tabel hanya dipakai pada lampiran rincian yang
+ * memang menuntut bentuk tabular. Tidak ada angka atau grafik yang dikarang —
+ * bagian tanpa sumber data ditandai apa adanya.
+ *
+ * Ukuran slide 12192000 x 6858000 EMU: 16:9 lanskap.
  */
 class LaporanMonevPptx
 {
@@ -23,21 +28,52 @@ class LaporanMonevPptx
 
     private const TINGGI = 6858000;
 
-    /** 1 cm dalam EMU, dipakai menempatkan kotak teks dan tabel. */
-    private const CM = 360000;
+    private const CM = Kanvas::CM;
 
-    private const WARNA_JUDUL = '1E3A8A';
+    /** Margin kiri-kanan seluruh slide, dijaga seragam. */
+    private const MARGIN = self::CM * 1.1;
 
-    private const WARNA_KEPALA = '1E40AF';
-
-    private const WARNA_CATATAN = 'B45309';
-
-    /** @var array<int, string> XML tiap slide, urut tampil. */
+    /** @var array<int, string> */
     private array $slides = [];
 
-    public function __construct(private readonly array $data) {}
+    private Kanvas $k;
 
-    /** Susun berkasnya lalu kembalikan sebagai string biner. */
+    /** @var array<string, array{path: string, rId: string, target: string}> */
+    private array $media = [];
+
+    public function __construct(private readonly array $data)
+    {
+        $this->k = new Kanvas;
+        $this->daftarkanLogo();
+    }
+
+    /**
+     * Logo dipasang sebagai relasi yang sama di tiap slide, sehingga berkas
+     * gambarnya hanya disimpan sekali di dalam arsip.
+     */
+    private function daftarkanLogo(): void
+    {
+        $kandidat = [
+            'danantara' => public_path('danantara.png'),
+            'pln' => public_path('sidebar-logo.png'),
+        ];
+
+        $nomor = 1;
+
+        foreach ($kandidat as $nama => $path) {
+            if (! is_file($path)) {
+                continue;
+            }
+
+            $this->media[$nama] = [
+                'path' => $path,
+                'rId' => 'rId'.($nomor + 1), // rId1 sudah dipakai slideLayout
+                'target' => 'image'.$nomor.'.png',
+            ];
+            $nomor++;
+        }
+    }
+
     public function render(): string
     {
         $this->bangunSlides();
@@ -61,6 +97,10 @@ class LaporanMonevPptx
         $zip->addFromString('ppt/slideLayouts/slideLayout1.xml', $this->slideLayout());
         $zip->addFromString('ppt/slideLayouts/_rels/slideLayout1.xml.rels', $this->slideLayoutRels());
 
+        foreach ($this->media as $m) {
+            $zip->addFromString('ppt/media/'.$m['target'], (string) file_get_contents($m['path']));
+        }
+
         foreach ($this->slides as $i => $xml) {
             $nomor = $i + 1;
             $zip->addFromString("ppt/slides/slide{$nomor}.xml", $xml);
@@ -75,208 +115,463 @@ class LaporanMonevPptx
         return $isi;
     }
 
-    // ------------------------------------------------------------- Slide
+    // ------------------------------------------------------- Susunan dek
 
     private function bangunSlides(): void
     {
         $d = $this->data;
 
-        $this->slideJudul($d['identity']);
-        $this->slideRingkasan($d['summary'], $d['identity']);
+        $this->slideSampul($d['identity']);
+        $this->slideDasbor($d);
+        $this->slideKurvaS($d['s_curve'], $d['insight']);
+        $this->slideProgressOh($d);
         $this->slideJenisPembangkit($d['plants']);
-        $this->slidePerSite($d['sites']);
-        $this->slideRincianPekerjaan($d['maintenance']);
-        $this->slideBelumTerlaksana($d['belum_terlaksana']);
-        $this->slideKinerja($d['performance']);
-        $this->slideAnggaran($d['budget'], $d['contract'], $d['payment'], $d['carry_over']);
+        $this->slidePerSite($d['sites'], $d['insight']);
+        $this->slideStatusPekerjaan($d['summary'], $d['exceptions']);
+        $this->slideKontrakPembayaran($d['budget'], $d['contract'], $d['payment'], $d['carry_over']);
+        $this->slideSfc($d['performance']);
+        $this->slideDmp($d['performance']);
+        $this->slideDampakOh($d['performance'], $d['insight']);
         $this->slideException($d['exceptions']);
-        $this->slideKpi($d['kpi']);
-        $this->slideKesimpulan($d['conclusion']);
+        $this->slideBelumSelesai($d['belum_terlaksana']);
+        $this->slideKesimpulan($d['kpi'], $d['conclusion'], $d['insight']);
+        $this->slideLampiran($d['maintenance']);
     }
 
+    // ------------------------------------------------------------- Slide
+
     /** @param array<string, string> $id */
-    private function slideJudul(array $id): void
+    private function slideSampul(array $id): void
     {
-        $isi = $this->kotakTeks(
-            $id['title'],
-            self::CM * 2,
-            self::CM * 5,
-            self::LEBAR - self::CM * 4,
-            self::CM * 2,
-            ukuran: 3200,
-            tebal: true,
-            warna: self::WARNA_JUDUL,
-            rata: 'ctr',
+        $isi = $this->k->bentuk('rect', 0, 0, self::LEBAR, self::TINGGI, ['isi' => Kanvas::NAVY]);
+        $isi .= $this->k->bentuk('rect', 0, self::TINGGI * 0.62, self::LEBAR, self::CM * 0.12, [
+            'isi' => Kanvas::BIRU_MUDA,
+        ]);
+
+        $isi .= $this->logoSampul();
+
+        $isi .= $this->k->teks('LAPORAN MONITORING & EVALUASI', self::MARGIN, self::CM * 5.6, self::LEBAR - self::MARGIN * 2, self::CM * 0.8, [
+            'ukuran' => 1200, 'tebal' => true, 'warna' => '93C5FD', 'rata' => 'l',
+        ]);
+
+        $isi .= $this->k->teks('Pemeliharaan Periodik (HARDIK)', self::MARGIN, self::CM * 6.4, self::LEBAR - self::MARGIN * 2, self::CM * 1.8, [
+            'ukuran' => 3600, 'tebal' => true, 'warna' => Kanvas::PUTIH, 'rata' => 'l',
+        ]);
+
+        $isi .= $this->k->teks($id['unit'], self::MARGIN, self::CM * 8.4, self::LEBAR - self::MARGIN * 2, self::CM * 0.8, [
+            'ukuran' => 1400, 'warna' => 'BFDBFE', 'rata' => 'l',
+        ]);
+
+        $isi .= $this->k->teks(
+            'Periode '.$id['period'].'   ·   '.$id['cakupan'].'   ·   '.$id['location'].', '.$id['date'],
+            self::MARGIN,
+            self::CM * 13.2,
+            self::LEBAR - self::MARGIN * 2,
+            self::CM * 0.7,
+            ['ukuran' => 1000, 'warna' => '93C5FD', 'rata' => 'l'],
         );
 
-        $baris = [
-            $id['unit'],
-            'Periode: '.$id['period'],
-            'Cakupan: '.$id['cakupan'],
-            $id['location'].', '.$id['date'],
-        ];
-
-        $isi .= $this->kotakTeks(
-            implode("\n", $baris),
-            self::CM * 2,
-            self::CM * 8,
-            self::LEBAR - self::CM * 4,
-            self::CM * 5,
-            ukuran: 1400,
-            rata: 'ctr',
+        $isi .= $this->k->teks(
+            'Dokumen ini dibangkitkan otomatis dari data aplikasi Outage Monitoring · fungsi masih dalam pengembangan',
+            self::MARGIN,
+            self::CM * 14.2,
+            self::LEBAR - self::MARGIN * 2,
+            self::CM * 0.6,
+            ['ukuran' => 800, 'warna' => '60A5FA', 'rata' => 'l'],
         );
-
-        $isi .= $this->catatanPengembangan();
 
         $this->slides[] = $this->bungkusSlide($isi);
     }
 
-    /**
-     * @param  array<string, mixed>  $s
-     * @param  array<string, string>  $id
-     */
-    private function slideRingkasan(array $s, array $id): void
+    /** @param array<string, mixed> $d */
+    private function slideDasbor(array $d): void
     {
-        $baris = [
-            ['Total PRK / rencana OH', $this->nilai($s['total_prk'])],
-            ['PRK murni', $this->nilai($s['total_murni'])],
-            ['PRK luncuran', $this->nilai($s['total_luncuran'])],
-            ['Sudah terkontrak', $this->nilai($s['contracted'])],
-            ['Belum terkontrak', $this->nilai($s['not_contracted'])],
-            ['OH selesai (FINISH)', $this->nilai($s['finished'])],
-            ['OH berjalan (ON PROGRESS)', $this->nilai($s['on_progress'])],
-            ['OH belum mulai (NOT STARTED)', $this->nilai($s['not_started'])],
-            ['OH lewat jadwal (NOT FINISH)', $this->nilai($s['not_finished'])],
-            ['Progres fisik rata-rata', $s['progress_fisik'].'%'],
+        $s = $d['summary'];
+        $kpi = $d['kpi'];
+
+        $isi = $this->kepala('Executive Dashboard', 'Ringkasan kinerja pelaksanaan HARDIK pada periode berjalan');
+
+        // --- Baris kartu KPI ---
+        $lebar = (self::LEBAR - self::MARGIN * 2 - self::CM * 0.6 * 4) / 5;
+        $kartu = [
+            ['TOTAL RENCANA OH', (string) $s['total_prk'], 'pekerjaan', Kanvas::BIRU],
+            ['SELESAI', (string) $s['finished'], 'FINISH', Kanvas::HIJAU],
+            ['SEDANG BERJALAN', (string) $s['on_progress'], 'ON PROGRESS', Kanvas::AMBER],
+            ['BELUM DIMULAI', (string) $s['not_started'], 'NOT STARTED', Kanvas::ABU],
+            ['LEWAT JADWAL', (string) $s['not_finished'], 'NOT FINISH', Kanvas::MERAH],
         ];
 
-        $this->slideTabel(
-            '1–2. Ringkasan HARDIK',
-            $id['unit'].' · '.$id['period'],
-            ['Parameter', 'Nilai'],
-            $baris,
-            [6, 6],
+        foreach ($kartu as $i => [$label, $nilai, $satuan, $warna]) {
+            $isi .= $this->k->kartuKpi(
+                self::MARGIN + $i * ($lebar + self::CM * 0.6),
+                self::CM * 3.1,
+                $lebar,
+                self::CM * 2.3,
+                $label,
+                $nilai,
+                $satuan,
+                $warna,
+            );
+        }
+
+        // --- Donat status + cincin progres + kartu finansial ---
+        $isi .= $this->k->teks('Distribusi Status Pekerjaan', self::MARGIN, self::CM * 5.9, self::CM * 6, self::CM * 0.6, [
+            'ukuran' => 1000, 'tebal' => true, 'rata' => 'l', 'warna' => Kanvas::NAVY,
+        ]);
+
+        $isi .= $this->k->donat(
+            self::MARGIN + self::CM * 0.6,
+            self::CM * 6.6,
+            self::CM * 5.2,
+            [
+                ['label' => 'Finish', 'nilai' => (float) $s['finished'], 'warna' => Kanvas::HIJAU],
+                ['label' => 'On Progress', 'nilai' => (float) $s['on_progress'], 'warna' => Kanvas::AMBER],
+                ['label' => 'Not Started', 'nilai' => (float) $s['not_started'], 'warna' => Kanvas::ABU],
+                ['label' => 'Not Finish', 'nilai' => (float) $s['not_finished'], 'warna' => Kanvas::MERAH],
+            ],
+            (string) $s['total_prk'],
+            'pekerjaan',
         );
+
+        $isi .= $this->legendaTegak(
+            self::MARGIN + self::CM * 6.2,
+            self::CM * 7.2,
+            [
+                ['Finish', (string) $s['finished'], Kanvas::HIJAU],
+                ['On Progress', (string) $s['on_progress'], Kanvas::AMBER],
+                ['Not Started', (string) $s['not_started'], Kanvas::ABU],
+                ['Not Finish', (string) $s['not_finished'], Kanvas::MERAH],
+            ],
+        );
+
+        $isi .= $this->k->teks('Overall Progress', self::CM * 13.4, self::CM * 5.9, self::CM * 5, self::CM * 0.6, [
+            'ukuran' => 1000, 'tebal' => true, 'rata' => 'l', 'warna' => Kanvas::NAVY,
+        ]);
+
+        $isi .= $this->k->cincinProgres(
+            self::CM * 13.8,
+            self::CM * 6.6,
+            self::CM * 5.2,
+            (float) $kpi['overall_progress'],
+            Kanvas::BIRU,
+            'progres fisik rata-rata',
+        );
+
+        // Realisasi kontrak dan pembayaran belum punya sumber datanya; kartunya
+        // tetap ditampilkan agar kerangka laporan utuh, tapi diberi penanda.
+        $isi .= $this->kartuTertunda(self::CM * 20, self::CM * 6.3, self::CM * 6.4, self::CM * 1.5, 'CONTRACT REALIZATION');
+        $isi .= $this->kartuTertunda(self::CM * 20, self::CM * 8.1, self::CM * 6.4, self::CM * 1.5, 'PAYMENT REALIZATION');
+        $isi .= $this->kartuTertunda(self::CM * 20, self::CM * 9.9, self::CM * 6.4, self::CM * 1.5, 'TOTAL ANGGARAN & TERBAYAR');
+
+        $isi .= $this->k->insight(self::MARGIN, self::CM * 12.4, self::LEBAR - self::MARGIN * 2, self::CM * 2.1, $d['insight']['ringkasan']);
+
+        $this->slides[] = $this->bungkusSlide($isi.$this->kaki(2, 'Executive Dashboard'));
     }
 
-    /** @param array<int, array<string, mixed>> $rows */
-    private function slideJenisPembangkit(array $rows): void
+    /**
+     * @param  array<string, mixed>  $sc
+     * @param  array<string, array<int, string>>  $insight
+     */
+    private function slideKurvaS(array $sc, array $insight): void
     {
-        $baris = array_map(fn ($r) => [
-            $r['plant_type'],
-            (string) $r['planned'],
-            (string) $r['realized'],
-            (string) $r['on_progress'],
-            (string) $r['not_started'],
-            $r['progress'].'%',
-        ], $rows);
+        $isi = $this->kepala('S-Curve Progress', 'Perbandingan progres rencana dan realisasi per bulan pelaporan');
 
-        $this->slideTabel(
-            '3. Ringkasan per Jenis Pembangkit',
-            'Dihitung dari kolom jenis pembangkit pada rencana outage',
-            ['Jenis', 'Rencana', 'Selesai', 'Berjalan', 'Belum', 'Progres'],
-            $baris,
-            [3, 1.8, 1.8, 1.8, 1.8, 1.8],
-        );
+        if ($sc['labels'] === []) {
+            $isi .= $this->kotakKosong(
+                'Kurva S belum dapat digambar — '.LaporanMonev::BELUM_ADA
+                .'. Kurva akan terbentuk sendiri begitu progres harian mulai dilaporkan.',
+            );
+        } else {
+            $isi .= $this->k->kurva(
+                self::MARGIN + self::CM * 1,
+                self::CM * 3.4,
+                self::LEBAR - self::MARGIN * 2 - self::CM * 7.4,
+                self::CM * 8.4,
+                $sc['labels'],
+                [
+                    ['label' => 'Rencana', 'warna' => Kanvas::BIRU, 'nilai' => $sc['planned']],
+                    ['label' => 'Realisasi', 'warna' => Kanvas::MERAH, 'nilai' => $sc['actual']],
+                ],
+            );
+
+            $x = self::LEBAR - self::MARGIN - self::CM * 6;
+            $isi .= $this->k->kartuKpi($x, self::CM * 3.4, self::CM * 6, self::CM * 2, 'CURRENT PROGRESS',
+                $this->persen($sc['current']), 'realisasi terakhir', Kanvas::MERAH);
+            $isi .= $this->k->kartuKpi($x, self::CM * 5.7, self::CM * 6, self::CM * 2, 'TARGET PROGRESS',
+                $this->persen($sc['target']), 'rencana pada titik sama', Kanvas::BIRU);
+            $isi .= $this->k->kartuKpi($x, self::CM * 8, self::CM * 6, self::CM * 2, 'VARIANCE',
+                $sc['variance'] === null ? LaporanMonev::BELUM_ADA : $this->bertanda($sc['variance']),
+                'realisasi − rencana',
+                ($sc['variance'] ?? 0) >= 0 ? Kanvas::HIJAU : Kanvas::MERAH);
+
+            $isi .= $this->k->teks(
+                'Forecast / projection '.strtolower(LaporanMonev::DALAM_PENGEMBANGAN).'.',
+                $x,
+                self::CM * 10.3,
+                self::CM * 6,
+                self::CM * 0.8,
+                ['ukuran' => 750, 'rata' => 'l', 'warna' => Kanvas::AMBER],
+            );
+        }
+
+        $isi .= $this->k->insight(self::MARGIN, self::CM * 12.4, self::LEBAR - self::MARGIN * 2, self::CM * 2.1, $insight['ringkasan']);
+
+        $this->slides[] = $this->bungkusSlide($isi.$this->kaki(3, 'S-Curve Progress'));
     }
 
-    /** @param array<int, array<string, mixed>> $rows */
-    private function slidePerSite(array $rows): void
+    /** @param array<string, mixed> $d */
+    private function slideProgressOh(array $d): void
     {
-        $baris = array_map(fn ($r) => [
-            $r['site_name'],
-            $r['plant_type'],
-            (string) $r['planned'],
-            (string) $r['realized'],
-            (string) $r['on_progress'],
-            $r['progress'].'%',
-            $r['status'],
-        ], $rows);
+        $s = $d['summary'];
+        $sites = $d['sites'];
 
-        $this->slideTabel(
-            '4. Progress OH per Site',
-            'Site diturunkan dari nama mesin pada tiap rencana outage',
-            ['Site', 'Jenis', 'Rencana', 'Selesai', 'Berjalan', 'Progres', 'Status'],
-            $baris,
-            [3.4, 1.6, 1.4, 1.4, 1.4, 1.4, 2],
+        $isi = $this->kepala('Progress OH', 'Komposisi status, capaian keseluruhan, dan sebaran per site');
+
+        $isi .= $this->k->donat(
+            self::MARGIN,
+            self::CM * 3.6,
+            self::CM * 4.6,
+            [
+                ['label' => 'Finish', 'nilai' => (float) $s['finished'], 'warna' => Kanvas::HIJAU],
+                ['label' => 'On Progress', 'nilai' => (float) $s['on_progress'], 'warna' => Kanvas::AMBER],
+                ['label' => 'Not Started', 'nilai' => (float) $s['not_started'], 'warna' => Kanvas::ABU],
+                ['label' => 'Not Finish', 'nilai' => (float) $s['not_finished'], 'warna' => Kanvas::MERAH],
+            ],
+            (string) $s['total_prk'],
+            'total OH',
         );
+
+        $isi .= $this->k->cincinProgres(
+            self::MARGIN + self::CM * 5.2,
+            self::CM * 3.6,
+            self::CM * 4.6,
+            (float) $s['progress_fisik'],
+            Kanvas::BIRU,
+            'overall OH progress',
+        );
+
+        $isi .= $this->k->teks('Rencana vs Realisasi', self::CM * 11.4, self::CM * 3.1, self::CM * 8, self::CM * 0.6, [
+            'ukuran' => 950, 'tebal' => true, 'rata' => 'l', 'warna' => Kanvas::NAVY,
+        ]);
+
+        $isi .= $this->k->batang(
+            self::CM * 11.4,
+            self::CM * 3.8,
+            self::CM * 8,
+            self::CM * 5,
+            ['Rencana', 'Selesai', 'Berjalan', 'Belum'],
+            [[
+                'label' => 'Jumlah pekerjaan',
+                'warna' => Kanvas::BIRU_MUDA,
+                'nilai' => [
+                    (float) $s['total_prk'],
+                    (float) $s['finished'],
+                    (float) $s['on_progress'],
+                    (float) $s['not_started'],
+                ],
+            ]],
+            'pekerjaan',
+        );
+
+        // Komposisi status per site — dibatasi agar tetap terbaca.
+        $teratas = array_slice($sites, 0, 6);
+
+        $isi .= $this->k->teks('Komposisi Status per Site', self::CM * 20.2, self::CM * 3.1, self::CM * 8.4, self::CM * 0.6, [
+            'ukuran' => 950, 'tebal' => true, 'rata' => 'l', 'warna' => Kanvas::NAVY,
+        ]);
+
+        if ($teratas === []) {
+            $isi .= $this->k->teks(LaporanMonev::BELUM_ADA, self::CM * 20.2, self::CM * 6, self::CM * 8.4, self::CM, [
+                'ukuran' => 1000, 'warna' => Kanvas::AMBER,
+            ]);
+        } else {
+            $isi .= $this->k->batangBertumpuk(
+                self::CM * 20.2,
+                self::CM * 3.8,
+                self::CM * 8.4,
+                self::CM * 5,
+                array_map(fn ($s) => $this->pendek($s['site_name']), $teratas),
+                [
+                    ['label' => 'Finish', 'warna' => Kanvas::HIJAU, 'nilai' => array_column($teratas, 'realized')],
+                    ['label' => 'On Progress', 'warna' => Kanvas::AMBER, 'nilai' => array_column($teratas, 'on_progress')],
+                    ['label' => 'Not Started', 'warna' => Kanvas::ABU, 'nilai' => array_column($teratas, 'not_started')],
+                ],
+            );
+        }
+
+        $isi .= $this->k->insight(self::MARGIN, self::CM * 12.4, self::LEBAR - self::MARGIN * 2, self::CM * 2.1, $d['insight']['ringkasan']);
+
+        $this->slides[] = $this->bungkusSlide($isi.$this->kaki(4, 'Progress OH'));
     }
 
-    /** @param array<int, array<string, mixed>> $rows */
-    private function slideRincianPekerjaan(array $rows): void
+    /** @param array<int, array<string, mixed>> $plants */
+    private function slideJenisPembangkit(array $plants): void
     {
-        $baris = array_map(fn ($r) => [
-            $r['ref'],
-            $r['machine_name'],
-            $r['site_name'],
-            $r['work_type'],
-            $r['planned_date'],
-            $r['start_date'],
-            $r['progress'].'%',
-            $r['status'],
-        ], $rows);
+        $isi = $this->kepala('Progress per Jenis Pembangkit', 'Perbandingan capaian antar jenis pembangkit');
 
-        $this->slideTabel(
-            '5. Detail Pekerjaan OH',
-            'Nomor PRK, work order, dan status kontrak: '.LaporanMonev::TIDAK_TERSEDIA,
-            ['Ref', 'Mesin', 'Site', 'Scope', 'Rencana', 'Real Start', 'Progres', 'Status'],
-            $baris,
-            [1.2, 3.4, 2.2, 1.3, 1.6, 1.6, 1.3, 1.8],
+        if ($plants === []) {
+            $isi .= $this->kotakKosong(LaporanMonev::BELUM_ADA.' untuk pengelompokan jenis pembangkit.');
+            $this->slides[] = $this->bungkusSlide($isi.$this->kaki(5, 'Jenis Pembangkit'));
+
+            return;
+        }
+
+        $nama = array_column($plants, 'plant_type');
+
+        $isi .= $this->k->batang(
+            self::MARGIN + self::CM * 0.6,
+            self::CM * 3.4,
+            self::LEBAR / 2 - self::MARGIN - self::CM * 1,
+            self::CM * 8.4,
+            $nama,
+            [
+                ['label' => 'Total', 'warna' => Kanvas::BIRU, 'nilai' => array_column($plants, 'planned')],
+                ['label' => 'Finish', 'warna' => Kanvas::HIJAU, 'nilai' => array_column($plants, 'realized')],
+                ['label' => 'On Progress', 'warna' => Kanvas::AMBER, 'nilai' => array_column($plants, 'on_progress')],
+                ['label' => 'Belum', 'warna' => Kanvas::ABU, 'nilai' => array_column($plants, 'not_started')],
+            ],
+            'unit',
         );
+
+        // Cincin progres tiap jenis, maksimal tiga agar tidak berdesakan.
+        $x = self::LEBAR / 2 + self::CM * 0.4;
+        foreach (array_slice($plants, 0, 3) as $i => $p) {
+            $isi .= $this->k->cincinProgres(
+                $x + $i * self::CM * 4.6,
+                self::CM * 4.4,
+                self::CM * 4.2,
+                (float) $p['progress'],
+                [Kanvas::BIRU, Kanvas::HIJAU, Kanvas::AMBER][$i] ?? Kanvas::BIRU,
+                $p['plant_type'],
+            );
+            $isi .= $this->k->teks(
+                $p['realized'].' / '.$p['planned'].' unit selesai',
+                $x + $i * self::CM * 4.6,
+                self::CM * 8.9,
+                self::CM * 4.2,
+                self::CM * 0.6,
+                ['ukuran' => 800, 'warna' => Kanvas::ABU_TUA],
+            );
+        }
+
+        $poin = array_map(
+            fn ($p) => $p['plant_type'].': '.$p['realized'].' dari '.$p['planned']
+                .' unit selesai, progres '.$p['progress'].'%.',
+            array_slice($plants, 0, 3),
+        );
+
+        $isi .= $this->k->insight(self::MARGIN, self::CM * 12.4, self::LEBAR - self::MARGIN * 2, self::CM * 2.1, $poin);
+
+        $this->slides[] = $this->bungkusSlide($isi.$this->kaki(5, 'Jenis Pembangkit'));
     }
 
-    /** @param array<int, array<string, mixed>> $rows */
-    private function slideBelumTerlaksana(array $rows): void
+    /**
+     * @param  array<int, array<string, mixed>>  $sites
+     * @param  array<string, array<int, string>>  $insight
+     */
+    private function slidePerSite(array $sites, array $insight): void
     {
-        $baris = array_map(fn ($r) => [
-            $r['machine_name'],
-            $r['site_name'],
-            $r['planned_date'],
-            $r['status'],
-            $r['progress'].'%',
-            $r['reason'],
-        ], $rows);
+        $urut = collect($sites)->sortByDesc('progress')->values()->all();
+        $potongan = $urut === [] ? [[]] : array_chunk($urut, 9);
 
-        $this->slideTabel(
-            '6. Rincian HARDIK Belum Terlaksana',
-            'Alasan penundaan dan penanda luncuran: '.LaporanMonev::TIDAK_TERSEDIA,
-            ['Mesin', 'Site', 'Rencana', 'Status', 'Progres', 'Keterangan'],
-            $baris,
-            [3.4, 2.2, 1.6, 1.9, 1.3, 3.8],
-        );
+        foreach ($potongan as $n => $bagian) {
+            $judul = count($potongan) > 1
+                ? 'Progress per Site ('.($n + 1).'/'.count($potongan).')'
+                : 'Progress per Site';
+
+            $isi = $this->kepala($judul, 'Peringkat capaian tiap site, dari tertinggi ke terendah');
+
+            if ($bagian === []) {
+                $isi .= $this->kotakKosong(LaporanMonev::BELUM_ADA.' untuk pengelompokan per site.');
+            } else {
+                $isi .= $this->k->batangHorizontal(
+                    self::MARGIN,
+                    self::CM * 3.3,
+                    self::LEBAR - self::MARGIN * 2,
+                    self::CM * 8.7,
+                    array_map(fn ($s) => [
+                        'label' => $s['site_name'],
+                        'nilai' => (float) $s['progress'],
+                        'warna' => $this->warnaStatus($s['status']),
+                        'keterangan' => number_format((float) $s['progress'], 1, ',', '.').'%'
+                            .'  ·  '.$s['realized'].'/'.$s['planned'].' selesai',
+                    ], $bagian),
+                );
+            }
+
+            $isi .= $this->k->insight(self::MARGIN, self::CM * 12.4, self::LEBAR - self::MARGIN * 2, self::CM * 2.1, $insight['site']);
+
+            $this->slides[] = $this->bungkusSlide($isi.$this->kaki(6, 'Progress per Site'));
+        }
     }
 
-    /** @param array<string, mixed> $p */
-    private function slideKinerja(array $p): void
+    /**
+     * @param  array<string, mixed>  $s
+     * @param  array<string, mixed>  $e
+     */
+    private function slideStatusPekerjaan(array $s, array $e): void
     {
-        $baris = array_map(fn ($r) => [
-            $r['machine_name'],
-            $r['site_name'],
-            $this->angka($r['sfc_before']),
-            $this->angka($r['sfc_after']),
-            $this->persen($r['sfc_improvement']),
-            $this->angka($r['dmp_before']),
-            $this->angka($r['dmp_after']),
-            $this->persen($r['dmp_improvement']),
-        ], $p['rows']);
+        $isi = $this->kepala('Work Status Monitoring', 'Jumlah dan porsi tiap status pekerjaan');
 
-        $rerata = sprintf(
-            'Rata-rata: SFC %s → %s (perbaikan %s) · DMP %s → %s (perbaikan %s)',
-            $this->angka($p['average_sfc_before']),
-            $this->angka($p['average_sfc_after']),
-            $this->persen($p['average_sfc_improvement']),
-            $this->angka($p['average_dmp_before']),
-            $this->angka($p['average_dmp_after']),
-            $this->persen($p['average_dmp_improvement']),
+        $total = max(1, (int) $s['total_prk']);
+        $status = [
+            ['FINISH', (int) $s['finished'], Kanvas::HIJAU],
+            ['ON PROGRESS', (int) $s['on_progress'], Kanvas::AMBER],
+            ['NOT STARTED', (int) $s['not_started'], Kanvas::ABU],
+            ['NOT FINISH', (int) $s['not_finished'], Kanvas::MERAH],
+        ];
+
+        $lebar = (self::LEBAR - self::MARGIN * 2 - self::CM * 0.6 * 3) / 4;
+
+        foreach ($status as $i => [$label, $nilai, $warna]) {
+            $isi .= $this->k->kartuKpi(
+                self::MARGIN + $i * ($lebar + self::CM * 0.6),
+                self::CM * 3.1,
+                $lebar,
+                self::CM * 2.3,
+                $label,
+                (string) $nilai,
+                round(($nilai / $total) * 100, 1).'% dari total',
+                $warna,
+            );
+        }
+
+        // Status yang belum punya sumber datanya, ditandai apa adanya.
+        $tertunda = ['NOT CONTRACTED', 'POSTPONED'];
+        foreach ($tertunda as $i => $label) {
+            $isi .= $this->kartuTertunda(
+                self::MARGIN + $i * (self::CM * 6.6),
+                self::CM * 5.8,
+                self::CM * 6.2,
+                self::CM * 1.5,
+                $label,
+            );
+        }
+
+        $isi .= $this->k->donat(
+            self::CM * 16,
+            self::CM * 5.4,
+            self::CM * 5,
+            array_map(fn ($st) => ['label' => $st[0], 'nilai' => (float) $st[1], 'warna' => $st[2]], $status),
+            (string) $s['total_prk'],
+            'pekerjaan',
         );
 
-        $this->slideTabel(
-            '7–9. SLA Setelah OH: SFC dan Daya Mampu',
-            $rerata,
-            ['Mesin', 'Site', 'SFC Sblm', 'SFC Ssdh', 'Perbaikan', 'DMP Sblm', 'DMP Ssdh', 'Perbaikan'],
-            $baris,
-            [3.2, 2, 1.5, 1.5, 1.7, 1.5, 1.5, 1.7],
+        $isi .= $this->legendaTegak(
+            self::CM * 21.6,
+            self::CM * 6,
+            array_map(fn ($st) => [$st[0], (string) $st[1], $st[2]], $status),
         );
+
+        $poin = [
+            $s['finished'].' pekerjaan berstatus FINISH.',
+            $s['on_progress'].' ON PROGRESS dan '.$s['not_started'].' NOT STARTED.',
+            'Status kontrak dan penundaan '.strtolower(LaporanMonev::DALAM_PENGEMBANGAN).'.',
+        ];
+
+        $isi .= $this->k->insight(self::MARGIN, self::CM * 12.4, self::LEBAR - self::MARGIN * 2, self::CM * 2.1, $poin);
+
+        $this->slides[] = $this->bungkusSlide($isi.$this->kaki(7, 'Work Status'));
     }
 
     /**
@@ -285,298 +580,592 @@ class LaporanMonevPptx
      * @param  array<string, mixed>  $bayar
      * @param  array<string, mixed>  $luncuran
      */
-    private function slideAnggaran(array $b, array $kontrak, array $bayar, array $luncuran): void
+    private function slideKontrakPembayaran(array $b, array $kontrak, array $bayar, array $luncuran): void
     {
-        $rupiah = fn ($v) => is_numeric($v) ? 'Rp '.number_format((float) $v, 0, ',', '.') : $this->nilai($v);
+        $isi = $this->kepala(
+            'Contract, Budget & Payment Monitoring',
+            'Anggaran tercatat sebagai satu angka; kontrak, pembayaran, AI/AO, dan luncuran belum ada sumber datanya',
+        );
 
-        $baris = [
-            ['Anggaran rencana (gabungan)', $rupiah($b['gabungan_rencana'])],
-            ['Anggaran aktual (gabungan)', $rupiah($b['gabungan_aktual'])],
-            ['Realisasi anggaran', $b['gabungan_realisasi_persen'] === null
+        $rencana = (float) $b['gabungan_rencana'];
+        $aktual = (float) $b['gabungan_aktual'];
+
+        $isi .= $this->k->kartuKpi(self::MARGIN, self::CM * 3.2, self::CM * 6.4, self::CM * 2.2,
+            'ANGGARAN RENCANA', 'Rp '.$this->k->ringkas($rencana), (int) $b['terisi'].' mesin terisi', Kanvas::BIRU);
+
+        $isi .= $this->k->kartuKpi(self::MARGIN + self::CM * 7, self::CM * 3.2, self::CM * 6.4, self::CM * 2.2,
+            'ANGGARAN AKTUAL', 'Rp '.$this->k->ringkas($aktual), 'realisasi tercatat', Kanvas::HIJAU);
+
+        $isi .= $this->k->kartuKpi(self::MARGIN + self::CM * 14, self::CM * 3.2, self::CM * 6.4, self::CM * 2.2,
+            'REALISASI ANGGARAN',
+            $b['gabungan_realisasi_persen'] === null
                 ? LaporanMonev::BELUM_ADA
-                : $b['gabungan_realisasi_persen'].'%'],
-            ['Mesin dengan anggaran terisi', (string) $b['terisi']],
-            ['AI — PRK / kontrak / dibayar', $this->nilai($b['ai']['prk_budget'])],
-            ['AO — PRK / kontrak / dibayar', $this->nilai($b['ao']['prk_budget'])],
-            ['Monitoring kontrak', $this->nilai($kontrak['keterangan'])],
-            ['Monitoring pembayaran', $this->nilai($bayar['keterangan'])],
-            ['Luncuran / carry over', $this->nilai($luncuran['keterangan'])],
+                : $b['gabungan_realisasi_persen'].'%',
+            'aktual terhadap rencana',
+            Kanvas::AMBER);
+
+        if ($rencana > 0 || $aktual > 0) {
+            $isi .= $this->k->batang(
+                self::MARGIN + self::CM * 1,
+                self::CM * 6.2,
+                self::CM * 11,
+                self::CM * 5.6,
+                ['Rencana', 'Aktual'],
+                [['label' => 'Nilai anggaran (Rp)', 'warna' => Kanvas::BIRU_MUDA, 'nilai' => [$rencana, $aktual]]],
+                'rupiah',
+            );
+        } else {
+            $isi .= $this->kotakKosong('Nilai anggaran belum diisi — '.LaporanMonev::BELUM_ADA.'.', self::CM * 6.2);
+        }
+
+        // Kerangka AI/AO dan pembayaran tetap ditampilkan sebagai kartu tertunda
+        // supaya susunan laporan utuh tanpa mengarang angka.
+        $tertunda = [
+            ['ANGGARAN INVESTASI (AI)', self::CM * 14.4, self::CM * 6.2],
+            ['ANGGARAN OPERASI (AO)', self::CM * 21.2, self::CM * 6.2],
+            ['MONITORING KONTRAK', self::CM * 14.4, self::CM * 8.2],
+            ['MONITORING PEMBAYARAN', self::CM * 21.2, self::CM * 8.2],
+            ['LUNCURAN / CARRY OVER', self::CM * 14.4, self::CM * 10.2],
+            ['OUTSTANDING PAYMENT', self::CM * 21.2, self::CM * 10.2],
         ];
 
-        $this->slideTabel(
-            '10–12, 14–15. Anggaran, Kontrak, dan Pembayaran',
-            'Anggaran tercatat sebagai satu angka; pemisahan AI dan AO serta data '
-                .'kontrak dan pembayaran belum ada sumbernya',
-            ['Parameter', 'Nilai'],
-            $baris,
-            [6, 6],
-        );
+        foreach ($tertunda as [$label, $x, $y]) {
+            $isi .= $this->kartuTertunda($x, $y, self::CM * 6.4, self::CM * 1.7, $label);
+        }
+
+        $this->slides[] = $this->bungkusSlide($isi.$this->kaki(8, 'Contract & Payment'));
+    }
+
+    /** @param array<string, mixed> $p */
+    private function slideSfc(array $p): void
+    {
+        $rows = array_values(array_filter($p['rows'], fn ($r) => $r['sfc_before'] !== null));
+
+        $isi = $this->kepala('SFC Before vs After OH', 'Specific Fuel Consumption sebelum dan sesudah overhaul — semakin turun semakin baik');
+
+        if ($rows === []) {
+            $isi .= $this->kotakKosong('Pengukuran SFC belum diisi — '.LaporanMonev::BELUM_ADA.'.');
+        } else {
+            $tampil = array_slice($rows, 0, 8);
+
+            $isi .= $this->k->batang(
+                self::MARGIN + self::CM * 1,
+                self::CM * 3.4,
+                self::LEBAR - self::MARGIN * 2 - self::CM * 7.4,
+                self::CM * 8.4,
+                array_map(fn ($r) => $this->pendek($r['machine_name']), $tampil),
+                [
+                    ['label' => 'SFC Sebelum', 'warna' => Kanvas::ABU, 'nilai' => array_column($tampil, 'sfc_before')],
+                    ['label' => 'SFC Sesudah', 'warna' => Kanvas::HIJAU, 'nilai' => array_column($tampil, 'sfc_after')],
+                ],
+                'L/kWh',
+            );
+
+            $x = self::LEBAR - self::MARGIN - self::CM * 6;
+            $isi .= $this->k->kartuKpi($x, self::CM * 3.4, self::CM * 6, self::CM * 2,
+                'AVERAGE SFC BEFORE', $this->angka($p['average_sfc_before']), 'L/kWh', Kanvas::ABU_TUA);
+            $isi .= $this->k->kartuKpi($x, self::CM * 5.7, self::CM * 6, self::CM * 2,
+                'AVERAGE SFC AFTER', $this->angka($p['average_sfc_after']), 'L/kWh', Kanvas::HIJAU);
+            $isi .= $this->k->kartuKpi($x, self::CM * 8, self::CM * 6, self::CM * 2,
+                'AVERAGE REDUCTION', $this->persen($p['average_sfc_improvement']), 'perbaikan SFC', Kanvas::BIRU);
+        }
+
+        $this->slides[] = $this->bungkusSlide($isi.$this->kaki(9, 'SFC Before vs After'));
+    }
+
+    /** @param array<string, mixed> $p */
+    private function slideDmp(array $p): void
+    {
+        $rows = array_values(array_filter($p['rows'], fn ($r) => $r['dmp_before'] !== null));
+
+        $isi = $this->kepala('Daya Mampu (DMP) Before vs After OH', 'Daya mampu netto sebelum dan sesudah overhaul — semakin naik semakin baik');
+
+        if ($rows === []) {
+            $isi .= $this->kotakKosong('Pengukuran daya mampu belum diisi — '.LaporanMonev::BELUM_ADA.'.');
+        } else {
+            $tampil = array_slice($rows, 0, 8);
+
+            $isi .= $this->k->batang(
+                self::MARGIN + self::CM * 1,
+                self::CM * 3.4,
+                self::LEBAR - self::MARGIN * 2 - self::CM * 7.4,
+                self::CM * 8.4,
+                array_map(fn ($r) => $this->pendek($r['machine_name']), $tampil),
+                [
+                    ['label' => 'DMP Sebelum', 'warna' => Kanvas::ABU, 'nilai' => array_column($tampil, 'dmp_before')],
+                    ['label' => 'DMP Sesudah', 'warna' => Kanvas::BIRU, 'nilai' => array_column($tampil, 'dmp_after')],
+                ],
+                'kW',
+            );
+
+            $x = self::LEBAR - self::MARGIN - self::CM * 6;
+            $isi .= $this->k->kartuKpi($x, self::CM * 3.4, self::CM * 6, self::CM * 2,
+                'AVERAGE DMP BEFORE', $this->angka($p['average_dmp_before']), 'kW', Kanvas::ABU_TUA);
+            $isi .= $this->k->kartuKpi($x, self::CM * 5.7, self::CM * 6, self::CM * 2,
+                'AVERAGE DMP AFTER', $this->angka($p['average_dmp_after']), 'kW', Kanvas::BIRU);
+            $isi .= $this->k->kartuKpi($x, self::CM * 8, self::CM * 6, self::CM * 2,
+                'AVERAGE INCREASE', $this->persen($p['average_dmp_improvement']), 'kenaikan daya mampu', Kanvas::HIJAU);
+        }
+
+        $this->slides[] = $this->bungkusSlide($isi.$this->kaki(10, 'DMP Before vs After'));
+    }
+
+    /**
+     * @param  array<string, mixed>  $p
+     * @param  array<string, array<int, string>>  $insight
+     */
+    private function slideDampakOh(array $p, array $insight): void
+    {
+        $isi = $this->kepala('Performance Impact OH', 'Dampak overhaul terhadap konsumsi bahan bakar dan daya mampu');
+
+        $blok = function (
+            string $judul,
+            string $panah,
+            ?float $sebelum,
+            ?float $sesudah,
+            ?float $perbaikan,
+            string $satuan,
+            string $warna,
+            float $y,
+        ) {
+            $out = $this->k->bentuk('roundRect', self::MARGIN, $y, self::LEBAR - self::MARGIN * 2, self::CM * 3.9, [
+                'isi' => Kanvas::PUTIH, 'garis' => 'E2E8F0',
+                'adj' => '<a:gd name="adj" fmla="val 5000"/>',
+            ]);
+
+            $out .= $this->k->teks($panah.'  '.$judul, self::MARGIN + self::CM * 0.5, $y + self::CM * 0.3, self::CM * 8, self::CM * 0.8, [
+                'ukuran' => 1300, 'tebal' => true, 'rata' => 'l', 'warna' => $warna,
+            ]);
+
+            $out .= $this->k->teks($satuan, self::MARGIN + self::CM * 0.5, $y + self::CM * 1.1, self::CM * 8, self::CM * 0.6, [
+                'ukuran' => 800, 'rata' => 'l', 'warna' => Kanvas::ABU,
+            ]);
+
+            $kotak = [
+                ['BEFORE', $this->angka($sebelum), Kanvas::ABU_TUA, self::CM * 9.5],
+                ['AFTER', $this->angka($sesudah), $warna, self::CM * 15.5],
+                ['IMPROVEMENT', $this->persen($perbaikan), Kanvas::BIRU, self::CM * 21.5],
+            ];
+
+            foreach ($kotak as [$label, $nilai, $w, $x]) {
+                $out .= $this->k->teks($label, $x, $y + self::CM * 0.5, self::CM * 5.2, self::CM * 0.5, [
+                    'ukuran' => 800, 'tebal' => true, 'warna' => Kanvas::ABU_TUA,
+                ]);
+                $out .= $this->k->teks($nilai, $x, $y + self::CM * 1.2, self::CM * 5.2, self::CM * 1.6, [
+                    'ukuran' => 2000, 'tebal' => true, 'warna' => $w,
+                ]);
+            }
+
+            // Panah antar kotak, menegaskan arah perubahan.
+            foreach ([self::CM * 14.8, self::CM * 20.8] as $ax) {
+                $out .= $this->k->bentuk('rightArrow', $ax, $y + self::CM * 1.7, self::CM * 0.7, self::CM * 0.5, [
+                    'isi' => 'CBD5E1',
+                ]);
+            }
+
+            return $out;
+        };
+
+        $isi .= $blok('SFC — Specific Fuel Consumption', '↓', $p['average_sfc_before'], $p['average_sfc_after'],
+            $p['average_sfc_improvement'], 'rata-rata seluruh mesin terukur · L/kWh', Kanvas::HIJAU, self::CM * 3.2);
+
+        $isi .= $blok('DMP — Daya Mampu Netto', '↑', $p['average_dmp_before'], $p['average_dmp_after'],
+            $p['average_dmp_improvement'], 'rata-rata seluruh mesin terukur · kW', Kanvas::BIRU, self::CM * 7.6);
+
+        $isi .= $this->k->insight(self::MARGIN, self::CM * 12.4, self::LEBAR - self::MARGIN * 2, self::CM * 2.1, $insight['kinerja']);
+
+        $this->slides[] = $this->bungkusSlide($isi.$this->kaki(11, 'Performance Impact'));
     }
 
     /** @param array<string, mixed> $e */
     private function slideException(array $e): void
     {
-        $baris = [
-            ['Belum dimulai', $this->nilai($e['total_not_started'])],
-            ['Sedang berjalan', $this->nilai($e['total_on_progress'])],
-            ['Lewat rencana selesai', $this->nilai($e['total_not_finish'])],
-            ['Belum terkontrak', $this->nilai($e['total_not_contracted'])],
-            ['Ditunda', $this->nilai($e['total_postponed'])],
-            ['Belum dibayar', $this->nilai($e['total_unpaid'])],
-            ['Rekomposisi anggaran', $this->nilai($e['total_budget_recomposition'])],
+        $isi = $this->kepala('Exception & Risk Dashboard', 'Pekerjaan yang memerlukan perhatian manajemen');
+
+        $kartu = [
+            ['NOT STARTED', (string) $e['total_not_started'], Kanvas::ABU],
+            ['ON PROGRESS', (string) $e['total_on_progress'], Kanvas::AMBER],
+            ['NOT FINISH', (string) $e['total_not_finish'], Kanvas::MERAH],
         ];
 
-        foreach (array_slice($e['rows'], 0, 8) as $r) {
-            $baris[] = [$r['machine_name'].' — '.$r['site_name'], $r['description']];
+        $lebar = self::CM * 6.4;
+        foreach ($kartu as $i => [$label, $nilai, $warna]) {
+            $isi .= $this->k->kartuKpi(self::MARGIN + $i * (self::CM * 6.9), self::CM * 3.1, $lebar, self::CM * 2.2,
+                $label, $nilai, 'pekerjaan', $warna);
         }
 
-        $this->slideTabel(
-            '13. Exception / Permasalahan',
-            'Exception terkait kontrak dan pembayaran belum dapat dihitung',
-            ['Jenis', 'Nilai / Keterangan'],
-            $baris,
-            [4.5, 7.5],
-        );
+        foreach ([['NOT CONTRACTED', self::CM * 21.8], ['POSTPONED / UNPAID', self::CM * 21.8]] as $i => [$label, $x]) {
+            $isi .= $this->kartuTertunda($x, self::CM * 3.1 + $i * self::CM * 2.4, self::CM * 6.4, self::CM * 2.2, $label);
+        }
+
+        $baris = array_slice($e['rows'], 0, 7);
+
+        $isi .= $this->k->teks('Pekerjaan Melewati Rencana Selesai', self::MARGIN, self::CM * 5.9, self::CM * 12, self::CM * 0.6, [
+            'ukuran' => 1000, 'tebal' => true, 'rata' => 'l', 'warna' => Kanvas::NAVY,
+        ]);
+
+        $isi .= $baris === []
+            ? $this->k->teks('Tidak ada pekerjaan yang melewati rencana selesai.', self::MARGIN, self::CM * 6.8, self::CM * 20, self::CM, [
+                'ukuran' => 1000, 'rata' => 'l', 'warna' => Kanvas::HIJAU,
+            ])
+            : $this->tabel(
+                ['Mesin', 'Site', 'Keterangan'],
+                array_map(fn ($r) => [$r['machine_name'], $r['site_name'], $r['description']], $baris),
+                [7, 4.5, 9.5],
+                self::MARGIN,
+                self::CM * 6.6,
+            );
+
+        $this->slides[] = $this->bungkusSlide($isi.$this->kaki(12, 'Exception & Risk'));
     }
 
-    /** @param array<string, mixed> $k */
-    private function slideKpi(array $k): void
+    /** @param array<int, array<string, mixed>> $rows */
+    private function slideBelumSelesai(array $rows): void
     {
-        $baris = [
-            ['Progres keseluruhan', $k['overall_progress'].'%'],
-            ['Selesai', (string) $k['total_finished']],
-            ['Sedang berjalan', (string) $k['total_on_progress']],
-            ['Belum dimulai', (string) $k['total_not_started']],
-            ['Lewat rencana selesai', (string) $k['total_not_finished']],
-            ['Rata-rata perbaikan SFC', $this->persen($k['average_sfc_improvement'])],
-            ['Rata-rata perbaikan DMP', $this->persen($k['average_dmp_improvement'])],
-            ['Realisasi kontrak', $this->nilai($k['contract_realization'])],
-            ['Realisasi pembayaran', $this->nilai($k['payment_realization'])],
-        ];
+        $potongan = $rows === [] ? [[]] : array_chunk($rows, 9);
 
-        $this->slideTabel(
-            '16. KPI Laporan',
-            'Angka kontrak dan pembayaran menunggu modulnya',
-            ['Indikator', 'Nilai'],
-            $baris,
-            [6, 6],
-        );
+        foreach ($potongan as $n => $bagian) {
+            $judul = count($potongan) > 1
+                ? 'Detail Pekerjaan Belum Selesai ('.($n + 1).'/'.count($potongan).')'
+                : 'Detail Pekerjaan Belum Selesai';
+
+            $isi = $this->kepala($judul, 'Progres tiap pekerjaan yang belum tuntas beserta keterangannya');
+
+            if ($bagian === []) {
+                $isi .= $this->kotakKosong('Seluruh pekerjaan pada periode ini sudah tuntas.');
+            } else {
+                $isi .= $this->k->batangHorizontal(
+                    self::MARGIN,
+                    self::CM * 3.3,
+                    self::LEBAR - self::MARGIN * 2,
+                    self::CM * 9.6,
+                    array_map(fn ($r) => [
+                        'label' => $this->pendek($r['machine_name'], 34),
+                        'nilai' => (float) $r['progress'],
+                        'warna' => $r['status'] === 'NOT_FINISH' ? Kanvas::MERAH : Kanvas::ABU,
+                        'keterangan' => number_format((float) $r['progress'], 0).'%  ·  '
+                            .$r['site_name'].'  ·  '.$r['status'],
+                    ], $bagian),
+                );
+            }
+
+            $this->slides[] = $this->bungkusSlide($isi.$this->kaki(13, 'Pekerjaan Belum Selesai'));
+        }
     }
-
-    /** @param array<string, string> $c */
-    private function slideKesimpulan(array $c): void
-    {
-        $isi = $this->kotakTeks(
-            '17–18. Kesimpulan',
-            self::CM * 1.5,
-            self::CM * 1,
-            self::LEBAR - self::CM * 3,
-            self::CM * 1.5,
-            ukuran: 2400,
-            tebal: true,
-            warna: self::WARNA_JUDUL,
-        );
-
-        $isi .= $this->kotakTeks(
-            implode("\n\n", [$c['ringkasan'], $c['kinerja'], $c['anggaran']]),
-            self::CM * 1.5,
-            self::CM * 3,
-            self::LEBAR - self::CM * 3,
-            self::CM * 9,
-            ukuran: 1400,
-        );
-
-        $isi .= $this->kotakTeks(
-            'Grafik pada bagian 17 (progress, PLTD vs PLTM, per site, SFC, DMP, AI, AO) '
-                .strtolower(LaporanMonev::DALAM_PENGEMBANGAN)
-                .' — angkanya sudah tersedia pada slide sebelumnya.',
-            self::CM * 1.5,
-            self::CM * 13,
-            self::LEBAR - self::CM * 3,
-            self::CM * 2,
-            ukuran: 1100,
-            warna: self::WARNA_CATATAN,
-        );
-
-        $isi .= $this->catatanPengembangan();
-
-        $this->slides[] = $this->bungkusSlide($isi);
-    }
-
-    // ------------------------------------------------------- Blok bangunan
 
     /**
-     * Satu slide berisi judul, keterangan, dan sebuah tabel.
-     *
-     * Baris yang melebihi muatan satu slide dipecah otomatis ke slide lanjutan
-     * supaya isinya tidak terpotong di luar bidang tampil.
+     * @param  array<string, mixed>  $kpi
+     * @param  array<string, string>  $c
+     * @param  array<string, array<int, string>>  $insight
+     */
+    private function slideKesimpulan(array $kpi, array $c, array $insight): void
+    {
+        $isi = $this->kepala('Executive Conclusion', 'Ringkasan capaian dan hal yang memerlukan perhatian');
+
+        $kartu = [
+            ['OVERALL PROGRESS', $kpi['overall_progress'].'%', Kanvas::BIRU],
+            ['SELESAI', (string) $kpi['total_finished'], Kanvas::HIJAU],
+            ['BERJALAN', (string) $kpi['total_on_progress'], Kanvas::AMBER],
+            ['LEWAT JADWAL', (string) $kpi['total_not_finished'], Kanvas::MERAH],
+            ['SFC IMPROVEMENT', $this->persen($kpi['average_sfc_improvement']), Kanvas::HIJAU],
+            ['DMP IMPROVEMENT', $this->persen($kpi['average_dmp_improvement']), Kanvas::BIRU],
+        ];
+
+        $lebar = (self::LEBAR - self::MARGIN * 2 - self::CM * 0.5 * 5) / 6;
+
+        foreach ($kartu as $i => [$label, $nilai, $warna]) {
+            $isi .= $this->k->kartuKpi(
+                self::MARGIN + $i * ($lebar + self::CM * 0.5),
+                self::CM * 3.1,
+                $lebar,
+                self::CM * 2.2,
+                $label,
+                $nilai,
+                '',
+                $warna,
+            );
+        }
+
+        $bagian = [
+            ['Overall Performance', $c['ringkasan'], Kanvas::BIRU],
+            ['Operational Performance', $c['kinerja'], Kanvas::HIJAU],
+            ['Financial Performance', $c['anggaran'], Kanvas::AMBER],
+        ];
+
+        foreach ($bagian as $i => [$judul, $teks, $warna]) {
+            $y = self::CM * 5.9 + $i * self::CM * 2.1;
+
+            $isi .= $this->k->bentuk('rect', self::MARGIN, $y, self::CM * 0.1, self::CM * 1.8, ['isi' => $warna]);
+            $isi .= $this->k->teks($judul, self::MARGIN + self::CM * 0.35, $y, self::CM * 8, self::CM * 0.6, [
+                'ukuran' => 950, 'tebal' => true, 'rata' => 'l', 'warna' => $warna,
+            ]);
+            $isi .= $this->k->teks($teks, self::MARGIN + self::CM * 0.35, $y + self::CM * 0.6, self::LEBAR - self::MARGIN * 2 - self::CM, self::CM * 1.2, [
+                'ukuran' => 900, 'rata' => 'l', 'warna' => Kanvas::ABU_TUA, 'anchor' => 't',
+            ]);
+        }
+
+        $isi .= $this->k->insight(self::MARGIN, self::CM * 12.4, self::LEBAR - self::MARGIN * 2, self::CM * 2.1, $insight['ringkasan']);
+
+        $this->slides[] = $this->bungkusSlide($isi.$this->kaki(14, 'Executive Conclusion'));
+    }
+
+    /** @param array<int, array<string, mixed>> $rows */
+    private function slideLampiran(array $rows): void
+    {
+        $potongan = $rows === [] ? [[]] : array_chunk($rows, 11);
+
+        foreach ($potongan as $n => $bagian) {
+            $judul = count($potongan) > 1
+                ? 'Appendix — Detail Pekerjaan OH ('.($n + 1).'/'.count($potongan).')'
+                : 'Appendix — Detail Pekerjaan OH';
+
+            $isi = $this->kepala($judul, 'Rincian tabular; nomor PRK, work order, dan kontrak '.strtolower(LaporanMonev::TIDAK_TERSEDIA));
+
+            $isi .= $bagian === []
+                ? $this->kotakKosong(LaporanMonev::BELUM_ADA.' untuk periode ini.')
+                : $this->tabel(
+                    ['Ref', 'Mesin', 'Site', 'Scope', 'Rencana', 'Real Start', 'Progres', 'Status'],
+                    array_map(fn ($r) => [
+                        $r['ref'], $r['machine_name'], $r['site_name'], $r['work_type'],
+                        $r['planned_date'], $r['start_date'], $r['progress'].'%', $r['status'],
+                    ], $bagian),
+                    [1.4, 6.2, 3.4, 1.6, 2.2, 2.2, 1.6, 2.4],
+                    self::MARGIN,
+                    self::CM * 3.2,
+                );
+
+            $this->slides[] = $this->bungkusSlide($isi.$this->kaki(15, 'Appendix'));
+        }
+    }
+
+    // -------------------------------------------------------- Kerangka slide
+
+    /** Kepala slide: garis aksen, judul, keterangan, dan kedua logo. */
+    private function kepala(string $judul, string $keterangan): string
+    {
+        $out = $this->k->bentuk('rect', 0, 0, self::LEBAR, self::CM * 2.5, ['isi' => Kanvas::PUTIH]);
+        $out .= $this->k->bentuk('rect', 0, 0, self::LEBAR, self::CM * 0.16, ['isi' => Kanvas::NAVY]);
+
+        $out .= $this->logoKepala();
+
+        $out .= $this->k->teks($judul, self::MARGIN + self::CM * 3.4, self::CM * 0.5, self::LEBAR - self::MARGIN * 2 - self::CM * 8, self::CM * 1, [
+            'ukuran' => 1800, 'tebal' => true, 'rata' => 'l', 'warna' => Kanvas::NAVY,
+        ]);
+
+        $out .= $this->k->teks($keterangan, self::MARGIN + self::CM * 3.4, self::CM * 1.5, self::LEBAR - self::MARGIN * 2 - self::CM * 8, self::CM * 0.7, [
+            'ukuran' => 850, 'rata' => 'l', 'warna' => Kanvas::ABU,
+        ]);
+
+        $out .= $this->k->bentuk('rect', self::MARGIN, self::CM * 2.42, self::LEBAR - self::MARGIN * 2, self::CM * 0.03, [
+            'isi' => 'E2E8F0',
+        ]);
+
+        return $out;
+    }
+
+    /** Logo Danantara di sudut kiri, logo PLN di sudut kanan. */
+    private function logoKepala(): string
+    {
+        $out = '';
+
+        if (isset($this->media['danantara'])) {
+            // 320x93 → rasio dijaga.
+            $tinggi = self::CM * 0.85;
+            $out .= $this->k->gambar($this->media['danantara']['rId'], self::MARGIN, self::CM * 0.75, $tinggi * (320 / 93), $tinggi);
+        }
+
+        if (isset($this->media['pln'])) {
+            // 985x253 → rasio dijaga.
+            $tinggi = self::CM * 0.85;
+            $lebar = $tinggi * (985 / 253);
+            $out .= $this->k->gambar($this->media['pln']['rId'], self::LEBAR - self::MARGIN - $lebar, self::CM * 0.75, $lebar, $tinggi);
+        }
+
+        return $out;
+    }
+
+    /** Logo pada sampul, ukurannya lebih besar. */
+    private function logoSampul(): string
+    {
+        $out = '';
+
+        if (isset($this->media['danantara'])) {
+            $tinggi = self::CM * 1.4;
+            $out .= $this->k->gambar($this->media['danantara']['rId'], self::MARGIN, self::CM * 1.4, $tinggi * (320 / 93), $tinggi);
+        }
+
+        if (isset($this->media['pln'])) {
+            $tinggi = self::CM * 1.4;
+            $lebar = $tinggi * (985 / 253);
+            $out .= $this->k->gambar($this->media['pln']['rId'], self::LEBAR - self::MARGIN - $lebar, self::CM * 1.4, $lebar, $tinggi);
+        }
+
+        return $out;
+    }
+
+    /** Kaki slide: identitas, periode, penanda pengembangan, dan nomor halaman. */
+    private function kaki(int $nomor, string $bagian): string
+    {
+        $id = $this->data['identity'];
+        $y = self::TINGGI - self::CM * 1.05;
+
+        $out = $this->k->bentuk('rect', self::MARGIN, $y, self::LEBAR - self::MARGIN * 2, self::CM * 0.03, [
+            'isi' => 'E2E8F0',
+        ]);
+
+        $out .= $this->k->teks(
+            $id['unit'].'   ·   '.$id['period'].'   ·   '.$bagian,
+            self::MARGIN,
+            $y + self::CM * 0.12,
+            self::LEBAR / 2,
+            self::CM * 0.6,
+            ['ukuran' => 750, 'rata' => 'l', 'warna' => Kanvas::ABU],
+        );
+
+        $out .= $this->k->teks(
+            'Dalam pengembangan   ·   Slide '.(count($this->slides) + 1),
+            self::LEBAR / 2,
+            $y + self::CM * 0.12,
+            self::LEBAR / 2 - self::MARGIN,
+            self::CM * 0.6,
+            ['ukuran' => 750, 'rata' => 'r', 'warna' => Kanvas::AMBER],
+        );
+
+        return $out;
+    }
+
+    /** Kartu untuk parameter yang belum ada sumber datanya. */
+    private function kartuTertunda(float $x, float $y, float $w, float $h, string $label): string
+    {
+        $out = $this->k->bentuk('roundRect', $x, $y, $w, $h, [
+            'isi' => 'FFFBEB',
+            'garis' => 'FCD34D',
+            'adj' => '<a:gd name="adj" fmla="val 8000"/>',
+        ]);
+
+        $out .= $this->k->teks($label, $x + self::CM * 0.3, $y + self::CM * 0.18, $w - self::CM * 0.6, self::CM * 0.5, [
+            'ukuran' => 800, 'tebal' => true, 'rata' => 'l', 'warna' => Kanvas::AMBER,
+        ]);
+
+        $out .= $this->k->teks(LaporanMonev::TIDAK_TERSEDIA, $x + self::CM * 0.3, $y + $h * 0.42, $w - self::CM * 0.6, $h * 0.4, [
+            'ukuran' => 950, 'tebal' => true, 'rata' => 'l', 'warna' => 'B45309',
+        ]);
+
+        return $out;
+    }
+
+    private function kotakKosong(string $pesan, ?float $y = null): string
+    {
+        $y ??= self::CM * 6;
+
+        $out = $this->k->bentuk('roundRect', self::MARGIN, $y, self::LEBAR - self::MARGIN * 2, self::CM * 2.4, [
+            'isi' => 'FFFBEB', 'garis' => 'FCD34D',
+            'adj' => '<a:gd name="adj" fmla="val 4000"/>',
+        ]);
+
+        $out .= $this->k->teks($pesan, self::MARGIN + self::CM, $y + self::CM * 0.6, self::LEBAR - self::MARGIN * 2 - self::CM * 2, self::CM * 1.2, [
+            'ukuran' => 1100, 'warna' => 'B45309',
+        ]);
+
+        return $out;
+    }
+
+    /** @param array<int, array{0: string, 1: string, 2: string}> $baris */
+    private function legendaTegak(float $x, float $y, array $baris): string
+    {
+        $out = '';
+
+        foreach ($baris as $i => [$label, $nilai, $warna]) {
+            $by = $y + $i * self::CM * 0.85;
+
+            $out .= $this->k->bentuk('roundRect', $x, $by + self::CM * 0.14, self::CM * 0.3, self::CM * 0.3, [
+                'isi' => $warna, 'adj' => '<a:gd name="adj" fmla="val 30000"/>',
+            ]);
+            $out .= $this->k->teks($label, $x + self::CM * 0.45, $by, self::CM * 3.4, self::CM * 0.6, [
+                'ukuran' => 850, 'rata' => 'l', 'warna' => Kanvas::ABU_TUA,
+            ]);
+            $out .= $this->k->teks($nilai, $x + self::CM * 3.9, $by, self::CM * 1.2, self::CM * 0.6, [
+                'ukuran' => 850, 'tebal' => true, 'rata' => 'r', 'warna' => Kanvas::TEKS,
+            ]);
+        }
+
+        return $out;
+    }
+
+    /**
+     * Tabel — dipakai hanya untuk rincian yang memang tabular.
      *
      * @param  array<int, string>  $kepala
      * @param  array<int, array<int, string>>  $baris
      * @param  array<int, float>  $lebarCm
      */
-    private function slideTabel(
-        string $judul,
-        string $keterangan,
-        array $kepala,
-        array $baris,
-        array $lebarCm,
-    ): void {
-        $perSlide = 12;
-        $potongan = $baris === [] ? [[]] : array_chunk($baris, $perSlide);
-
-        foreach ($potongan as $i => $isiBaris) {
-            $judulSlide = count($potongan) > 1
-                ? $judul.' ('.($i + 1).'/'.count($potongan).')'
-                : $judul;
-
-            $isi = $this->kotakTeks(
-                $judulSlide,
-                self::CM * 1.2,
-                self::CM * 0.8,
-                self::LEBAR - self::CM * 2.4,
-                self::CM * 1.2,
-                ukuran: 2200,
-                tebal: true,
-                warna: self::WARNA_JUDUL,
-            );
-
-            $isi .= $this->kotakTeks(
-                $keterangan,
-                self::CM * 1.2,
-                self::CM * 2,
-                self::LEBAR - self::CM * 2.4,
-                self::CM * 1,
-                ukuran: 1000,
-                warna: '64748B',
-            );
-
-            $isi .= $isiBaris === [] && $baris === []
-                ? $this->kotakTeks(
-                    LaporanMonev::BELUM_ADA.' untuk bagian ini.',
-                    self::CM * 1.2,
-                    self::CM * 4,
-                    self::LEBAR - self::CM * 2.4,
-                    self::CM * 1.2,
-                    ukuran: 1400,
-                    warna: self::WARNA_CATATAN,
-                )
-                : $this->tabel($kepala, $isiBaris, $lebarCm, self::CM * 1.2, self::CM * 3.2);
-
-            $isi .= $this->catatanPengembangan();
-
-            $this->slides[] = $this->bungkusSlide($isi);
-        }
-    }
-
-    /**
-     * @param  array<int, string>  $kepala
-     * @param  array<int, array<int, string>>  $baris
-     * @param  array<int, float>  $lebarCm
-     */
-    private function tabel(array $kepala, array $baris, array $lebarCm, int $x, int $y): string
+    private function tabel(array $kepala, array $baris, array $lebarCm, float $x, float $y): string
     {
         $kolom = '';
         foreach ($lebarCm as $cm) {
             $kolom .= '<a:gridCol w="'.(int) ($cm * self::CM).'"/>';
         }
 
-        $isiTabel = '<a:tr h="370000">';
+        $isi = '<a:tr h="340000">';
         foreach ($kepala as $teks) {
-            $isiTabel .= $this->selTabel($teks, tebal: true, latar: self::WARNA_KEPALA, warnaTeks: 'FFFFFF');
+            $isi .= $this->sel($teks, tebal: true, latar: Kanvas::NAVY, warnaTeks: Kanvas::PUTIH);
         }
-        $isiTabel .= '</a:tr>';
+        $isi .= '</a:tr>';
 
         foreach ($baris as $i => $kolomBaris) {
-            $latar = $i % 2 === 1 ? 'F1F5F9' : 'FFFFFF';
-            $isiTabel .= '<a:tr h="330000">';
+            $latar = $i % 2 === 1 ? Kanvas::ABU_MUDA : Kanvas::PUTIH;
+            $isi .= '<a:tr h="300000">';
 
-            foreach ($kolomBaris as $teks) {
-                $isiTabel .= $this->selTabel((string) $teks, latar: $latar);
+            foreach ($kolomBaris as $j => $teks) {
+                // Angka dan persentase rata kanan, teks rata kiri.
+                $rata = preg_match('/^[\d.,%\s-]+$/', (string) $teks) === 1 ? 'r' : 'l';
+                $isi .= $this->sel((string) $teks, latar: $latar, rata: $rata);
             }
 
-            $isiTabel .= '</a:tr>';
+            $isi .= '</a:tr>';
         }
 
-        $lebarTotal = (int) (array_sum($lebarCm) * self::CM);
-
         return '<p:graphicFrame><p:nvGraphicFramePr>'
-            .'<p:cNvPr id="'.$this->idBaru().'" name="Tabel"/><p:cNvGraphicFramePr/><p:nvPr/>'
+            .'<p:cNvPr id="'.$this->k->idBaru().'" name="Tabel"/><p:cNvGraphicFramePr/><p:nvPr/>'
             .'</p:nvGraphicFramePr>'
-            .'<p:xfrm><a:off x="'.$x.'" y="'.$y.'"/><a:ext cx="'.$lebarTotal.'" cy="370000"/></p:xfrm>'
+            .'<p:xfrm><a:off x="'.(int) $x.'" y="'.(int) $y.'"/>'
+            .'<a:ext cx="'.(int) (array_sum($lebarCm) * self::CM).'" cy="340000"/></p:xfrm>'
             .'<a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/table">'
             .'<a:tbl><a:tblPr firstRow="1" bandRow="1"/><a:tblGrid>'.$kolom.'</a:tblGrid>'
-            .$isiTabel
-            .'</a:tbl></a:graphicData></a:graphic></p:graphicFrame>';
+            .$isi.'</a:tbl></a:graphicData></a:graphic></p:graphicFrame>';
     }
 
-    private function selTabel(
+    private function sel(
         string $teks,
         bool $tebal = false,
-        string $latar = 'FFFFFF',
-        string $warnaTeks = '111827',
+        string $latar = Kanvas::PUTIH,
+        string $warnaTeks = Kanvas::TEKS,
+        string $rata = 'l',
     ): string {
         return '<a:tc><a:txBody><a:bodyPr/><a:lstStyle/><a:p>'
-            .'<a:pPr algn="l"/><a:r><a:rPr lang="id-ID" sz="900" b="'.($tebal ? 1 : 0).'">'
-            .'<a:solidFill><a:srgbClr val="'.$warnaTeks.'"/></a:solidFill></a:rPr>'
-            .'<a:t>'.$this->esc($teks).'</a:t></a:r></a:p></a:txBody>'
-            .'<a:tcPr marL="45720" marR="45720" marT="27432" marB="27432" anchor="ctr">'
+            .'<a:pPr algn="'.$rata.'"/><a:r><a:rPr lang="id-ID" sz="850" b="'.($tebal ? 1 : 0).'">'
+            .'<a:solidFill><a:srgbClr val="'.$warnaTeks.'"/></a:solidFill>'
+            .'<a:latin typeface="Calibri"/></a:rPr>'
+            .'<a:t>'.$this->k->esc($teks).'</a:t></a:r></a:p></a:txBody>'
+            .'<a:tcPr marL="68580" marR="68580" marT="27432" marB="27432" anchor="ctr">'
             .'<a:solidFill><a:srgbClr val="'.$latar.'"/></a:solidFill></a:tcPr></a:tc>';
     }
 
-    private function kotakTeks(
-        string $teks,
-        float $x,
-        float $y,
-        float $lebar,
-        float $tinggi,
-        int $ukuran = 1200,
-        bool $tebal = false,
-        string $warna = '111827',
-        string $rata = 'l',
-    ): string {
-        $paragraf = '';
+    // ------------------------------------------------------------ Format
 
-        foreach (explode("\n", $teks) as $baris) {
-            $paragraf .= '<a:p><a:pPr algn="'.$rata.'"/><a:r>'
-                .'<a:rPr lang="id-ID" sz="'.$ukuran.'" b="'.($tebal ? 1 : 0).'">'
-                .'<a:solidFill><a:srgbClr val="'.$warna.'"/></a:solidFill></a:rPr>'
-                .'<a:t>'.$this->esc($baris).'</a:t></a:r></a:p>';
-        }
-
-        return '<p:sp><p:nvSpPr><p:cNvPr id="'.$this->idBaru().'" name="Teks"/>'
-            .'<p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr>'
-            .'<p:spPr><a:xfrm><a:off x="'.(int) $x.'" y="'.(int) $y.'"/>'
-            .'<a:ext cx="'.(int) $lebar.'" cy="'.(int) $tinggi.'"/></a:xfrm>'
-            .'<a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:noFill/></p:spPr>'
-            .'<p:txBody><a:bodyPr wrap="square"><a:normAutofit/></a:bodyPr><a:lstStyle/>'
-            .$paragraf.'</p:txBody></p:sp>';
+    private function warnaStatus(string $status): string
+    {
+        return match ($status) {
+            'FINISH' => Kanvas::HIJAU,
+            'ON_PROGRESS' => Kanvas::AMBER,
+            'NOT_FINISH' => Kanvas::MERAH,
+            default => Kanvas::ABU,
+        };
     }
 
-    /** Catatan tetap di sudut tiap slide. */
-    private function catatanPengembangan(): string
+    private function pendek(string $teks, int $maks = 22): string
     {
-        return $this->kotakTeks(
-            'Fungsi laporan ini masih dalam pengembangan — sebagian parameter belum ada sumber datanya.',
-            self::CM * 1.2,
-            self::TINGGI - self::CM * 1.4,
-            self::LEBAR - self::CM * 2.4,
-            self::CM * 1,
-            ukuran: 900,
-            warna: self::WARNA_CATATAN,
-        );
-    }
-
-    private int $idBerikut = 1;
-
-    private function idBaru(): int
-    {
-        return ++$this->idBerikut;
-    }
-
-    private function nilai(mixed $v): string
-    {
-        return is_string($v) ? $v : (string) $v;
+        return mb_strlen($teks) <= $maks ? $teks : mb_substr($teks, 0, $maks - 1).'…';
     }
 
     private function angka(?float $v): string
@@ -589,9 +1178,9 @@ class LaporanMonevPptx
         return $v === null ? LaporanMonev::BELUM_ADA : number_format($v, 2, ',', '.').'%';
     }
 
-    private function esc(string $teks): string
+    private function bertanda(float $v): string
     {
-        return htmlspecialchars($teks, ENT_XML1 | ENT_QUOTES, 'UTF-8');
+        return ($v > 0 ? '+' : ($v < 0 ? '−' : '')).number_format(abs($v), 2, ',', '.').'%';
     }
 
     // --------------------------------------------------- Kerangka berkas
@@ -621,6 +1210,7 @@ class LaporanMonevPptx
             .'<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
             .'<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
             .'<Default Extension="xml" ContentType="application/xml"/>'
+            .'<Default Extension="png" ContentType="image/png"/>'
             .'<Override PartName="/ppt/presentation.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"/>'
             .'<Override PartName="/ppt/slideMasters/slideMaster1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideMaster+xml"/>'
             .'<Override PartName="/ppt/slideLayouts/slideLayout1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml"/>'
@@ -654,7 +1244,6 @@ class LaporanMonevPptx
             .' xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">'
             .'<p:sldMasterIdLst><p:sldMasterId id="2147483648" r:id="rId1"/></p:sldMasterIdLst>'
             .'<p:sldIdLst>'.$daftar.'</p:sldIdLst>'
-            // Lanskap: lebar lebih besar daripada tinggi.
             .'<p:sldSz cx="'.self::LEBAR.'" cy="'.self::TINGGI.'"/>'
             .'<p:notesSz cx="'.self::TINGGI.'" cy="'.self::LEBAR.'"/>'
             .'</p:presentation>';
@@ -679,12 +1268,20 @@ class LaporanMonevPptx
             .$rel.'</Relationships>';
     }
 
+    /** Tiap slide merujuk layout yang sama dan kedua berkas logo. */
     private function slideRels(): string
     {
+        $rel = '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="../slideLayouts/slideLayout1.xml"/>';
+
+        foreach ($this->media as $m) {
+            $rel .= '<Relationship Id="'.$m['rId'].'"'
+                .' Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image"'
+                .' Target="../media/'.$m['target'].'"/>';
+        }
+
         return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
             .'<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
-            .'<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="../slideLayouts/slideLayout1.xml"/>'
-            .'</Relationships>';
+            .$rel.'</Relationships>';
     }
 
     private function slideMaster(): string
@@ -737,10 +1334,10 @@ class LaporanMonevPptx
     {
         $skema = '';
         foreach ([
-            'dk1' => '000000', 'lt1' => 'FFFFFF', 'dk2' => '1E293B', 'lt2' => 'F1F5F9',
-            'accent1' => '1E40AF', 'accent2' => '0EA5E9', 'accent3' => '10B981',
-            'accent4' => 'F59E0B', 'accent5' => 'EF4444', 'accent6' => '8B5CF6',
-            'hlink' => '1E40AF', 'folHlink' => '7C3AED',
+            'dk1' => '000000', 'lt1' => 'FFFFFF', 'dk2' => Kanvas::NAVY, 'lt2' => Kanvas::ABU_MUDA,
+            'accent1' => Kanvas::BIRU, 'accent2' => Kanvas::BIRU_MUDA, 'accent3' => Kanvas::HIJAU,
+            'accent4' => Kanvas::AMBER, 'accent5' => Kanvas::MERAH, 'accent6' => Kanvas::ABU,
+            'hlink' => Kanvas::BIRU, 'folHlink' => '7C3AED',
         ] as $nama => $warna) {
             $skema .= '<a:'.$nama.'><a:srgbClr val="'.$warna.'"/></a:'.$nama.'>';
         }
@@ -781,7 +1378,7 @@ class LaporanMonevPptx
             .'<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties"'
             .' xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/"'
             .' xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">'
-            .'<dc:title>'.$this->esc($this->data['identity']['title']).'</dc:title>'
+            .'<dc:title>'.$this->k->esc($this->data['identity']['title']).'</dc:title>'
             .'<dc:creator>Outage Monitoring</dc:creator>'
             .'<cp:lastModifiedBy>Outage Monitoring</cp:lastModifiedBy>'
             .'<dcterms:created xsi:type="dcterms:W3CDTF">'.$waktu.'</dcterms:created>'
