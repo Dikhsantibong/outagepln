@@ -38,7 +38,10 @@ class DailyBriefingController extends Controller
         // mulai langsung muncul tanpa ada yang perlu menambahkannya.
         RapatHarianOtomatis::sinkronkanYangBerjalan();
 
-        $query = DailyBriefing::withCount('attendees');
+        // Satu baris per mesin, bukan per hari. Seluruh hari pelaksanaan sudah
+        // terbentuk sendiri, jadi menampilkannya satu-satu hanya membuat satu
+        // mesin terulang berpuluh kali; harinya dibuka lewat tombol Detail.
+        $query = DailyBriefing::query()->whereNull('parent_id');
 
         if ($request->filled('search')) {
             $search = $request->input('search');
@@ -49,10 +52,36 @@ class DailyBriefingController extends Controller
             });
         }
 
+        /** Menyaring berdasarkan hari mana pun dalam rangkaian, bukan hari pertamanya saja. */
+        $adaHari = function ($q, callable $syarat, bool $negasi = false) {
+            $subquery = function ($sub) use ($syarat) {
+                $sub->selectRaw('1')
+                    ->from('daily_briefings as hari')
+                    ->where(function ($w) {
+                        $w->whereColumn('hari.id', 'daily_briefings.id')
+                            ->orWhereColumn('hari.parent_id', 'daily_briefings.id');
+                    });
+                $syarat($sub);
+            };
+
+            return $negasi ? $q->whereNotExists($subquery) : $q->whereExists($subquery);
+        };
+
+        $hariIni = today()->toDateString();
+
         match ($request->input('status')) {
-            'berlangsung' => $query->where('status', 'active')->whereDate('tanggal', today()),
-            'akan_datang' => $query->where('status', 'active')->whereDate('tanggal', '!=', today()),
-            'selesai' => $query->where('status', 'completed'),
+            // Ada hari yang jatuh hari ini dan belum ditutup.
+            'berlangsung' => $adaHari($query, fn ($q) => $q
+                ->where('hari.status', 'active')
+                ->whereDate('hari.tanggal', $hariIni)),
+            // Masih ada hari yang belum ditutup, tapi tidak ada yang hari ini.
+            'akan_datang' => $adaHari(
+                $adaHari($query, fn ($q) => $q->where('hari.status', 'active')),
+                fn ($q) => $q->where('hari.status', 'active')->whereDate('hari.tanggal', $hariIni),
+                negasi: true,
+            ),
+            // Selesai bila tidak ada satu pun hari yang belum ditutup.
+            'selesai' => $adaHari($query, fn ($q) => $q->where('hari.status', '!=', 'completed'), negasi: true),
             default => null,
         };
 
@@ -60,23 +89,22 @@ class DailyBriefingController extends Controller
         $tahun = TahunFilter::resolve($request->input('tahun'), $tahunOptions);
 
         if ($tahun !== null) {
-            $query->whereYear('tanggal', $tahun);
+            $adaHari($query, fn ($q) => $q->whereYear('hari.tanggal', $tahun));
         }
 
         if ($request->filled('bulan')) {
-            $query->whereMonth('tanggal', $request->input('bulan'));
+            $adaHari($query, fn ($q) => $q->whereMonth('hari.tanggal', $request->input('bulan')));
         }
 
-        $hariIni = today()->toDateString();
-        $prio = "CASE WHEN status = 'active' AND DATE(tanggal) = '{$hariIni}' THEN 1"
-            ." WHEN status = 'active' THEN 2 ELSE 3 END";
-
         $briefings = $query
-            ->orderByRaw($prio)
-            ->orderByRaw("CASE WHEN {$prio} = 2 THEN tanggal END ASC")
-            ->orderByRaw("CASE WHEN {$prio} <> 2 THEN tanggal END DESC")
+            ->orderByDesc('tanggal')
+            ->orderBy('id')
             ->paginate(12)
             ->withQueryString();
+
+        // Ringkasan rangkaian dihitung setelah paginasi — paling 12 baris per
+        // halaman, jadi jauh lebih murah daripada menggabungkannya di query.
+        $briefings->through(fn (DailyBriefing $kepala) => $this->ringkasanRangkaian($kepala));
 
         return Inertia::render('daily-briefings/index', [
             'briefings' => $briefings,
@@ -88,6 +116,54 @@ class DailyBriefingController extends Controller
                 'tahun' => $tahunOptions,
             ],
         ]);
+    }
+
+    /**
+     * Satu baris daftar: rangkaian rapat sebuah mesin, bukan satu hari.
+     *
+     * Statusnya diringkas dari seluruh harinya — berlangsung bila ada rapat
+     * hari ini, selesai bila semua harinya sudah ditutup — dan hari yang sudah
+     * terisi dihitung supaya terlihat sejauh mana notulennya sudah diisi.
+     *
+     * @return array<string, mixed>
+     */
+    private function ringkasanRangkaian(DailyBriefing $kepala): array
+    {
+        $hari = $kepala->seriesDays()
+            ->withCount(['attendees', 'findings', 'issues'])
+            ->with('kickoff:id,daily_briefing_id')
+            ->get();
+
+        $terisi = $hari->filter(
+            fn ($d) => $d->attendees_count > 0
+                || $d->findings_count > 0
+                || $d->issues_count > 0
+                || $d->kickoff !== null,
+        );
+
+        $hariIni = today()->toDateString();
+        $adaHariIni = $hari->contains(
+            fn ($d) => $d->status === 'active' && $d->tanggal?->toDateString() === $hariIni,
+        );
+        $semuaSelesai = $hari->every(fn ($d) => $d->status === 'completed');
+
+        return [
+            'id' => $kepala->id,
+            'judul' => $kepala->judul,
+            'lokasi' => $kepala->lokasi,
+            'waktu_mulai' => $kepala->waktu_mulai,
+            'tanggal' => $hari->min('tanggal')?->toDateString(),
+            'tanggal_akhir' => $hari->max('tanggal')?->toDateString(),
+            'jumlah_hari' => $hari->count(),
+            'hari_terisi' => $terisi->count(),
+            'attendees_count' => (int) $hari->sum('attendees_count'),
+            'temuan_count' => (int) $hari->sum('findings_count'),
+            'status' => match (true) {
+                $adaHariIni => 'berlangsung',
+                $semuaSelesai => 'completed',
+                default => 'active',
+            },
+        ];
     }
 
     public function show(DailyBriefing $dailyBriefing)

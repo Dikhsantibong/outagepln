@@ -13,6 +13,7 @@ use App\Models\OutagePlan;
 use App\Models\OutagePlanRevision;
 use App\Models\Unit;
 use App\Support\JadwalRapatOutage;
+use App\Support\NotulenBerlanjut;
 use App\Support\TahunFilter;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
@@ -247,6 +248,11 @@ class DailyMeetingController extends Controller
 
     public function show(DailyMeeting $dailyMeeting)
     {
+        // Notulen rapat sebelumnya dibawa ke sini supaya permasalahan yang
+        // belum tuntas tinggal diperbarui, bukan diketik ulang. Hanya berjalan
+        // saat notulennya masih kosong — lihat [NotulenBerlanjut].
+        $warisanDari = NotulenBerlanjut::wariskan($dailyMeeting);
+
         $dailyMeeting->load(['attendees', 'findings', 'outagePlan', 'kickoff', 'kickoffPhotos']);
 
         return Inertia::render('daily-meetings/show', [
@@ -257,6 +263,9 @@ class DailyMeetingController extends Controller
             'kickoff' => $dailyMeeting->kickoff,
             'kickoffPhotos' => $dailyMeeting->kickoffPhotos,
             'kickoffDefaults' => $this->kickoffDefaults($dailyMeeting),
+            // Diisi hanya pada kunjungan yang benar-benar menyalin, jadi
+            // pemberitahuannya muncul sekali — bukan tiap kali dibuka.
+            'notulenWarisanDari' => $warisanDari?->tipe_rapat,
         ]);
     }
 

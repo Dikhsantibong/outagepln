@@ -28,10 +28,15 @@ class RapatHarianOtomatisTest extends TestCase
         return $user;
     }
 
-    /** Pekerjaan yang sedang berjalan: progres di antara 0 dan 100. */
+    /**
+     * Pekerjaan yang sedang berjalan: sudah punya laporan progres harian.
+     *
+     * Barisan harian sengaja ikut dibuat, karena itulah penanda pekerjaan
+     * benar-benar dikerjakan — bukan kolom `progress` semata.
+     */
     private function rencanaBerjalan(array $ubah = []): OutagePlan
     {
-        return OutagePlan::create([
+        $plan = OutagePlan::create([
             'mesin_pembangkit' => 'PLTD POASIA #05 (MIRRLEES)',
             'scope' => 'MO',
             'jenis_pembangkit' => 'PLTD',
@@ -40,6 +45,30 @@ class RapatHarianOtomatisTest extends TestCase
             'real_start' => '2026-07-05',
             'durasi' => 5,
             'progress' => 40,
+            ...$ubah,
+        ]);
+
+        $plan->dailyProgresses()->create([
+            'tanggal' => $plan->real_start ?: $plan->start_date,
+            'plan_progress' => 20,
+            'actual_progress' => $plan->progress,
+        ]);
+
+        return $plan->fresh();
+    }
+
+    /** Rencana tanpa satu pun laporan harian — belum dikerjakan. */
+    private function rencanaTanpaProgresHarian(array $ubah = []): OutagePlan
+    {
+        return OutagePlan::create([
+            'mesin_pembangkit' => 'PLTD RAHA #09 (CUMMINS)',
+            'scope' => 'MO',
+            'jenis_pembangkit' => 'PLTD',
+            'start_date' => '2026-07-01',
+            'selesai' => '2026-07-10',
+            'real_start' => '2026-07-05',
+            'durasi' => 5,
+            'progress' => 98,
             ...$ubah,
         ]);
     }
@@ -112,14 +141,63 @@ class RapatHarianOtomatisTest extends TestCase
         $this->assertSame(5, $hari5->seriesDays()->count());
     }
 
-    public function test_pekerjaan_yang_belum_atau_sudah_selesai_tidak_dibuatkan_rapat(): void
+    public function test_pekerjaan_yang_sudah_selesai_tidak_dibuatkan_rapat(): void
     {
-        $this->rencanaBerjalan(['progress' => 0, 'mesin_pembangkit' => 'PLTD RAHA #01 (CUMMINS)']);
         $this->rencanaBerjalan(['progress' => 100, 'mesin_pembangkit' => 'PLTD RAHA #02 (CUMMINS)']);
 
         RapatHarianOtomatis::sinkronkanYangBerjalan();
 
         $this->assertSame(0, DailyBriefing::count());
+    }
+
+    /**
+     * Yang menandai pekerjaan berjalan adalah laporan progres hariannya.
+     *
+     * Rencana hasil impor membawa angka progres dari lembar sumber tanpa baris
+     * harian sama sekali — pekerjaan itu belum dikerjakan, jadi tidak boleh
+     * dibuatkan rapat.
+     */
+    public function test_rencana_tanpa_progres_harian_tidak_dibuatkan_rapat(): void
+    {
+        $this->rencanaTanpaProgresHarian();
+
+        RapatHarianOtomatis::sinkronkanYangBerjalan();
+
+        $this->assertSame(0, DailyBriefing::count());
+    }
+
+    /** Baris harian yang aktualnya masih kosong belum menandai pekerjaan jalan. */
+    public function test_baris_harian_tanpa_aktual_belum_menandai_pekerjaan_berjalan(): void
+    {
+        $plan = $this->rencanaTanpaProgresHarian();
+        $plan->dailyProgresses()->create([
+            'tanggal' => '2026-07-05',
+            'plan_progress' => 20,
+            'actual_progress' => null,
+        ]);
+
+        RapatHarianOtomatis::sinkronkanYangBerjalan();
+
+        $this->assertSame(0, DailyBriefing::count());
+    }
+
+    /** Begitu satu hari dilaporkan, rapatnya langsung terbentuk. */
+    public function test_rapat_terbentuk_begitu_progres_harian_pertama_dicatat(): void
+    {
+        $plan = $this->rencanaTanpaProgresHarian();
+
+        RapatHarianOtomatis::sinkronkanYangBerjalan();
+        $this->assertSame(0, DailyBriefing::count());
+
+        $plan->dailyProgresses()->create([
+            'tanggal' => '2026-07-05',
+            'plan_progress' => 20,
+            'actual_progress' => 15,
+        ]);
+
+        RapatHarianOtomatis::sinkronkanYangBerjalan();
+
+        $this->assertSame(5, DailyBriefing::where('outage_plan_id', $plan->id)->count());
     }
 
     public function test_sinkronisasi_berulang_tidak_menggandakan_hari(): void
@@ -236,6 +314,89 @@ class RapatHarianOtomatisTest extends TestCase
         $this->post("/daily-briefings/{$hari1->id}/add-day")->assertNotFound();
 
         $this->assertSame(5, DailyBriefing::where('outage_plan_id', $plan->id)->count());
+    }
+
+    /**
+     * Daftar rapat menampilkan satu baris per mesin, bukan satu baris per hari.
+     *
+     * Seluruh hari pelaksanaan terbentuk sendiri, jadi menampilkannya satu-satu
+     * membuat satu mesin terulang berpuluh kali dan daftarnya tidak terbaca.
+     */
+    public function test_daftar_menampilkan_satu_baris_per_mesin(): void
+    {
+        $plan = $this->rencanaBerjalan();
+        RapatHarianOtomatis::sinkronkan($plan);
+        $this->admin();
+
+        $this->assertSame(5, DailyBriefing::where('outage_plan_id', $plan->id)->count());
+
+        $this->get('/daily-briefings')
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->has('briefings.data', 1)
+                ->where('briefings.data.0.judul', 'Daily Meeting - PLTD POASIA #05 (MIRRLEES)')
+                ->where('briefings.data.0.jumlah_hari', 5)
+                ->where('briefings.data.0.tanggal', '2026-07-05')
+                ->where('briefings.data.0.tanggal_akhir', '2026-07-09')
+            );
+    }
+
+    /** Barisnya menunjuk ke hari pertama, jadi Detail membuka rangkaiannya. */
+    public function test_baris_daftar_menunjuk_hari_pertama_rangkaian(): void
+    {
+        $plan = $this->rencanaBerjalan();
+        RapatHarianOtomatis::sinkronkan($plan);
+        $this->admin();
+
+        $hari1 = DailyBriefing::where('outage_plan_id', $plan->id)
+            ->where('hari_ke', 1)->firstOrFail();
+
+        $this->get('/daily-briefings')
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page->where('briefings.data.0.id', $hari1->id));
+    }
+
+    /** Hitungan hari terisi ikut naik begitu notulennya diisi. */
+    public function test_daftar_menghitung_hari_yang_sudah_terisi(): void
+    {
+        $plan = $this->rencanaBerjalan();
+        RapatHarianOtomatis::sinkronkan($plan);
+        $this->admin();
+
+        $this->get('/daily-briefings')
+            ->assertInertia(fn ($page) => $page->where('briefings.data.0.hari_terisi', 0));
+
+        $hari3 = DailyBriefing::where('outage_plan_id', $plan->id)
+            ->where('hari_ke', 3)->firstOrFail();
+
+        $this->post("/daily-briefings/{$hari3->id}/findings", [
+            'uraian' => 'Temuan hari ketiga',
+            'target' => 'Open',
+        ])->assertRedirect();
+
+        $this->get('/daily-briefings')
+            ->assertInertia(fn ($page) => $page
+                ->where('briefings.data.0.hari_terisi', 1)
+                ->where('briefings.data.0.jumlah_hari', 5)
+            );
+    }
+
+    /** Penyaringan tahun memakai hari mana pun, bukan hari pertamanya saja. */
+    public function test_filter_tahun_memakai_seluruh_hari_rangkaian(): void
+    {
+        // Rangkaian melintasi pergantian tahun: mulai 30 Des 2026.
+        $plan = $this->rencanaBerjalan([
+            'real_start' => '2026-12-30',
+            'start_date' => '2026-12-30',
+            'durasi' => 5,
+        ]);
+        RapatHarianOtomatis::sinkronkan($plan);
+        $this->admin();
+
+        // Hari pertama di 2026, tapi hari ke-3 sampai ke-5 sudah 2027.
+        $this->get('/daily-briefings?tahun=2027')
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page->has('briefings.data', 1));
     }
 
     /** Rapat lama yang dulu dibuat manual tidak ikut terganggu. */

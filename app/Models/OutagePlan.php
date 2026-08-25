@@ -178,13 +178,20 @@ class OutagePlan extends Model
     /**
      * Pekerjaan yang sedang berjalan di lapangan.
      *
-     * Memakai definisi yang sama dengan kartu "Sedang Berjalan" di dashboard,
-     * supaya satu pekerjaan tidak pernah terhitung berjalan di satu layar tapi
-     * tidak di layar lain.
+     * Yang menandai sebuah pekerjaan benar-benar berjalan adalah adanya laporan
+     * progres harian — bukan sekadar kolom `progress` yang terisi. Rencana hasil
+     * impor membawa angka progres dari lembar sumber tanpa satu pun baris
+     * harian; pekerjaan seperti itu belum dikerjakan dan tidak boleh ikut
+     * terhitung berjalan.
+     *
+     * Pekerjaan yang progresnya sudah penuh dianggap selesai dan keluar dari
+     * daftar ini.
      */
     public function scopeSedangBerjalan($query)
     {
-        return $query->where('progress', '>', 0)->where('progress', '<', 100);
+        return $query
+            ->where(fn ($q) => $q->whereNull('progress')->orWhere('progress', '<', 100))
+            ->whereHas('dailyProgresses', fn ($q) => $q->whereNotNull('actual_progress'));
     }
 
     /**

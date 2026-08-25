@@ -114,6 +114,7 @@ export default function DailyMeetingShow({
     kickoff = null,
     kickoffPhotos = [],
     kickoffDefaults,
+    notulenWarisanDari = null,
 }: {
     meeting: Meeting;
     attendees: Attendee[];
@@ -123,6 +124,8 @@ export default function DailyMeetingShow({
     kickoff?: Kickoff;
     kickoffPhotos?: KickoffPhoto[];
     kickoffDefaults?: Record<string, string>;
+    /** Jenis rapat asal salinan notulen; hanya terisi saat baru disalin. */
+    notulenWarisanDari?: string | null;
 }) {
     const { auth } = usePage<any>().props;
     const isTamu = auth?.user?.role === 'tamu';
@@ -555,6 +558,16 @@ return;
                                 <div>
                                     <CardTitle>Notulen</CardTitle>
                                     <CardDescription>Catatan permasalahan dan tindak lanjut (Notulen Rapat)</CardDescription>
+                                    {/* Muncul sekali, pada kunjungan yang benar-benar
+                                        menyalin — supaya jelas dari mana barisnya. */}
+                                    {notulenWarisanDari && (
+                                        <p className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-[11px] text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-300">
+                                            <ClipboardList className="h-3.5 w-3.5 shrink-0" />
+                                            Notulen disalin dari{' '}
+                                            <span className="font-semibold">{notulenWarisanDari}</span>
+                                            {' '}— perbarui statusnya sesuai hasil rapat ini.
+                                        </p>
+                                    )}
                                 </div>
                                 <div className="flex shrink-0 gap-2">
                                     <Button

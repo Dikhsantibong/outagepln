@@ -1,6 +1,7 @@
 import { Head, router, usePage, Link } from '@inertiajs/react';
 import {
     Calendar,
+    ClipboardList,
     Users,
     Eye,
     QrCode,
@@ -33,20 +34,33 @@ import {
     TableRow,
 } from '@/components/ui/table';
 
+/** Satu rangkaian rapat sebuah mesin — bukan satu hari. */
 type Meeting = {
     id: number;
     judul: string;
-    tanggal: string;
-    waktu_mulai: string | null;
-    waktu_selesai: string | null;
     lokasi: string | null;
-    token: string;
-    status: 'draft' | 'active' | 'completed' | 'berlangsung';
+    waktu_mulai: string | null;
+    /** Hari pertama dan hari terakhir pelaksanaan. */
+    tanggal: string | null;
+    tanggal_akhir: string | null;
+    jumlah_hari: number;
+    hari_terisi: number;
     attendees_count: number;
-    created_at: string;
+    temuan_count: number;
+    status: 'draft' | 'active' | 'completed' | 'berlangsung';
 };
 
 const ALL = '__all__';
+
+/** Tanggal ringkas ala Indonesia; '-' bila belum ada. */
+const tgl = (iso: string | null) =>
+    iso
+        ? new Date(iso).toLocaleDateString('id-ID', {
+              day: '2-digit',
+              month: 'short',
+              year: 'numeric',
+          })
+        : '-';
 
 const BULAN = [
     'Januari',
@@ -288,13 +302,13 @@ export default function DailyBriefingsIndex({
                                     <TableHead className="w-[250px] text-[10px] font-bold tracking-widest uppercase">
                                         Judul Meeting
                                     </TableHead>
-                                    <TableHead className="w-[120px] text-[10px] font-bold tracking-widest uppercase">
-                                        Tanggal
+                                    <TableHead className="w-[200px] text-[10px] font-bold tracking-widest uppercase">
+                                        Periode Pelaksanaan
                                     </TableHead>
-                                    <TableHead className="w-[120px] text-[10px] font-bold tracking-widest uppercase">
-                                        Waktu
+                                    <TableHead className="w-[130px] text-center text-[10px] font-bold tracking-widest uppercase">
+                                        Hari Rapat
                                     </TableHead>
-                                    <TableHead className="w-[120px] text-[10px] font-bold tracking-widest uppercase">
+                                    <TableHead className="w-[110px] text-[10px] font-bold tracking-widest uppercase">
                                         Lokasi
                                     </TableHead>
                                     <TableHead className="w-[100px] text-center text-[10px] font-bold tracking-widest uppercase">
@@ -325,29 +339,28 @@ export default function DailyBriefingsIndex({
                                                 </TableCell>
                                                 <TableCell className="py-3">
                                                     <div className="flex items-center gap-1.5 text-xs">
-                                                        <Calendar className="h-3 w-3 text-muted-foreground" />
-                                                        {new Date(
-                                                            meeting.tanggal,
-                                                        ).toLocaleDateString(
-                                                            'id-ID',
-                                                            {
-                                                                day: '2-digit',
-                                                                month: 'short',
-                                                                year: 'numeric',
-                                                            },
-                                                        )}
+                                                        <Calendar className="h-3 w-3 shrink-0 text-muted-foreground" />
+                                                        <span>
+                                                            {tgl(meeting.tanggal)}
+                                                            {meeting.tanggal_akhir &&
+                                                            meeting.tanggal_akhir !== meeting.tanggal
+                                                                ? ` – ${tgl(meeting.tanggal_akhir)}`
+                                                                : ''}
+                                                        </span>
                                                     </div>
                                                 </TableCell>
-                                                <TableCell className="py-3 font-mono text-xs text-muted-foreground">
-                                                    {meeting.waktu_mulai
-                                                        ? meeting.waktu_mulai.slice(
-                                                              0,
-                                                              5,
-                                                          )
-                                                        : '-'}{' '}
-                                                    {meeting.waktu_selesai
-                                                        ? `- ${meeting.waktu_selesai.slice(0, 5)}`
-                                                        : ''}
+                                                {/* Berapa hari sudah terisi notulennya
+                                                    dari seluruh hari pelaksanaan. */}
+                                                <TableCell className="py-3 text-center">
+                                                    <div className="inline-flex items-center gap-1.5 rounded-full bg-muted/50 px-2 py-0.5 text-xs font-medium">
+                                                        <ClipboardList className="h-3 w-3 text-muted-foreground" />
+                                                        <span className="font-mono">
+                                                            {meeting.hari_terisi}/{meeting.jumlah_hari}
+                                                        </span>
+                                                    </div>
+                                                    <p className="mt-0.5 text-[10px] text-muted-foreground">
+                                                        hari terisi
+                                                    </p>
                                                 </TableCell>
                                                 <TableCell className="py-3 text-xs text-muted-foreground">
                                                     {meeting.lokasi || '-'}
