@@ -44,19 +44,42 @@ class DailyBriefing extends Model
         return $this->belongsTo(OutagePlan::class);
     }
 
+    /** Apakah hari ini sudah punya isi — daftar hadir, temuan, atau notulen? */
+    public function adaIsi(): bool
+    {
+        return $this->attendees()->exists()
+            || $this->findings()->exists()
+            || $this->issues()->exists()
+            || $this->kickoff()->exists();
+    }
+
     /**
-     * Seluruh hari dalam satu rangkaian (kepala + lanjutan), terurut hari.
+     * Seluruh hari dalam satu rangkaian, terurut hari.
      *
-     * Nomor hari yang jadi acuan utama, bukan tanggal: rapat yang dilewat tetap
-     * memegang nomornya sendiri, jadi urutannya tidak bergeser. Rapat lama yang
-     * dibuat manual belum bernomor, dan untuk itu tanggal yang dipakai.
+     * Rangkaian yang terbentuk otomatis dikenali dari rencana outage-nya, bukan
+     * dari `parent_id`. Kolom itu bersifat nullOnDelete, jadi begitu hari
+     * pertama terhapus seluruh hari sisanya kehilangan induk dan — bila
+     * dijadikan penanda rangkaian — tiap hari akan berdiri sendiri, membuat satu
+     * mesin tampil berulang di daftar.
+     *
+     * Rapat lama yang dibuat manual belum terikat rencana, jadi untuk itu
+     * `parent_id` tetap dipakai.
+     *
+     * Nomor hari jadi acuan urutan: rapat yang dilewat tetap memegang nomornya,
+     * sehingga urutannya tidak bergeser.
      */
     public function seriesDays()
     {
-        $head = $this->seriesHeadId();
+        $query = static::query();
 
-        return static::query()
-            ->where(fn ($q) => $q->where('id', $head)->orWhere('parent_id', $head))
+        if (filled($this->outage_plan_id)) {
+            $query->where('outage_plan_id', $this->outage_plan_id);
+        } else {
+            $head = $this->seriesHeadId();
+            $query->where(fn ($q) => $q->where('id', $head)->orWhere('parent_id', $head));
+        }
+
+        return $query
             ->orderByRaw('hari_ke IS NULL')
             ->orderBy('hari_ke')
             ->orderBy('tanggal')

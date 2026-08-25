@@ -399,6 +399,149 @@ class RapatHarianOtomatisTest extends TestCase
             ->assertInertia(fn ($page) => $page->has('briefings.data', 1));
     }
 
+    /**
+     * Satu mesin tetap satu baris walau hari pertamanya pernah terhapus.
+     *
+     * Kolom `parent_id` bersifat nullOnDelete: begitu hari pertama dibuang,
+     * seluruh hari sisanya kehilangan induk dan — bila rangkaian dikenali dari
+     * parent_id — tiap hari berubah menjadi baris tersendiri, sehingga satu
+     * mesin tampil berpuluh kali.
+     */
+    public function test_menghapus_hari_pertama_tidak_menggandakan_baris_mesin(): void
+    {
+        $plan = $this->rencanaBerjalan();
+        RapatHarianOtomatis::sinkronkan($plan);
+        $this->admin();
+
+        DailyBriefing::where('outage_plan_id', $plan->id)->where('hari_ke', 1)->delete();
+
+        $this->get('/daily-briefings')
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page->has('briefings.data', 1));
+    }
+
+    /** Hari yatim disambungkan lagi ke hari pertama saat disinkronkan. */
+    public function test_hari_yatim_disambungkan_kembali_ke_hari_pertama(): void
+    {
+        $plan = $this->rencanaBerjalan();
+        RapatHarianOtomatis::sinkronkan($plan);
+
+        // Meniru akibat hari pertama terhapus: seluruh induknya dikosongkan.
+        DailyBriefing::where('outage_plan_id', $plan->id)->update(['parent_id' => null]);
+
+        RapatHarianOtomatis::sinkronkan($plan->fresh());
+
+        $hari1 = DailyBriefing::where('outage_plan_id', $plan->id)->where('hari_ke', 1)->firstOrFail();
+
+        $this->assertSame(
+            4,
+            DailyBriefing::where('outage_plan_id', $plan->id)->where('parent_id', $hari1->id)->count(),
+        );
+        $this->assertSame(5, $hari1->seriesDays()->count());
+    }
+
+    /** Menghapus dari daftar membuang seluruh hari mesin itu, bukan satu hari. */
+    public function test_menghapus_dari_daftar_membuang_seluruh_rangkaian(): void
+    {
+        $plan = $this->rencanaBerjalan();
+        RapatHarianOtomatis::sinkronkan($plan);
+        $this->admin();
+
+        $hari1 = DailyBriefing::where('outage_plan_id', $plan->id)->where('hari_ke', 1)->firstOrFail();
+
+        $this->delete("/daily-briefings/{$hari1->id}")->assertRedirect();
+
+        $this->assertSame(0, DailyBriefing::where('outage_plan_id', $plan->id)->count());
+    }
+
+    /**
+     * Rapat manual lama untuk mesin yang sama tidak boleh tampil sebagai baris
+     * kedua — mesin yang sedang berjalan cukup sekali di daftar.
+     *
+     * Meniru keadaan di produksi: "Rapat Harian - <mesin>" dibuat manual
+     * sebelum rapat dibentuk otomatis, dan sudah berisi daftar hadir.
+     */
+    public function test_rapat_manual_lama_digabung_ke_rangkaian_mesinnya(): void
+    {
+        $plan = $this->rencanaBerjalan();
+
+        $manual = DailyBriefing::create([
+            'judul' => 'Rapat Harian - '.$plan->mesin_pembangkit,
+            'tanggal' => '2026-07-07',
+            'status' => 'active',
+        ]);
+        $manual->attendees()->create(['nama' => 'Budi', 'signed_at' => now()]);
+
+        $this->admin();
+        $this->get('/daily-briefings')
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page->has('briefings.data', 1));
+
+        $segar = $manual->fresh();
+        $this->assertSame($plan->id, $segar->outage_plan_id);
+        // 7 Juli adalah hari ke-3 dihitung dari Real Start 5 Juli.
+        $this->assertSame(3, $segar->hari_ke);
+        $this->assertSame(1, $segar->attendees()->count());
+        $this->assertSame(5, DailyBriefing::where('outage_plan_id', $plan->id)->count());
+    }
+
+    /** Isinya ikut terbawa: hari itu langsung terhitung sudah terisi. */
+    public function test_isi_rapat_manual_tetap_utuh_setelah_digabung(): void
+    {
+        $plan = $this->rencanaBerjalan();
+
+        $manual = DailyBriefing::create([
+            'judul' => 'Rapat Harian - '.$plan->mesin_pembangkit,
+            'tanggal' => '2026-07-06',
+            'status' => 'active',
+        ]);
+        $manual->attendees()->create(['nama' => 'Siti', 'signed_at' => now()]);
+
+        $this->admin();
+
+        $this->get('/daily-briefings')
+            ->assertInertia(fn ($page) => $page
+                ->where('briefings.data.0.hari_terisi', 1)
+                ->where('briefings.data.0.jumlah_hari', 5)
+                ->where('briefings.data.0.attendees_count', 1)
+            );
+    }
+
+    /** Rapat manual di luar rentang pelaksanaan tetap berdiri sendiri. */
+    public function test_rapat_manual_di_luar_rentang_tidak_digabung(): void
+    {
+        $plan = $this->rencanaBerjalan();
+
+        $manual = DailyBriefing::create([
+            'judul' => 'Rapat Harian - '.$plan->mesin_pembangkit,
+            'tanggal' => '2025-01-01',
+            'status' => 'completed',
+        ]);
+
+        $this->admin();
+        $this->get('/daily-briefings?tahun=semua')
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page->has('briefings.data', 2));
+
+        $this->assertNull($manual->fresh()->outage_plan_id);
+    }
+
+    /** Rapat manual milik mesin lain tidak ikut tertarik. */
+    public function test_rapat_manual_mesin_lain_tidak_ikut_digabung(): void
+    {
+        $plan = $this->rencanaBerjalan();
+
+        $manual = DailyBriefing::create([
+            'judul' => 'Rapat Harian - PLTD RAHA #99 (CUMMINS)',
+            'tanggal' => '2026-07-07',
+            'status' => 'active',
+        ]);
+
+        RapatHarianOtomatis::sinkronkan($plan);
+
+        $this->assertNull($manual->fresh()->outage_plan_id);
+    }
+
     /** Rapat lama yang dulu dibuat manual tidak ikut terganggu. */
     public function test_rapat_lama_tanpa_rencana_tetap_bisa_dibuka(): void
     {

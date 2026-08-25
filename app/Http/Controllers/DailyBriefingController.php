@@ -41,7 +41,20 @@ class DailyBriefingController extends Controller
         // Satu baris per mesin, bukan per hari. Seluruh hari pelaksanaan sudah
         // terbentuk sendiri, jadi menampilkannya satu-satu hanya membuat satu
         // mesin terulang berpuluh kali; harinya dibuka lewat tombol Detail.
-        $query = DailyBriefing::query()->whereNull('parent_id');
+        //
+        // Rangkaian otomatis diwakili hari paling awal dari rencananya, bukan
+        // baris ber-parent_id kosong: kolom itu ikut dikosongkan saat hari
+        // pertama dihapus, dan mesin yang sama akan tampil berulang kali.
+        $query = DailyBriefing::query()->where(function ($q) {
+            $q->where(function ($otomatis) {
+                $otomatis->whereNotNull('outage_plan_id')
+                    ->whereRaw('daily_briefings.hari_ke = (select min(h.hari_ke) from daily_briefings h'
+                        .' where h.outage_plan_id = daily_briefings.outage_plan_id)');
+            })->orWhere(function ($manual) {
+                // Rapat lama yang belum terikat rencana mana pun.
+                $manual->whereNull('outage_plan_id')->whereNull('parent_id');
+            });
+        });
 
         if ($request->filled('search')) {
             $search = $request->input('search');
@@ -255,11 +268,19 @@ class DailyBriefingController extends Controller
         return redirect()->back()->with('success', 'Status meeting ditandai selesai.');
     }
 
+    /**
+     * Membuang satu mesin dari daftar, artinya seluruh hari rapatnya.
+     *
+     * Menghapus hari pertamanya saja akan menyisakan hari-hari lain tanpa induk
+     * — mesin yang sama justru tampil berkali-kali, bukan hilang.
+     */
     public function destroy(DailyBriefing $dailyBriefing)
     {
-        $dailyBriefing->delete();
+        $jumlah = $dailyBriefing->seriesDays()->count();
+        $dailyBriefing->seriesDays()->delete();
 
-        return redirect()->route('daily-briefings.index')->with('success', 'Meeting dihapus.');
+        return redirect()->route('daily-briefings.index')
+            ->with('success', "Rapat dihapus beserta {$jumlah} hari rapatnya.");
     }
 
     public function storeIssue(Request $request, DailyBriefing $dailyBriefing)
