@@ -16,6 +16,7 @@ use App\Http\Controllers\Master\UnitController as MasterUnitController;
 use App\Http\Controllers\Master\UserController as MasterUserController;
 use App\Http\Controllers\MasterTtdController;
 use App\Http\Controllers\OutagePlanController;
+use App\Http\Controllers\SummaryController;
 use App\Http\Controllers\WelcomeController;
 use App\Http\Middleware\EnsureAdmin;
 use App\Http\Middleware\EnsureSuperAdmin;
@@ -37,9 +38,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('team-outage', function () {
         return inertia('team-outage');
     })->name('team-outage');
-    Route::get('summary', function () {
-        return inertia('summary/index');
-    })->name('summary');
+    // Laporan MONEV Pemeliharaan Periodik (HARDIK), diunduh sebagai PPTX lanskap.
+    Route::get('summary', [SummaryController::class, 'index'])->name('summary');
+    Route::get('summary/export-pptx', [SummaryController::class, 'exportPptx'])->name('summary.export-pptx');
 
     // Menu Daily Meeting dan Rapat Outage (tidak boleh diakses pengelola)
     Route::middleware(['can:viewMeetings'])->group(function () {
@@ -80,6 +81,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
         // Formulirnya berdiri sendiri, bukan dialog, supaya daftar rapat tetap ringkas.
         Route::get('daily-meetings/rencana/{outage_plan}/revisi', [DailyMeetingController::class, 'formRevisiRencana'])->name('daily-meetings.rencana.form');
         Route::post('daily-meetings/rencana/{outage_plan}/revisi', [DailyMeetingController::class, 'storeRevisiRencana'])->name('daily-meetings.rencana.revisi');
+        // Membatalkan revisi terakhir sekaligus memulihkan jadwal versi sebelumnya.
+        Route::delete('daily-meetings/rencana/{outage_plan}/revisi', [DailyMeetingController::class, 'destroyRevisiRencana'])->name('daily-meetings.rencana.revisi.destroy');
         Route::get('daily-meetings/{dailyMeeting}/qr', [DailyMeetingController::class, 'qrDisplay'])->name('daily-meetings.qr');
         Route::post('daily-meetings/{dailyMeeting}/complete', [DailyMeetingController::class, 'complete'])->name('daily-meetings.complete');
         Route::post('daily-meetings/{dailyMeeting}/realisasi', [DailyMeetingController::class, 'setRealisasi'])->name('daily-meetings.realisasi');

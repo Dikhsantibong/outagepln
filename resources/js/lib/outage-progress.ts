@@ -215,13 +215,32 @@ export type ProgressStatus = 'Leading' | 'On Progres' | 'Lagging' | '-';
  * Leading bila aktual melampaui rencana, On Progres bila keduanya sama persis,
  * Lagging bila aktual tertinggal. Hari yang belum diisi sama sekali tidak
  * berstatus apa pun.
+ *
+ * Hari yang rencananya sudah diisi tapi realisasinya belum dilaporkan sama
+ * sekali tidak dihitung tertinggal. Realisasi yang belum masuk bukan berarti
+ * pekerjaannya terlambat — laporannya saja yang belum ditulis — dan bila
+ * dianggap 0 seluruh hari yang menunggu laporan akan terbaca Lagging lalu
+ * membengkakkan akumulasinya.
+ *
+ * Berbeda dengan aktual yang memang diisi 0: itu laporan bahwa pekerjaannya
+ * belum bergerak, jadi tetap dibandingkan seperti biasa.
+ *
+ * Aturannya sama persis dengan [OutagePlanProgress::getStatusAttribute()] di
+ * server, sehingga status di form dan di halaman detail tidak pernah berbeda.
  */
 export function computeStatus(
-    plan: number | string,
-    actual: number | string,
+    plan: number | string | null,
+    actual: number | string | null,
 ): ProgressStatus {
-    if (plan === '' && actual === '') {
+    const planKosong = plan === '' || plan === null || plan === undefined;
+    const actualKosong = actual === '' || actual === null || actual === undefined;
+
+    if (planKosong && actualKosong) {
         return '-';
+    }
+
+    if (actualKosong) {
+        return 'On Progres';
     }
 
     const planNum = Number(plan) || 0;
@@ -258,17 +277,29 @@ export type SebaranStatus = {
     laggingPersen: number;
 };
 
+/** Hari yang ikut dinilai unggul atau tertinggal. */
+export type BarisSebaran = {
+    status: ProgressStatus;
+    /** null berarti realisasinya belum dilaporkan. */
+    actual_progress: number | null;
+};
+
 /**
  * Berapa besar porsi hari yang unggul dan yang tertinggal.
  *
  * Dinyatakan dalam persen, bukan jumlah hari: outage 10 hari dan outage 40 hari
  * tidak sebanding kalau dibaca sebagai "5 hari lagging", tapi langsung
- * sebanding begitu dibaca sebagai "50%" lawan "12,5%". Hari yang belum diisi
- * tidak ikut dihitung supaya porsinya tidak mengecil hanya karena laporannya
- * belum lengkap.
+ * sebanding begitu dibaca sebagai "50%" lawan "12,5%".
+ *
+ * Penyebutnya hanya hari yang realisasinya sudah dilaporkan. Hari yang
+ * rencananya sudah diisi tapi realisasinya belum masuk tidak bisa dinilai
+ * unggul maupun tertinggal, dan ikut menghitungnya hanya akan mengecilkan
+ * kedua porsi itu semata-mata karena laporannya belum lengkap.
  */
-export function hitungSebaranStatus(statuses: ProgressStatus[]): SebaranStatus {
-    const terisi = statuses.filter((s) => s !== '-');
+export function hitungSebaranStatus(rows: BarisSebaran[]): SebaranStatus {
+    const terisi = rows
+        .filter((r) => r.actual_progress !== null && r.status !== '-')
+        .map((r) => r.status);
     const leading = terisi.filter((s) => s === 'Leading').length;
     const lagging = terisi.filter((s) => s === 'Lagging').length;
     const porsi = (n: number) =>

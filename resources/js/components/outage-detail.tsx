@@ -184,11 +184,9 @@ export function OutageSCurve({
     );
 
     // Porsi hari unggul dan tertinggal — keduanya ditampilkan berdampingan,
-    // karena satu outage biasanya mengalami dua-duanya.
-    const sebaran = useMemo(
-        () => hitungSebaranStatus(rows.map((r) => r.status)),
-        [rows],
-    );
+    // karena satu outage biasanya mengalami dua-duanya. Hari yang realisasinya
+    // belum dilaporkan tidak ikut jadi penyebut.
+    const sebaran = useMemo(() => hitungSebaranStatus(rows), [rows]);
 
     return (
         <>
@@ -226,7 +224,7 @@ export function OutageSCurve({
                                 status === 'Leading'
                                     ? sebaran.leadingHari
                                     : sebaran.laggingHari
-                            } dari ${sebaran.hariTerisi} hari yang sudah diisi`}
+                            } dari ${sebaran.hariTerisi} hari yang realisasinya sudah dilaporkan`}
                         >
                             <span
                                 className="h-2 w-2 rounded-full"
@@ -243,7 +241,7 @@ export function OutageSCurve({
                     </span>
 
                     <span className="text-[11px] text-muted-foreground">
-                        dari {sebaran.hariTerisi} hari terisi
+                        dari {sebaran.hariTerisi} hari berealisasi
                     </span>
                 </div>
             </div>

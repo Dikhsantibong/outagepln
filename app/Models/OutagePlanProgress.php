@@ -46,6 +46,15 @@ class OutagePlanProgress extends Model
     /**
      * Leading bila aktual melampaui rencana, On Progres bila persis sama,
      * Lagging bila tertinggal. Hari yang belum diisi tidak berstatus apa pun.
+     *
+     * Hari yang rencananya sudah diisi tapi realisasinya belum dilaporkan sama
+     * sekali tidak dihitung tertinggal. Realisasi yang belum masuk bukan berarti
+     * pekerjaannya terlambat — laporannya saja yang belum ditulis — dan bila
+     * dianggap 0 seluruh hari yang menunggu laporan akan terbaca Lagging lalu
+     * membengkakkan akumulasinya.
+     *
+     * Berbeda dengan aktual yang memang diisi 0: itu laporan bahwa pekerjaannya
+     * belum bergerak, jadi tetap dibandingkan seperti biasa.
      */
     public function getStatusAttribute(): string
     {
@@ -53,8 +62,12 @@ class OutagePlanProgress extends Model
             return '-';
         }
 
+        if ($this->actual_progress === null) {
+            return 'On Progres';
+        }
+
         $plan = (float) ($this->plan_progress ?? 0);
-        $actual = (float) ($this->actual_progress ?? 0);
+        $actual = (float) $this->actual_progress;
 
         if ($actual === $plan) {
             return 'On Progres';

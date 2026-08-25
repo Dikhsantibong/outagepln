@@ -542,6 +542,106 @@ class RapatHarianOtomatisTest extends TestCase
         $this->assertNull($manual->fresh()->outage_plan_id);
     }
 
+    /**
+     * Daftar hadir tiap hari selalu dimulai kosong.
+     *
+     * Berbeda dengan notulen rapat outage yang sengaja dibawa ke rapat
+     * berikutnya, kehadiran adalah catatan siapa yang benar-benar datang pada
+     * hari itu. Menyalinnya akan membuat orang tercatat hadir di hari yang tidak
+     * dihadirinya.
+     */
+    public function test_hari_baru_selalu_dimulai_tanpa_daftar_hadir(): void
+    {
+        $plan = $this->rencanaBerjalan();
+        RapatHarianOtomatis::sinkronkan($plan);
+
+        $hari1 = DailyBriefing::where('outage_plan_id', $plan->id)->where('hari_ke', 1)->firstOrFail();
+        $hari1->attendees()->create(['nama' => 'Budi', 'signed_at' => now()]);
+
+        // Durasi bertambah — hari 6 dan 7 baru dibuat setelah hari 1 terisi.
+        $plan->update(['durasi' => 7]);
+        RapatHarianOtomatis::sinkronkan($plan->fresh());
+
+        foreach ([2, 3, 4, 5, 6, 7] as $hariKe) {
+            $hari = DailyBriefing::where('outage_plan_id', $plan->id)
+                ->where('hari_ke', $hariKe)->firstOrFail();
+
+            $this->assertSame(0, $hari->attendees()->count(), "hari {$hariKe} tidak kosong");
+        }
+
+        $this->assertSame(1, $hari1->attendees()->count());
+    }
+
+    /** Absen di satu hari tidak muncul di hari lain. */
+    public function test_absensi_satu_hari_tidak_bocor_ke_hari_lain(): void
+    {
+        $plan = $this->rencanaBerjalan();
+        RapatHarianOtomatis::sinkronkan($plan);
+        $this->admin();
+
+        $hari = fn (int $n) => DailyBriefing::where('outage_plan_id', $plan->id)
+            ->where('hari_ke', $n)->firstOrFail();
+
+        $hari1 = $hari(1);
+        $hari5 = $hari(5);
+
+        $this->post("/daily-briefings/attend/{$hari1->token}", [
+            'nama' => 'Budi',
+        ])->assertRedirect();
+
+        $this->post("/daily-briefings/attend/{$hari5->token}", [
+            'nama' => 'Siti',
+        ])->assertRedirect();
+
+        $this->assertSame(['Budi'], $hari1->attendees()->pluck('nama')->all());
+        $this->assertSame(['Siti'], $hari5->attendees()->pluck('nama')->all());
+        $this->assertSame(0, $hari(3)->attendees()->count());
+
+        // Halaman hari pertama hanya menampilkan pesertanya sendiri.
+        $this->get("/daily-briefings/{$hari1->id}")
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->has('attendees', 1)
+                ->where('attendees.0.nama', 'Budi')
+            );
+    }
+
+    /** Tiap hari punya tautan absensi sendiri, jadi QR-nya tidak tertukar. */
+    public function test_tiap_hari_punya_tautan_absensi_sendiri(): void
+    {
+        $plan = $this->rencanaBerjalan();
+        RapatHarianOtomatis::sinkronkan($plan);
+
+        $token = DailyBriefing::where('outage_plan_id', $plan->id)->pluck('token');
+
+        $this->assertCount(5, $token);
+        $this->assertCount(5, array_unique($token->all()));
+        $this->assertNotContains(null, $token->all());
+    }
+
+    /** Rapat manual yang digabung membawa pesertanya sendiri, bukan ke hari lain. */
+    public function test_peserta_rapat_manual_hanya_ikut_ke_harinya_sendiri(): void
+    {
+        $plan = $this->rencanaBerjalan();
+
+        $manual = DailyBriefing::create([
+            'judul' => 'Rapat Harian - '.$plan->mesin_pembangkit,
+            'tanggal' => '2026-07-07',
+            'status' => 'active',
+        ]);
+        $manual->attendees()->create(['nama' => 'Budi', 'signed_at' => now()]);
+
+        RapatHarianOtomatis::sinkronkan($plan);
+
+        $hari = DailyBriefing::where('outage_plan_id', $plan->id)->get()->keyBy('hari_ke');
+
+        $this->assertSame(1, $hari[3]->attendees()->count());
+
+        foreach ([1, 2, 4, 5] as $hariKe) {
+            $this->assertSame(0, $hari[$hariKe]->attendees()->count(), "hari {$hariKe} tidak kosong");
+        }
+    }
+
     /** Rapat lama yang dulu dibuat manual tidak ikut terganggu. */
     public function test_rapat_lama_tanpa_rencana_tetap_bisa_dibuka(): void
     {

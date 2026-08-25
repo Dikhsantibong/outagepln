@@ -246,6 +246,38 @@ class DailyMeetingController extends Controller
         return redirect()->back()->with('success', 'Meeting berhasil dibuat.');
     }
 
+    /**
+     * Batalkan revisi terakhir sebuah rencana.
+     *
+     * Yang dibuang selalu revisi paling akhir, sekalian mengembalikan jadwalnya
+     * ke versi sebelumnya — lihat [OutagePlan::batalkanRevisiTerakhir()].
+     * Membuang revisi di tengah riwayat akan meninggalkan penomoran berlubang
+     * dan jadwal yang tidak tercatat di versi mana pun.
+     *
+     * Hanya admin yang boleh; pengelola mengisi realisasi tapi tidak membuang
+     * catatan induk — sealasan dengan [User::canDeleteRecords()].
+     */
+    public function destroyRevisiRencana(Request $request, OutagePlan $outagePlan)
+    {
+        abort_unless($request->user()?->canDeleteRecords(), 403);
+        abort_unless(
+            OutagePlan::visibleTo($request->user())->whereKey($outagePlan->id)->exists(),
+            403,
+        );
+
+        $dibatalkan = $outagePlan->batalkanRevisiTerakhir();
+
+        if (! $dibatalkan) {
+            return redirect()->back()
+                ->with('error', 'Rencana ini belum pernah direvisi, jadi tidak ada yang bisa dibatalkan.');
+        }
+
+        return redirect()->back()->with(
+            'success',
+            "{$dibatalkan->label} dibatalkan — jadwal kembali ke versi sebelumnya dan jatah revisinya pulih.",
+        );
+    }
+
     public function show(DailyMeeting $dailyMeeting)
     {
         // Notulen rapat sebelumnya dibawa ke sini supaya permasalahan yang

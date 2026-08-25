@@ -289,6 +289,46 @@ class NotulenBerlanjutTest extends TestCase
         $this->assertTrue($this->rapat($plan, 'RAPAT P2')->bolehMewarisiNotulen());
     }
 
+    /**
+     * Yang berlanjut hanya notulennya — daftar hadir tidak ikut.
+     *
+     * Notulen memang dibawa supaya permasalahan tinggal diperbarui, tapi
+     * kehadiran adalah catatan siapa yang datang di rapat itu. Menyalinnya akan
+     * membuat orang tercatat hadir di rapat yang tidak dihadirinya.
+     */
+    public function test_daftar_hadir_tidak_ikut_berlanjut_ke_rapat_berikutnya(): void
+    {
+        $plan = $this->rencana();
+        $r2 = $this->rapat($plan, 'RAPAT R2');
+        $this->isiNotulen($r2, 'Material belum datang');
+        $r2->attendees()->create(['nama' => 'Budi', 'signed_at' => now()]);
+        $this->admin();
+
+        $r3 = $this->rapat($plan, 'RAPAT R3');
+        $this->get("/daily-meetings/{$r3->id}")->assertOk();
+
+        // Notulennya terbawa...
+        $this->assertSame(1, $r3->issues()->count());
+        // ...tapi daftar hadirnya tetap kosong.
+        $this->assertSame(0, $r3->attendees()->count());
+        $this->assertSame(1, $r2->attendees()->count());
+    }
+
+    /** Absen di rapat berikutnya tidak menyentuh daftar hadir rapat sebelumnya. */
+    public function test_absensi_tiap_rapat_berdiri_sendiri(): void
+    {
+        $plan = $this->rencana();
+        $r2 = $this->rapat($plan, 'RAPAT R2');
+        $r3 = $this->rapat($plan, 'RAPAT R3');
+        $this->admin();
+
+        $this->post("/attend/{$r2->token}", ['nama' => 'Budi'])->assertRedirect();
+        $this->post("/attend/{$r3->token}", ['nama' => 'Siti'])->assertRedirect();
+
+        $this->assertSame(['Budi'], $r2->attendees()->pluck('nama')->all());
+        $this->assertSame(['Siti'], $r3->attendees()->pluck('nama')->all());
+    }
+
     /** Dipanggil langsung, layanan mengembalikan rapat asalnya. */
     public function test_layanan_mengembalikan_rapat_asal_salinan(): void
     {

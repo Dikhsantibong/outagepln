@@ -1,5 +1,12 @@
-import { Head, Link, useForm } from '@inertiajs/react';
-import { ArrowLeft, ArrowRight, CalendarClock, History, Lock } from 'lucide-react';
+import { Head, Link, useForm, usePage } from '@inertiajs/react';
+import {
+    ArrowLeft,
+    ArrowRight,
+    CalendarClock,
+    History,
+    Lock,
+    Undo2,
+} from 'lucide-react';
 import {
     KOLOM_RAPAT,
     TabelRiwayatRevisi,
@@ -42,9 +49,42 @@ export default function RevisiRencana({
     maksRevisi: number;
     jumlahRevisi: number;
 }) {
+    const { auth } = usePage<any>().props;
+    // Pengelola mengisi realisasi tapi tidak membuang catatan induk; izinnya
+    // datang dari server, bukan ditebak halaman ini dari string role.
+    const bolehHapus = auth?.can?.delete ?? false;
+
     const revisi = plan.revisions ?? [];
     const sisa = Math.max(0, maksRevisi - jumlahRevisi);
     const terkunci = sisa === 0;
+
+    // RENC bukan revisi, jadi yang bisa dibatalkan hanya versi ber-urutan > 0.
+    const revisiTerakhir = revisi.filter((r) => r.urutan > 0).at(-1) ?? null;
+    const versiSebelumnya = revisiTerakhir
+        ? (revisi.filter((r) => r.urutan < revisiTerakhir.urutan).at(-1) ?? null)
+        : null;
+
+    const hapus = useForm({});
+
+    const batalkanRevisi = () => {
+        if (!revisiTerakhir) {
+            return;
+        }
+
+        const kembaliKe = versiSebelumnya?.label ?? 'versi sebelumnya';
+
+        if (
+            confirm(
+                `Batalkan ${revisiTerakhir.label}?\n\n` +
+                    `Rencana beserta jadwal rapat R2–P3 dikembalikan ke ${kembaliKe}, ` +
+                    'dan jatah revisinya pulih satu. Tindakan ini tidak dapat diurungkan.',
+            )
+        ) {
+            hapus.delete(`/daily-meetings/rencana/${plan.id}/revisi`, {
+                preserveScroll: true,
+            });
+        }
+    };
 
     const form = useForm({
         start_date: (plan.start_date ?? '').slice(0, 10),
@@ -324,9 +364,37 @@ export default function RevisiRencana({
                                     ? `— ${revisi.length} versi, terbaru yang berlaku`
                                     : '— belum pernah direvisi'}
                             </span>
+
+                            {/* Hanya revisi terakhir yang bisa dibatalkan; lihat
+                                keterangan di bawah tabel. */}
+                            {bolehHapus && revisiTerakhir && (
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    disabled={hapus.processing}
+                                    onClick={batalkanRevisi}
+                                    className="ml-auto h-8 gap-1.5 text-xs text-rose-600 hover:bg-rose-500/10 hover:text-rose-700 dark:text-rose-400"
+                                >
+                                    <Undo2 className="h-3.5 w-3.5" />
+                                    {hapus.processing
+                                        ? 'Membatalkan...'
+                                        : `Batalkan ${revisiTerakhir.label}`}
+                                </Button>
+                            )}
                         </div>
 
                         <TabelRiwayatRevisi revisions={revisi} />
+
+                        {bolehHapus && revisiTerakhir && (
+                            <p className="border-t bg-muted/25 px-4 py-2.5 text-[11px] text-muted-foreground">
+                                Membatalkan <span className="font-semibold">{revisiTerakhir.label}</span>{' '}
+                                mengembalikan rencana beserta jadwal rapatnya ke{' '}
+                                <span className="font-semibold">{versiSebelumnya?.label ?? 'versi sebelumnya'}</span>,
+                                dan jatah revisinya pulih satu. Versi yang lebih lama hanya bisa
+                                dibatalkan setelah versi di atasnya dibatalkan lebih dulu.
+                            </p>
+                        )}
                     </Card>
                 </div>
             </div>

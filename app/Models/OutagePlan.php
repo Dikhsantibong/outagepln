@@ -366,6 +366,64 @@ class OutagePlan extends Model
         ]);
     }
 
+    /**
+     * Batalkan revisi terakhir dan kembalikan rencana ke versi sebelumnya.
+     *
+     * Menghapus baris riwayatnya saja tidak cukup: tanggal yang berlaku pada
+     * rencana berasal dari revisi terakhir, jadi bila barisnya dibuang tanpa
+     * mengembalikan tanggalnya, rencana akan memakai jadwal yang tidak tercatat
+     * di versi mana pun — dan jatah revisinya ikut kembali seolah pergeseran itu
+     * tidak pernah terjadi. Karena itu yang dibatalkan selalu revisi paling
+     * akhir, sekalian memulihkan jadwalnya.
+     *
+     * RENC (urutan 0) bukan revisi melainkan rencana awal, jadi tidak ikut bisa
+     * dibatalkan — membuangnya akan menghapus titik awal riwayatnya.
+     *
+     * Memperbarui kolom rapat_* di sini otomatis menyinkronkan DailyMeeting
+     * lewat hook `updated`, sehingga tanggal rapatnya ikut kembali.
+     *
+     * @return OutagePlanRevision|null revisi yang dibatalkan, null bila tidak ada
+     */
+    public function batalkanRevisiTerakhir(): ?OutagePlanRevision
+    {
+        // reorder() wajib: relasi revisions() sudah mengurutkan urutan menaik,
+        // dan menambah orderByDesc hanya menjadikannya kunci kedua — first()
+        // akan mengambil revisi paling awal, bukan yang paling akhir.
+        $terakhir = $this->revisions()
+            ->where('urutan', '>', 0)
+            ->reorder('urutan', 'desc')
+            ->first();
+
+        if (! $terakhir) {
+            return null;
+        }
+
+        $sebelumnya = $this->revisions()
+            ->where('urutan', '<', $terakhir->urutan)
+            ->reorder('urutan', 'desc')
+            ->first();
+
+        if ($sebelumnya) {
+            $jadwal = collect(self::KOLOM_JADWAL)
+                ->mapWithKeys(fn (string $kolom) => [
+                    $kolom => $sebelumnya->{$kolom}?->toDateString(),
+                ])
+                ->all();
+
+            $this->update([
+                ...$jadwal,
+                'durasi' => self::hitungDurasi(
+                    (string) $jadwal['start_date'],
+                    $jadwal['selesai'],
+                ),
+            ]);
+        }
+
+        $terakhir->delete();
+
+        return $terakhir;
+    }
+
     /** Lama pekerjaan dalam hari, menghitung hari start dan finish. */
     private static function hitungDurasi(string $startDate, ?string $selesai): ?int
     {
