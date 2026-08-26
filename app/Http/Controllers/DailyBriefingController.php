@@ -181,7 +181,12 @@ class DailyBriefingController extends Controller
 
     public function show(DailyBriefing $dailyBriefing)
     {
-        $dailyBriefing->load(['attendees', 'issues', 'findings', 'kickoff', 'kickoffPhotos']);
+        $seriesIds = $dailyBriefing->seriesDays()->pluck('id');
+
+        $dailyBriefing->load(['attendees', 'kickoff', 'kickoffPhotos']);
+
+        $issues = DailyBriefingIssue::whereIn('daily_briefing_id', $seriesIds)->orderBy('id')->get();
+        $findings = DailyBriefingFinding::whereIn('daily_briefing_id', $seriesIds)->orderBy('tanggal')->orderBy('id')->get();
 
         // Pekerjaan yang jalan bisa berubah durasinya setelah rapat dibuka;
         // disinkronkan lagi di sini supaya hari yang baru bertambah langsung
@@ -216,8 +221,8 @@ class DailyBriefingController extends Controller
         return Inertia::render('daily-briefings/show', [
             'briefing' => $dailyBriefing,
             'attendees' => $dailyBriefing->attendees,
-            'issues' => $dailyBriefing->issues,
-            'findings' => $dailyBriefing->findings,
+            'issues' => $issues,
+            'findings' => $findings,
             'kickoff' => $dailyBriefing->kickoff,
             'kickoffPhotos' => $dailyBriefing->kickoffPhotos,
             'findingInfo' => $this->findingInfo($dailyBriefing),
@@ -300,6 +305,9 @@ class DailyBriefingController extends Controller
 
     public function updateIssue(Request $request, DailyBriefing $dailyBriefing, DailyBriefingIssue $issue)
     {
+        $seriesIds = $dailyBriefing->seriesDays()->pluck('id');
+        abort_unless($seriesIds->contains($issue->daily_briefing_id), 404);
+
         $validated = $request->validate([
             'permasalahan' => 'nullable|string',
             'tindak_lanjut' => 'nullable|string',
@@ -315,6 +323,9 @@ class DailyBriefingController extends Controller
 
     public function destroyIssue(DailyBriefing $dailyBriefing, DailyBriefingIssue $issue)
     {
+        $seriesIds = $dailyBriefing->seriesDays()->pluck('id');
+        abort_unless($seriesIds->contains($issue->daily_briefing_id), 404);
+
         $issue->delete();
 
         return redirect()->back()->with('success', 'Permasalahan dihapus.');
@@ -394,10 +405,14 @@ class DailyBriefingController extends Controller
 
     public function exportPdf(DailyBriefing $dailyBriefing)
     {
-        $dailyBriefing->load(['attendees', 'issues']);
+        $seriesIds = $dailyBriefing->seriesDays()->pluck('id');
+        $issues = DailyBriefingIssue::whereIn('daily_briefing_id', $seriesIds)->orderBy('id')->get();
+        
+        $dailyBriefing->load(['attendees']);
 
         $pdf = Pdf::loadView('exports.daily-briefing', [
             'briefing' => $dailyBriefing,
+            'issues' => $issues,
         ]);
 
         // A4 Portrait or Landscape? The image looks like landscape given the width.
@@ -408,7 +423,13 @@ class DailyBriefingController extends Controller
 
     public function exportExcel(DailyBriefing $dailyBriefing)
     {
-        $dailyBriefing->load(['attendees', 'issues']);
+        $seriesIds = $dailyBriefing->seriesDays()->pluck('id');
+        $issues = DailyBriefingIssue::whereIn('daily_briefing_id', $seriesIds)->orderBy('id')->get();
+        
+        $dailyBriefing->load(['attendees']);
+        
+        // Pass issues dynamically or set it on the model relation (if the export class uses it)
+        $dailyBriefing->setRelation('issues', $issues);
 
         return Excel::download(
             new DailyBriefingExport($dailyBriefing),
@@ -458,7 +479,8 @@ class DailyBriefingController extends Controller
 
     public function updateFinding(Request $request, DailyBriefing $dailyBriefing, DailyBriefingFinding $finding)
     {
-        abort_unless($finding->daily_briefing_id === $dailyBriefing->id, 404);
+        $seriesIds = $dailyBriefing->seriesDays()->pluck('id');
+        abort_unless($seriesIds->contains($finding->daily_briefing_id), 404);
 
         $validated = $request->validate([
             'tanggal' => 'nullable|date',
@@ -486,7 +508,9 @@ class DailyBriefingController extends Controller
 
     public function destroyFinding(DailyBriefing $dailyBriefing, DailyBriefingFinding $finding)
     {
-        abort_unless($finding->daily_briefing_id === $dailyBriefing->id, 404);
+        $seriesIds = $dailyBriefing->seriesDays()->pluck('id');
+        abort_unless($seriesIds->contains($finding->daily_briefing_id), 404);
+
         $finding->delete();
 
         return redirect()->back()->with('success', 'Temuan berhasil dihapus.');
@@ -524,12 +548,14 @@ class DailyBriefingController extends Controller
 
     public function exportFindingsPdf(DailyBriefing $dailyBriefing)
     {
-        $dailyBriefing->load(['findings']);
+        $seriesIds = $dailyBriefing->seriesDays()->pluck('id');
+        $findings = DailyBriefingFinding::whereIn('daily_briefing_id', $seriesIds)->orderBy('tanggal')->orderBy('id')->get();
+        
         $logoPath = public_path('sidebar-logo.png');
 
         $pdf = Pdf::loadView('exports.briefing-findings', [
             'meeting' => $dailyBriefing,
-            'findings' => $dailyBriefing->findings,
+            'findings' => $findings,
             'info' => $this->findingInfo($dailyBriefing),
             'logo' => is_file($logoPath)
                 ? 'data:image/png;base64,'.base64_encode(file_get_contents($logoPath))
@@ -543,7 +569,9 @@ class DailyBriefingController extends Controller
 
     public function exportFindingsExcel(DailyBriefing $dailyBriefing)
     {
-        $dailyBriefing->load(['findings']);
+        $seriesIds = $dailyBriefing->seriesDays()->pluck('id');
+        $findings = DailyBriefingFinding::whereIn('daily_briefing_id', $seriesIds)->orderBy('tanggal')->orderBy('id')->get();
+        
         $info = $this->findingInfo($dailyBriefing);
 
         $spreadsheet = new Spreadsheet;
@@ -598,7 +626,7 @@ class DailyBriefingController extends Controller
         $kanan = [
             ['UNIT', $info['unit']],
             ['JENIS INSPEKSI', $info['jenis_inspeksi']],
-            ['JUMLAH TEMUAN', count($dailyBriefing->findings).' item'],
+            ['JUMLAH TEMUAN', count($findings).' item'],
         ];
 
         foreach ($kiri as $i => [$label, $value]) {
@@ -629,7 +657,7 @@ class DailyBriefingController extends Controller
             ->setHorizontal($center)->setVertical(Alignment::VERTICAL_CENTER);
 
         $row = $headRow + 1;
-        foreach ($dailyBriefing->findings as $idx => $f) {
+        foreach ($findings as $idx => $f) {
             $sheet->getRowDimension($row)->setRowHeight(90);
             $sheet->setCellValue("A{$row}", $idx + 1);
             $sheet->setCellValue("B{$row}", $f->tanggal ? Carbon::parse($f->tanggal)->format('d-m-Y') : '');

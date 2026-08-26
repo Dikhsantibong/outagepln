@@ -44,12 +44,16 @@ class DailyMeeting extends Model
     }
 
     /**
-     * Rapat terdekat sebelum ini yang notulennya sudah terisi.
+     * Rapat terdekat sebelum ini yang bagian tertentunya sudah terisi.
      *
      * Ditelusuri mundur, bukan hanya satu langkah: rapat kerap dilewat, dan
      * bila R3 tidak sempat digelar maka P1 mewarisi langsung dari R2.
+     *
+     * Bagiannya disebut lewat nama relasi, karena daftar permasalahan dan
+     * formulir notulen bisa terisi di rapat yang berbeda — masing-masing
+     * mencari sumbernya sendiri.
      */
-    public function sumberWarisanNotulen(): ?self
+    public function sumberWarisan(string $relasi): ?self
     {
         $posisi = $this->posisiNotulen();
 
@@ -62,7 +66,7 @@ class DailyMeeting extends Model
         foreach (array_reverse($sebelumnya) as $tipe) {
             $rapat = static::where('outage_plan_id', $this->outage_plan_id)
                 ->where('tipe_rapat', $tipe)
-                ->has('issues')
+                ->has($relasi)
                 ->first();
 
             if ($rapat) {
@@ -71,6 +75,12 @@ class DailyMeeting extends Model
         }
 
         return null;
+    }
+
+    /** Sumber warisan daftar permasalahan. */
+    public function sumberWarisanNotulen(): ?self
+    {
+        return $this->sumberWarisan('issues');
     }
 
     protected static function booted(): void
