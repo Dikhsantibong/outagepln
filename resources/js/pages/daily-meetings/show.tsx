@@ -108,7 +108,7 @@ type FindingInfo = {
 export default function DailyMeetingShow({
     meeting,
     attendees: initialAttendees,
-    issues: initialIssues = [],
+    issues = [],
     findings = [],
     findingInfo,
     kickoff = null,
@@ -138,7 +138,6 @@ export default function DailyMeetingShow({
 
     const [activeTab, setActiveTab] = useState<'hadir' | 'kickoff' | 'issues' | 'dokumentasi'>('hadir');
     const [attendees, setAttendees] = useState<Attendee[]>(initialAttendees);
-    const [issues, setIssues] = useState<any[]>(initialIssues);
     const [findingDialogOpen, setFindingDialogOpen] = useState(false);
     const [editingFinding, setEditingFinding] = useState<Finding | null>(null);
     const [realisasiDialogOpen, setRealisasiDialogOpen] = useState(false);
