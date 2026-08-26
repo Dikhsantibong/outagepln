@@ -181,7 +181,9 @@ class DailyBriefingController extends Controller
 
     public function show(DailyBriefing $dailyBriefing)
     {
-        $seriesIds = $dailyBriefing->seriesDays()->pluck('id');
+        $allSeriesIds = $dailyBriefing->seriesDays()->pluck('id');
+        $currentIndex = $allSeriesIds->search($dailyBriefing->id);
+        $seriesIds = $allSeriesIds->slice(0, $currentIndex + 1)->values();
 
         $dailyBriefing->load(['attendees', 'kickoff', 'kickoffPhotos']);
 
@@ -405,7 +407,10 @@ class DailyBriefingController extends Controller
 
     public function exportPdf(DailyBriefing $dailyBriefing)
     {
-        $seriesIds = $dailyBriefing->seriesDays()->pluck('id');
+        $allSeriesIds = $dailyBriefing->seriesDays()->pluck('id');
+        $currentIndex = $allSeriesIds->search($dailyBriefing->id);
+        $seriesIds = $allSeriesIds->slice(0, $currentIndex + 1)->values();
+
         $issues = DailyBriefingIssue::whereIn('daily_briefing_id', $seriesIds)->orderBy('id')->get();
         
         $dailyBriefing->load(['attendees']);
@@ -423,7 +428,10 @@ class DailyBriefingController extends Controller
 
     public function exportExcel(DailyBriefing $dailyBriefing)
     {
-        $seriesIds = $dailyBriefing->seriesDays()->pluck('id');
+        $allSeriesIds = $dailyBriefing->seriesDays()->pluck('id');
+        $currentIndex = $allSeriesIds->search($dailyBriefing->id);
+        $seriesIds = $allSeriesIds->slice(0, $currentIndex + 1)->values();
+
         $issues = DailyBriefingIssue::whereIn('daily_briefing_id', $seriesIds)->orderBy('id')->get();
         
         $dailyBriefing->load(['attendees']);
@@ -548,7 +556,10 @@ class DailyBriefingController extends Controller
 
     public function exportFindingsPdf(DailyBriefing $dailyBriefing)
     {
-        $seriesIds = $dailyBriefing->seriesDays()->pluck('id');
+        $allSeriesIds = $dailyBriefing->seriesDays()->pluck('id');
+        $currentIndex = $allSeriesIds->search($dailyBriefing->id);
+        $seriesIds = $allSeriesIds->slice(0, $currentIndex + 1)->values();
+
         $findings = DailyBriefingFinding::whereIn('daily_briefing_id', $seriesIds)->orderBy('tanggal')->orderBy('id')->get();
         
         $logoPath = public_path('sidebar-logo.png');
@@ -569,7 +580,10 @@ class DailyBriefingController extends Controller
 
     public function exportFindingsExcel(DailyBriefing $dailyBriefing)
     {
-        $seriesIds = $dailyBriefing->seriesDays()->pluck('id');
+        $allSeriesIds = $dailyBriefing->seriesDays()->pluck('id');
+        $currentIndex = $allSeriesIds->search($dailyBriefing->id);
+        $seriesIds = $allSeriesIds->slice(0, $currentIndex + 1)->values();
+
         $findings = DailyBriefingFinding::whereIn('daily_briefing_id', $seriesIds)->orderBy('tanggal')->orderBy('id')->get();
         
         $info = $this->findingInfo($dailyBriefing);
