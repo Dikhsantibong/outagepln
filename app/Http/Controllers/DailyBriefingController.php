@@ -268,6 +268,43 @@ class DailyBriefingController extends Controller
         return redirect()->back()->with('success', 'Data header berhasil disimpan.');
     }
 
+    public function storeExtraDay(DailyBriefing $dailyBriefing)
+    {
+        $seriesDays = $dailyBriefing->seriesDays()->get();
+        $kepala = $seriesDays->first();
+        $lastDay = $seriesDays->last();
+
+        $nextHariKe = $lastDay->hari_ke ? $lastDay->hari_ke + 1 : $seriesDays->count() + 1;
+        $nextTanggal = $lastDay->tanggal ? Carbon::parse($lastDay->tanggal)->addDay()->toDateString() : today()->toDateString();
+
+        $newBriefing = DailyBriefing::create([
+            'outage_plan_id' => $lastDay->outage_plan_id,
+            'parent_id' => $kepala->id,
+            'hari_ke' => $nextHariKe,
+            'tanggal' => $nextTanggal,
+            'judul' => $lastDay->judul,
+            'lokasi' => $lastDay->lokasi,
+            'waktu_mulai' => $lastDay->waktu_mulai,
+            'waktu_selesai' => $lastDay->waktu_selesai,
+            'status' => 'active',
+            'unit' => $lastDay->unit,
+            'jenis_inspeksi' => $lastDay->jenis_inspeksi,
+            'rapat_framework' => $lastDay->rapat_framework,
+            'tgl_performance_test' => $lastDay->tgl_performance_test,
+            'jam_setelah_po_terai' => $lastDay->jam_setelah_po_terai,
+            'daya_mampu' => $lastDay->daya_mampu,
+            'nomor_dokumen' => $lastDay->nomor_dokumen,
+            'revisi' => $lastDay->revisi,
+            'tanggal_terbit' => $lastDay->tanggal_terbit,
+            'nama_mengetahui' => $lastDay->nama_mengetahui,
+            'jabatan_mengetahui' => $lastDay->jabatan_mengetahui,
+            'nama_disetujui' => $lastDay->nama_disetujui,
+            'jabatan_disetujui' => $lastDay->jabatan_disetujui,
+        ]);
+
+        return redirect()->route('daily-briefings.show', $newBriefing)->with('success', 'Hari rapat tambahan berhasil dibuat.');
+    }
+
     public function complete(DailyBriefing $dailyBriefing)
     {
         $dailyBriefing->update(['status' => 'completed']);

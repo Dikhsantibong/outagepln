@@ -51,6 +51,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::resource('daily-briefings', DailyBriefingController::class)
             ->except(['create', 'store'])
             ->parameters(['daily-briefings' => 'dailyBriefing']);
+        Route::post('daily-briefings/{dailyBriefing}/add-day', [DailyBriefingController::class, 'storeExtraDay'])->name('daily-briefings.add-day');
         Route::post('daily-briefings/{dailyBriefing}/complete', [DailyBriefingController::class, 'complete'])->name('daily-briefings.complete');
         Route::get('daily-briefings/{dailyBriefing}/qr', [DailyBriefingController::class, 'qrDisplay'])->name('daily-briefings.qr');
         Route::get('daily-briefings/{dailyBriefing}/attendees-json', [DailyBriefingController::class, 'attendeesJson'])->name('daily-briefings.attendees-json');

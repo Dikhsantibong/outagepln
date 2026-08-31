@@ -246,4 +246,4 @@ export default function MesinsIndex({ unit }: { unit: Unit }) {
     );
 }
 
-MesinsIndex.layout = (page: any) => <AppLayout children={page} breadcrumbs={[{ title: 'Data Master', url: '#' }, { title: 'Unit & Mesin', url: '/master/units' }, { title: 'Data Mesin' }]} />;
+MesinsIndex.layout = (page: any) => <AppLayout children={page} breadcrumbs={[{ title: 'Data Master', href: '#' }, { title: 'Unit & Mesin', href: '/master/units' }, { title: 'Data Mesin', href: '#' }]} />;

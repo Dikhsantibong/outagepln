@@ -121,6 +121,7 @@ export default function DailyBriefingsShow({
     const [editingIssue, setEditingIssue] = useState<any>(null);
     
     const [findingDialogOpen, setFindingDialogOpen] = useState(false);
+    const [addDayDialogOpen, setAddDayDialogOpen] = useState(false);
     const [editingFinding, setEditingFinding] = useState<any>(null);
     const briefingTanggal = briefing.tanggal ? new Date(briefing.tanggal).toISOString().split('T')[0] : '';
     const findingForm = useForm({
@@ -362,10 +363,20 @@ export default function DailyBriefingsShow({
                                 {d.status === 'completed' && <CheckCircle2 className="h-3 w-3" />}
                             </button>
                         ))}
+                        {!isTamu && (
+                            <Button 
+                                variant="outline" 
+                                size="sm" 
+                                className="h-[30px] text-xs gap-1 ml-2" 
+                                onClick={() => setAddDayDialogOpen(true)}
+                            >
+                                <Plus className="h-3.5 w-3.5" /> Tambah Hari
+                            </Button>
+                        )}
                     </div>
                     <p className="mt-2 px-1 text-[11px] text-muted-foreground">
                         Hari terbentuk otomatis dari Real Start sepanjang durasi
-                        pekerjaan. Rapat yang dilewat boleh dibiarkan kosong — notulen
+                        pekerjaan. Anda dapat menambahkan hari di luar rencana jika pekerjaan tertunda. Rapat yang dilewat boleh dibiarkan kosong — notulen
                         dan temuan tiap hari tersimpan sendiri dan tetap bisa dibuka
                         kembali untuk diperbarui.
                     </p>
@@ -1136,6 +1147,27 @@ export default function DailyBriefingsShow({
                 </DialogContent>
             </Dialog>
 
+            <Dialog open={addDayDialogOpen} onOpenChange={setAddDayDialogOpen}>
+                <DialogContent className="sm:max-w-[425px]">
+                    <DialogHeader>
+                        <DialogTitle>Konfirmasi Tambah Hari</DialogTitle>
+                        <DialogDescription>
+                            Apakah Anda yakin ingin menambahkan satu hari rapat lanjutan di luar rencana?
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter className="mt-4">
+                        <Button variant="outline" onClick={() => setAddDayDialogOpen(false)}>Batal</Button>
+                        <Button 
+                            onClick={() => {
+                                setAddDayDialogOpen(false);
+                                router.post(`/daily-briefings/${briefing.id}/add-day`);
+                            }}
+                        >
+                            Ya, Tambahkan
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </>
     );
 }

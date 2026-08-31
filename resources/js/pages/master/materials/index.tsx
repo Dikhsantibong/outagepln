@@ -241,4 +241,4 @@ export default function MaterialsIndex({ materials }: { materials: Material[] })
     );
 }
 
-MaterialsIndex.layout = (page: any) => <AppLayout children={page} breadcrumbs={[{ title: 'Data Master', url: '#' }, { title: 'Material' }]} />;
+MaterialsIndex.layout = (page: any) => <AppLayout children={page} breadcrumbs={[{ title: 'Data Master', href: '#' }, { title: 'Material', href: '#' }]} />;

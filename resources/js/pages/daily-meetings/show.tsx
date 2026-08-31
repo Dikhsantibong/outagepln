@@ -618,7 +618,7 @@ return;
                                                         <TableCell>{issue.target}</TableCell>
                                                         <TableCell>{issue.pic}</TableCell>
                                                         <TableCell>
-                                                            <Badge variant={issue.status === 'Close' ? 'success' : 'secondary'} className={issue.status === 'Close' ? 'bg-green-100 text-green-800 hover:bg-green-100' : ''}>
+                                                            <Badge variant={issue.status === 'Close' ? 'default' : 'secondary'} className={issue.status === 'Close' ? 'bg-green-100 text-green-800 hover:bg-green-100' : ''}>
                                                                 {issue.status}
                                                             </Badge>
                                                         </TableCell>
