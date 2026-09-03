@@ -367,12 +367,12 @@ export function OutageDeviasiChart({
                     <CartesianGrid strokeDasharray="3 3" horizontal={false} opacity={0.3} />
                     <XAxis type="number" hide />
                     <YAxis dataKey="name" type="category" axisLine={false} tickLine={false} fontSize={12} width={60} />
-                    <Tooltip cursor={{fill: 'transparent'}} formatter={(value: number) => [`${value} Hari`, 'Jumlah']} />
+                    <Tooltip cursor={{fill: 'transparent'}} formatter={(value: any) => [`${value} Hari`, 'Jumlah']} />
                     <Bar dataKey="value" radius={[0, 4, 4, 0]} barSize={32}>
                         {summaryData.map((entry, index) => (
                             <Cell key={`cell-${index}`} fill={entry.fill} />
                         ))}
-                        <LabelList dataKey="value" position="right" formatter={(c: number) => `${c} Hari`} fontSize={11} />
+                        <LabelList dataKey="value" position="right" formatter={(c: any) => `${c} Hari`} fontSize={11} />
                     </Bar>
                 </BarChart>
             </ResponsiveContainer>
