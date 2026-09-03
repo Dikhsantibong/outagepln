@@ -326,47 +326,9 @@ type DeviasiRow = {
     deviasi: number;
 };
 
-function TooltipDeviasi({
-    active,
-    payload,
-}: {
-    active?: boolean;
-    payload?: { payload: DeviasiRow }[];
-}) {
-    if (!active || !payload?.length) {
-        return null;
-    }
-
-    const row = payload[0].payload;
-    const status = row.deviasi > 0 ? 'Leading' : row.deviasi < 0 ? 'Lagging' : 'Tepat';
-
-    return (
-        <div className="rounded-lg border bg-background px-3 py-2 text-xs shadow-lg">
-            <p className="mb-1 font-mono font-semibold">{formatDMY(row.tanggal)}</p>
-            <p>
-                Selisih :{' '}
-                <span className="font-semibold">{formatSelisih(row.deviasi)}</span>
-            </p>
-            <p className="mt-1.5">
-                <span
-                    className={`inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-bold uppercase ${deviasiBadgeClass(
-                        status as 'Leading' | 'Lagging' | 'Tepat',
-                    )}`}
-                >
-                    {labelDeviasi(status as 'Leading' | 'Lagging' | 'Tepat')}
-                </span>
-            </p>
-        </div>
-    );
-}
-
 /**
- * Kurva leading/lagging: jarak realisasi terhadap rencana, hari demi hari.
- *
- * Kurva S menumpuk dua garis yang nyaris berimpit, sehingga selisih beberapa
- * persen sulit terlihat. Di sini yang digambar justru selisihnya sendiri
- * terhadap garis nol — di atas nol berarti unggul, di bawah nol tertinggal —
- * jadi besar dan arah penyimpangannya langsung terbaca.
+ * Ringkasan Leading & Lagging berupa 2 bar sederhana (berapa hari leading, berapa hari lagging)
+ * beserta selisih persentase saat ini.
  */
 export function OutageDeviasiChart({
     rows,
@@ -375,33 +337,22 @@ export function OutageDeviasiChart({
     rows: DailyProgress[];
     height?: number;
 }) {
-    const data: DeviasiRow[] = useMemo(
-        () =>
-            rows
-                // Hari yang salah satunya belum diisi tidak punya selisih yang
-                // berarti; memasukkannya sebagai 0 akan terbaca "tepat rencana".
-                .filter((r) => r.plan_progress !== null && r.actual_progress !== null)
-                .map((r) => ({
-                    label: formatDMY(r.tanggal).replace(
-                        /^(\d{2})-(\d{2})-\d{2}(\d{2})$/,
-                        '$1/$2',
-                    ),
-                    tanggal: r.tanggal,
-                    deviasi:
-                        Math.round(
-                            (Number(r.actual_progress) - Number(r.plan_progress)) * 100,
-                        ) / 100,
-                })),
+    const sebaran = useMemo(() => hitungSebaranStatus(rows), [rows]);
+
+    const lastTerisi = useMemo(
+        () => [...rows].reverse().find((r) => r.plan_progress !== null && r.actual_progress !== null),
         [rows],
     );
+    const plan = Number(lastTerisi?.plan_progress?? 0);
+    const actual = Number(lastTerisi?.actual_progress?? 0);
+    const deviasi = hitungDeviasi(plan, actual);
 
-    const batas = useMemo(() => {
-        const puncak = Math.max(10, ...data.map((d) => Math.abs(d.deviasi)));
+    const summaryData = useMemo(() => [
+        { name: 'Leading', value: sebaran.leadingHari, fill: WARNA_STATUS.Leading },
+        { name: 'Lagging', value: sebaran.laggingHari, fill: WARNA_STATUS.Lagging }
+    ], [sebaran]);
 
-        return Math.ceil(puncak / 5) * 5;
-    }, [data]);
-
-    if (data.length === 0) {
+    if (sebaran.hariTerisi === 0) {
         return (
             <div className="flex h-full items-center justify-center text-xs text-muted-foreground italic">
                 Belum ada hari yang rencana dan realisasinya terisi.
@@ -410,48 +361,36 @@ export function OutageDeviasiChart({
     }
 
     return (
-        <div className="w-full" style={{ height }}>
+        <div className="w-full flex flex-col items-center justify-center py-4" style={{ height }}>
             <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={data} margin={{ top: 16, right: 12, left: -18, bottom: 4 }}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} opacity={0.3} />
-                    <XAxis
-                        dataKey="label"
-                        fontSize={9}
-                        tickLine={false}
-                        axisLine={false}
-                        interval="preserveStartEnd"
-                    />
-                    <YAxis
-                        domain={[-batas, batas]}
-                        fontSize={10}
-                        tickLine={false}
-                        axisLine={false}
-                        tickFormatter={(v) => `${v}%`}
-                    />
-                    <Tooltip content={<TooltipDeviasi />} />
-                    {/* Garis nol: batas antara unggul dan tertinggal. */}
-                    <ReferenceLine y={0} stroke="#64748b" strokeWidth={1.5} />
-                    <Bar dataKey="deviasi" radius={[2, 2, 0, 0]}>
-                        {data.map((entry, index) => (
-                            <Cell 
-                                key={`cell-${index}`}
-                                fill={
-                                    entry.deviasi > 0
-                                        ? WARNA_STATUS.Leading
-                                        : entry.deviasi < 0
-                                          ? WARNA_STATUS.Lagging
-                                          : WARNA_STATUS['On Progres']
-                                }
-                            />
+                <BarChart data={summaryData} layout="vertical" margin={{ top: 0, right: 40, left: 20, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" horizontal={false} opacity={0.3} />
+                    <XAxis type="number" hide />
+                    <YAxis dataKey="name" type="category" axisLine={false} tickLine={false} fontSize={12} width={60} />
+                    <Tooltip cursor={{fill: 'transparent'}} formatter={(value: number) => [`${value} Hari`, 'Jumlah']} />
+                    <Bar dataKey="value" radius={[0, 4, 4, 0]} barSize={32}>
+                        {summaryData.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={entry.fill} />
                         ))}
+                        <LabelList dataKey="value" position="right" formatter={(c: number) => `${c} Hari`} fontSize={11} />
                     </Bar>
                 </BarChart>
             </ResponsiveContainer>
+            
+            <div className="mt-2 flex items-center justify-center">
+                <span
+                    className={`inline-flex items-center gap-1.5 rounded px-2 py-0.5 text-[10px] font-bold uppercase ${deviasiBadgeClass(deviasi.status)}`}
+                >
+                    <span
+                        className="h-2 w-2 rounded-full"
+                        style={{ backgroundColor: WARNA_STATUS[deviasi.status === 'Tepat' ? 'On Progres' : deviasi.status] }}
+                    />
+                    Selisih Akhir: {deviasi.status !== 'Tepat' ? formatSelisih(deviasi.selisih) : '0%'}
+                </span>
+            </div>
         </div>
     );
 }
-
-
 export function OutageDailyTable({ rows }: { rows: DailyProgress[] }) {
     const [terbuka, setTerbuka] = useState(false);
 
