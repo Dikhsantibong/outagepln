@@ -6,6 +6,9 @@ import {
     Legend,
     Line,
     LineChart,
+    BarChart,
+    Bar,
+    Cell,
     ReferenceLine,
     ResponsiveContainer,
     Tooltip,
@@ -211,33 +214,14 @@ export function OutageSCurve({
                 {/* Porsi hari leading dan lagging — dalam persen, bukan jumlah
                     hari — lalu selisih rencana vs realisasi saat ini. */}
                 <div className="flex flex-wrap items-center gap-2">
-                    {(
-                        [
-                            ['Leading', sebaran.leadingPersen],
-                            ['Lagging', sebaran.laggingPersen],
-                        ] as const
-                    ).map(([status, persen]) => (
-                        <span
-                            key={status}
-                            className={`inline-flex items-center gap-1.5 rounded px-2 py-0.5 text-[10px] font-bold uppercase ${statusBadgeClass(status)}`}
-                            title={`${status} pada ${
-                                status === 'Leading'
-                                    ? sebaran.leadingHari
-                                    : sebaran.laggingHari
-                            } dari ${sebaran.hariTerisi} hari yang realisasinya sudah dilaporkan`}
-                        >
-                            <span
-                                className="h-2 w-2 rounded-full"
-                                style={{ backgroundColor: WARNA_STATUS[status] }}
-                            />
-                            {status} {fmtPct(persen)} %
-                        </span>
-                    ))}
-
                     <span
-                        className={`inline-flex items-center rounded px-2 py-0.5 text-[10px] font-bold uppercase ${deviasiBadgeClass(deviasi.status)}`}
+                        className={`inline-flex items-center gap-1.5 rounded px-2 py-0.5 text-[10px] font-bold uppercase ${deviasiBadgeClass(deviasi.status)}`}
                     >
-                        Selisih {formatSelisih(deviasi.selisih)}
+                        <span
+                            className="h-2 w-2 rounded-full"
+                            style={{ backgroundColor: WARNA_STATUS[deviasi.status === 'Tepat' ? 'On Progres' : deviasi.status] }}
+                        />
+                        {deviasi.status} {deviasi.status !== 'Tepat' && formatSelisih(deviasi.selisih)}
                     </span>
 
                     <span className="text-[11px] text-muted-foreground">
@@ -428,7 +412,7 @@ export function OutageDeviasiChart({
     return (
         <div className="w-full" style={{ height }}>
             <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={data} margin={{ top: 16, right: 12, left: -18, bottom: 4 }}>
+                <BarChart data={data} margin={{ top: 16, right: 12, left: -18, bottom: 4 }}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} opacity={0.3} />
                     <XAxis
                         dataKey="label"
@@ -447,47 +431,26 @@ export function OutageDeviasiChart({
                     <Tooltip content={<TooltipDeviasi />} />
                     {/* Garis nol: batas antara unggul dan tertinggal. */}
                     <ReferenceLine y={0} stroke="#64748b" strokeWidth={1.5} />
-                    <Line
-                        type="monotone"
-                        dataKey="deviasi"
-                        stroke="#64748b"
-                        strokeWidth={2}
-                        dot={<TitikDeviasi />}
-                        activeDot={{ r: 5 }}
-                    />
-                </LineChart>
+                    <Bar dataKey="deviasi" radius={[2, 2, 0, 0]}>
+                        {data.map((entry, index) => (
+                            <Cell 
+                                key={`cell-${index}`}
+                                fill={
+                                    entry.deviasi > 0
+                                        ? WARNA_STATUS.Leading
+                                        : entry.deviasi < 0
+                                          ? WARNA_STATUS.Lagging
+                                          : WARNA_STATUS['On Progres']
+                                }
+                            />
+                        ))}
+                    </Bar>
+                </BarChart>
             </ResponsiveContainer>
         </div>
     );
 }
 
-/** Titik hijau saat unggul, merah saat tertinggal. */
-function TitikDeviasi(props: { cx?: number; cy?: number; payload?: DeviasiRow }) {
-    const { cx, cy, payload } = props;
-
-    if (cx === undefined || cy === undefined) {
-        return null;
-    }
-
-    const nilai = payload?.deviasi ?? 0;
-
-    return (
-        <circle
-            cx={cx}
-            cy={cy}
-            r={3.5}
-            fill={
-                nilai > 0
-                    ? WARNA_STATUS.Leading
-                    : nilai < 0
-                      ? WARNA_STATUS.Lagging
-                      : WARNA_STATUS['On Progres']
-            }
-            stroke="#fff"
-            strokeWidth={1}
-        />
-    );
-}
 
 export function OutageDailyTable({ rows }: { rows: DailyProgress[] }) {
     const [terbuka, setTerbuka] = useState(false);
