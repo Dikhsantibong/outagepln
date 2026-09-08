@@ -1,4 +1,5 @@
 import { Form, Head, router } from '@inertiajs/react';
+import { LogIn, Timer } from 'lucide-react';
 import InputError from '@/components/input-error';
 import PasswordInput from '@/components/password-input';
 import TextLink from '@/components/text-link';
@@ -19,9 +20,25 @@ export default function Login({
     status,
     canResetPassword,
 }: Props) {
+    // Cek apakah pengguna diarahkan ke sini karena sesi habis.
+    const params = new URLSearchParams(window.location.search);
+    const sessionExpired = params.get('expired') === '1';
+
     return (
         <>
             <Head title="Log in" />
+
+            {sessionExpired && (
+                <div className="mb-6 flex items-center gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/50 dark:text-amber-200">
+                    <Timer className="h-5 w-5 shrink-0" />
+                    <div>
+                        <p className="font-semibold">Sesi Anda telah berakhir</p>
+                        <p className="text-amber-700 dark:text-amber-300">
+                            Silakan login kembali untuk melanjutkan.
+                        </p>
+                    </div>
+                </div>
+            )}
 
             <Form
                 {...store.form()}

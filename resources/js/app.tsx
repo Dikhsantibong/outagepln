@@ -1,4 +1,4 @@
-import { createInertiaApp } from '@inertiajs/react';
+import { createInertiaApp, router } from '@inertiajs/react';
 import { Toaster } from '@/components/ui/sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { initializeTheme } from '@/hooks/use-appearance';
@@ -7,6 +7,19 @@ import AuthLayout from '@/layouts/auth-layout';
 import SettingsLayout from '@/layouts/settings/layout';
 
 const appName = import.meta.env.VITE_APP_NAME || 'Laravel';
+
+// Tangkap respons non-Inertia (419 / 401) yang menandakan sesi habis.
+// Ini jaring pengaman di sisi klien — biasanya backend sudah redirect
+// ke /login?expired=1, tapi jika Inertia menerima respons mentah yang
+// bukan halaman Inertia, listener ini yang mengambil alih.
+router.on('httpException', (event) => {
+    const status = event.detail?.response?.status;
+
+    if (status === 419 || status === 401) {
+        event.preventDefault();
+        window.location.href = '/login?expired=1';
+    }
+});
 
 createInertiaApp({
     title: (title) => (title ? `${title} - ${appName}` : appName),
