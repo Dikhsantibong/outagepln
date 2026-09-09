@@ -213,10 +213,18 @@ export default function DailyBriefingsShow({
         kickoffForm.post(`/daily-briefings/${briefing.id}/kickoff`, { preserveScroll: true });
     };
 
+    // Dokumentasi rapat — berkas terpisah dari formulir notulen supaya unggahan
+    // foto tidak ikut mengirim ulang seluruh isian notulen.
     const kickoffPhotoForm = useForm({ foto: null as File | null, caption: '' });
     const submitKickoffPhoto = (e: React.FormEvent) => {
         e.preventDefault();
+
+        if (!kickoffPhotoForm.data.foto) {
+            return;
+        }
+
         kickoffPhotoForm.post(`/daily-briefings/${briefing.id}/kickoff/photos`, {
+            forceFormData: true,
             preserveScroll: true,
             onSuccess: () => kickoffPhotoForm.reset(),
         });
@@ -888,6 +896,86 @@ export default function DailyBriefingsShow({
                                         </div>
                                     )}
                                 </form>
+
+                                {/* Dokumentasi rapat — ikut tercetak pada notulen
+                                    PDF/Excel, jadi unggahannya disediakan di sini.
+                                    Formulirnya sengaja di luar <form> notulen agar
+                                    keduanya bisa disimpan sendiri-sendiri. */}
+                                <div className="space-y-4 border-t pt-6">
+                                    <h4 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-[0.1em] text-primary/80">
+                                        <Images className="h-3.5 w-3.5" />
+                                        Dokumentasi Rapat
+                                    </h4>
+
+                                    {!isTamu && (
+                                        <form onSubmit={submitKickoffPhoto} className="flex flex-wrap items-end gap-3">
+                                            <div className="space-y-2">
+                                                <Label htmlFor="k_foto">Foto</Label>
+                                                <Input
+                                                    id="k_foto"
+                                                    type="file"
+                                                    accept="image/*"
+                                                    className="w-64"
+                                                    onChange={(e) => kickoffPhotoForm.setData('foto', e.target.files?.[0] ?? null)}
+                                                />
+                                                {kickoffPhotoForm.errors.foto && (
+                                                    <p className="text-xs text-destructive">{kickoffPhotoForm.errors.foto}</p>
+                                                )}
+                                            </div>
+                                            <div className="min-w-[200px] flex-1 space-y-2">
+                                                <Label htmlFor="k_cap">Keterangan</Label>
+                                                <Input
+                                                    id="k_cap"
+                                                    placeholder="cth: Pembukaan rapat"
+                                                    value={kickoffPhotoForm.data.caption}
+                                                    onChange={(e) => kickoffPhotoForm.setData('caption', e.target.value)}
+                                                />
+                                            </div>
+                                            <Button
+                                                type="submit"
+                                                variant="outline"
+                                                className="gap-2"
+                                                disabled={kickoffPhotoForm.processing || !kickoffPhotoForm.data.foto}
+                                            >
+                                                <Plus className="h-4 w-4" />
+                                                Tambah Foto
+                                            </Button>
+                                        </form>
+                                    )}
+
+                                    {kickoffPhotos.length > 0 ? (
+                                        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                                            {kickoffPhotos.map((p: any) => (
+                                                <div key={p.id} className="group relative overflow-hidden rounded-lg border bg-card">
+                                                    <img
+                                                        src={p.foto}
+                                                        alt={p.caption || 'Dokumentasi'}
+                                                        className="h-40 w-full cursor-zoom-in object-cover"
+                                                        onClick={() => window.open(p.foto, '_blank')}
+                                                    />
+                                                    <div className="p-2 text-xs text-muted-foreground">{p.caption || '-'}</div>
+                                                    {!isTamu && (
+                                                        <Button
+                                                            variant="destructive"
+                                                            size="icon"
+                                                            className="absolute right-2 top-2 h-7 w-7 opacity-0 transition-opacity group-hover:opacity-100"
+                                                            onClick={() => deleteKickoffPhoto(p.id)}
+                                                        >
+                                                            <Trash2 className="h-3.5 w-3.5" />
+                                                        </Button>
+                                                    )}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-8 text-center">
+                                            <ImageOff className="mb-2 h-8 w-8 opacity-20" />
+                                            <p className="text-sm italic text-muted-foreground">
+                                                Belum ada dokumentasi rapat.
+                                            </p>
+                                        </div>
+                                    )}
+                                </div>
 
                                 </CardContent>
                         </Card>

@@ -501,6 +501,15 @@ class RapatOutageDanDailyMeetingTest extends TestCase
 
         $photo = $briefing->kickoffPhotos()->firstOrFail();
 
+        // Dokumentasi ikut tercetak pada notulen, jadi halamannya harus menerima
+        // fotonya agar galeri dan tombol hapusnya ada isinya.
+        $this->get("/daily-briefings/{$briefing->id}")
+            ->assertInertia(fn ($page) => $page
+                ->has('kickoffPhotos', 1)
+                ->where('kickoffPhotos.0.caption', 'Dokumentasi')
+                ->where('kickoffPhotos.0.foto', fn ($foto) => str_starts_with((string) $foto, 'data:image/')),
+            );
+
         $this->delete("/daily-briefings/{$briefing->id}/kickoff/photos/{$photo->id}")->assertRedirect();
         $this->assertDatabaseMissing('daily_briefing_kickoff_photos', ['id' => $photo->id]);
     }
