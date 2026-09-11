@@ -2,9 +2,14 @@
 
 namespace App\Models;
 
+use Database\Factories\MaterialFactory;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 class Material extends Model
 {
-    protected $fillable = ['nama', 'part_number', 'satuan'];
+    /** @use HasFactory<MaterialFactory> */
+    use HasFactory;
+
+    protected $fillable = ['nama', 'jenis_mesin', 'part_number', 'satuan'];
 }

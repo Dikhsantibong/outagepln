@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Exports\MeetingIssuesExport;
 use App\Exports\MeetingKickoffExport;
 use App\Models\DailyMeeting;
+use App\Models\MasterTtd;
 use App\Models\MeetingIssue;
 use App\Models\MeetingKickoff;
 use App\Models\MeetingKickoffPhoto;
@@ -15,6 +16,7 @@ use App\Models\Unit;
 use App\Support\JadwalRapatOutage;
 use App\Support\NotulenBerlanjut;
 use App\Support\TahunFilter;
+use App\Support\Ttd;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -295,6 +297,7 @@ class DailyMeetingController extends Controller
             'kickoff' => $dailyMeeting->kickoff,
             'kickoffPhotos' => $dailyMeeting->kickoffPhotos,
             'kickoffDefaults' => $this->kickoffDefaults($dailyMeeting),
+            'masterTtds' => MasterTtd::all(),
             // Diisi hanya pada kunjungan yang benar-benar menyalin, jadi
             // pemberitahuannya muncul sekali — bukan tiap kali dibuka.
             'notulenWarisanDari' => $warisanDari?->tipe_rapat,
@@ -311,6 +314,11 @@ class DailyMeetingController extends Controller
         $mesin = $plan->mesin_pembangkit ?? '-';
         $scope = $plan->scope ?? '';
 
+        // Penanda tangan diambil dari Data Master → Tanda Tangan: Pimpinan Rapat
+        // (Menyetujui) dan Notulis (Staf). Nilainya ikut berubah bila super admin
+        // memperbarui datanya, dan sama dengan yang dipakai berkas cetak.
+        $ttd = Ttd::data();
+
         return [
             'nomor_dokumen' => 'FMKP - 145 - 13.3.4.a.a.i - 001',
             'revisi' => '001',
@@ -319,11 +327,10 @@ class DailyMeetingController extends Controller
             'waktu' => ($dailyMeeting->waktu_mulai ? substr($dailyMeeting->waktu_mulai, 0, 5) : '09.00').' WITA - Selesai',
             'agenda' => trim("Kick Off Meeting Pelaksanaan Pekerjaan OH {$scope} {$mesin}"),
             'peserta' => '(Daftar peserta terlampir)',
-            // Penanda tangan tetap: Pimpinan Rapat (TL) dan Notulis (OF).
-            'pimpinan_nama' => 'ABDUL RAHMAN KADIR',
-            'pimpinan_jabatan' => 'TL Outage Management',
-            'notulis_nama' => 'FIRMANSYAH',
-            'notulis_jabatan' => 'OF Outage Management',
+            'pimpinan_nama' => $ttd['menyetujui_nama'],
+            'pimpinan_jabatan' => $ttd['menyetujui_jabatan'],
+            'notulis_nama' => $ttd['staf_nama'],
+            'notulis_jabatan' => $ttd['staf_jabatan'],
             'kota_ttd' => 'Kendari',
         ];
     }

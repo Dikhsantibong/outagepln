@@ -31,6 +31,9 @@ import {
     TableRow,
 } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
+import KickoffDocumentPreview from '@/components/kickoff-document-preview';
+import LetterEditor from '@/components/letter-editor';
+import { Eye } from 'lucide-react';
 
 type Attendee = {
     id: number;
@@ -104,6 +107,15 @@ type FindingInfo = {
     jenis_inspeksi: string;
 };
 
+/** Penandatangan dari Data Master → Tanda Tangan. */
+type MasterTtd = {
+    id: number;
+    nama: string;
+    jabatan: string | null;
+    tipe: string | null;
+    signature: string | null;
+};
+
 
 export default function DailyMeetingShow({
     meeting,
@@ -114,6 +126,7 @@ export default function DailyMeetingShow({
     kickoff = null,
     kickoffPhotos = [],
     kickoffDefaults,
+    masterTtds,
     notulenWarisanDari = null,
 }: {
     meeting: Meeting;
@@ -124,6 +137,8 @@ export default function DailyMeetingShow({
     kickoff?: Kickoff;
     kickoffPhotos?: KickoffPhoto[];
     kickoffDefaults?: Record<string, string>;
+    /** Daftar penandatangan dari Data Master → Tanda Tangan. */
+    masterTtds?: MasterTtd[];
     /** Jenis rapat asal salinan notulen; hanya terisi saat baru disalin. */
     notulenWarisanDari?: string | null;
 }) {
@@ -180,11 +195,16 @@ export default function DailyMeetingShow({
 
     const submitKickoff: FormEventHandler = (e) => {
         e.preventDefault();
-        kickoffForm.post(`/daily-meetings/${meeting.id}/kickoff`, { preserveScroll: true });
+        kickoffForm.post(`/daily-meetings/${meeting.id}/kickoff`, { 
+            preserveScroll: true,
+            preserveState: true,
+            onSuccess: () => alert('Notulen berhasil disimpan!')
+        });
     };
 
     
     const [issueModal, setIssueModal] = useState(false);
+    const [previewModal, setPreviewModal] = useState(false);
     const [editingIssue, setEditingIssue] = useState<any>(null);
     const issueForm = useForm({
         permasalahan: '',
@@ -283,10 +303,11 @@ return;
 
     const tabs = [
         { key: 'hadir' as const, label: 'Daftar Hadir', icon: Users, count: attendees.length },
+        { key: 'kickoff' as const, label: 'Notulen Rapat', icon: Handshake },
         ...(isKickoffMeeting
-            ? [{ key: 'kickoff' as const, label: 'Notulen Kick Off Meeting', icon: Handshake }]
+            ? []
             : [
-                { key: 'issues' as const, label: 'Notulen', icon: ClipboardList, count: issues.length },
+                { key: 'issues' as const, label: 'Daftar Temuan', icon: ClipboardList, count: issues.length },
                 { key: 'dokumentasi' as const, label: 'Dokumentasi', icon: Images }
               ]),
     ];
@@ -717,13 +738,13 @@ return;
                     )}
 
                     {activeTab === 'kickoff' && (
-                        <Card>
-                            <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-4 gap-4">
+                        <Card className="border-none shadow-sm">
+                            <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-4 gap-4 border-b mb-6">
                                 <div>
                                     <CardTitle>Notulen Kick Off Meeting</CardTitle>
                                     <CardDescription>Formulir notulen rapat kick off pelaksanaan pekerjaan overhaul</CardDescription>
                                 </div>
-                                <div className="flex shrink-0 gap-2">
+                                <div className="flex shrink-0 gap-2 items-center">
                                     <Button
                                         variant="outline"
                                         size="sm"
@@ -744,137 +765,239 @@ return;
                                     </Button>
                                 </div>
                             </CardHeader>
-                            <CardContent className="space-y-8">
-                                <form onSubmit={submitKickoff} className="space-y-8">
-                                    {/* Identitas dokumen */}
-                                    <div className="space-y-4">
-                                        <h4 className="text-xs font-bold uppercase tracking-[0.1em] text-primary/80">Identitas Dokumen</h4>
-                                        <div className="grid gap-4 md:grid-cols-3">
-                                            <div className="space-y-2">
-                                                <Label htmlFor="k_nodok">Nomor Dokumen</Label>
-                                                <Input id="k_nodok" value={kickoffForm.data.nomor_dokumen}
-                                                    onChange={(e) => kickoffForm.setData('nomor_dokumen', e.target.value)} disabled={isTamu} />
-                                            </div>
-                                            <div className="space-y-2">
-                                                <Label htmlFor="k_rev">Revisi</Label>
-                                                <Input id="k_rev" value={kickoffForm.data.revisi}
-                                                    onChange={(e) => kickoffForm.setData('revisi', e.target.value)} disabled={isTamu} />
-                                            </div>
-                                            <div className="space-y-2">
-                                                <Label htmlFor="k_terbit">Tanggal Terbit</Label>
-                                                <Input id="k_terbit" type="date" value={kickoffForm.data.tanggal_terbit}
-                                                    onChange={(e) => kickoffForm.setData('tanggal_terbit', e.target.value)} disabled={isTamu} />
-                                            </div>
-                                        </div>
+                            <CardContent className="space-y-8 pt-6">
+                                <form onSubmit={submitKickoff} className="grid gap-6 md:grid-cols-3 items-start">
+                                    
+                                    {/* Left Column: Metadata */}
+                                    <div className="space-y-6 md:col-span-1">
+                                        <Card className="shadow-none">
+                                            <CardHeader className="pb-4 border-b">
+                                                <CardTitle className="text-base">Metadata Notulen</CardTitle>
+                                                <CardDescription className="text-xs">Informasi dasar dokumen dan rapat.</CardDescription>
+                                            </CardHeader>
+                                            <CardContent className="space-y-4 pt-4">
+                                                <div className="space-y-2">
+                                                    <Label htmlFor="k_nodok">Nomor Dokumen</Label>
+                                                    <Input id="k_nodok" value={kickoffForm.data.nomor_dokumen}
+                                                        onChange={(e) => kickoffForm.setData('nomor_dokumen', e.target.value)} disabled={isTamu} />
+                                                </div>
+                                                <div className="grid grid-cols-2 gap-2">
+                                                    <div className="space-y-2">
+                                                        <Label htmlFor="k_rev">Revisi</Label>
+                                                        <Input id="k_rev" value={kickoffForm.data.revisi}
+                                                            onChange={(e) => kickoffForm.setData('revisi', e.target.value)} disabled={isTamu} />
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        <Label htmlFor="k_terbit">Tanggal Terbit</Label>
+                                                        <Input id="k_terbit" type="date" value={kickoffForm.data.tanggal_terbit}
+                                                            onChange={(e) => kickoffForm.setData('tanggal_terbit', e.target.value)} disabled={isTamu} />
+                                                    </div>
+                                                </div>
+                                                
+                                                <div className="border-t pt-4 space-y-4">
+                                                    <div className="space-y-2">
+                                                        <Label htmlFor="k_pimpinan">Pimpinan Rapat</Label>
+                                                        <Input id="k_pimpinan" value={kickoffForm.data.pimpinan_rapat}
+                                                            onChange={(e) => kickoffForm.setData('pimpinan_rapat', e.target.value)} disabled={isTamu} />
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        <Label htmlFor="k_tempat">Tempat</Label>
+                                                        <Input id="k_tempat" value={kickoffForm.data.tempat}
+                                                            onChange={(e) => kickoffForm.setData('tempat', e.target.value)} disabled={isTamu} />
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        <Label htmlFor="k_waktu">Waktu</Label>
+                                                        <Input id="k_waktu" placeholder="09.15 WITA - Selesai" value={kickoffForm.data.waktu}
+                                                            onChange={(e) => kickoffForm.setData('waktu', e.target.value)} disabled={isTamu} />
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        <Label htmlFor="k_peserta">Peserta</Label>
+                                                        <Input id="k_peserta" value={kickoffForm.data.peserta}
+                                                            onChange={(e) => kickoffForm.setData('peserta', e.target.value)} disabled={isTamu} />
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        <Label htmlFor="k_mitra_nama">Nama Mitra / Vendor</Label>
+                                                        <Input id="k_mitra_nama" placeholder="PT SINAR TIMUR UTAMA RAYA" value={kickoffForm.data.nama_mitra}
+                                                            onChange={(e) => kickoffForm.setData('nama_mitra', e.target.value)} disabled={isTamu} />
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        <Label htmlFor="k_agenda">Agenda</Label>
+                                                        <Textarea id="k_agenda" className="min-h-[70px] resize-none" value={kickoffForm.data.agenda}
+                                                            onChange={(e) => kickoffForm.setData('agenda', e.target.value)} disabled={isTamu} />
+                                                    </div>
+                                                </div>
+                                            </CardContent>
+                                        </Card>
+
+                                        <Card className="shadow-none">
+                                            <CardHeader className="pb-4 border-b">
+                                                <CardTitle className="text-base">Pengaturan Tambahan</CardTitle>
+                                                <CardDescription className="text-xs">Lampiran dan penandatangan.</CardDescription>
+                                            </CardHeader>
+                                            <CardContent className="space-y-4 pt-4">
+                                                <div className="space-y-2">
+                                                    <Label htmlFor="k_absensi" className="flex items-center gap-1.5">
+                                                        <Link2 className="h-3.5 w-3.5" />
+                                                        Link Daftar Hadir / Absensi
+                                                    </Label>
+                                                    <Input id="k_absensi" type="url" placeholder="https://..." value={kickoffForm.data.link_absensi}
+                                                        onChange={(e) => kickoffForm.setData('link_absensi', e.target.value)} disabled={isTamu} />
+                                                    <p className="text-xs text-muted-foreground">
+                                                        Kosongkan untuk memakai link absensi bawaan rapat ini ({attendees.length} peserta tercatat).
+                                                    </p>
+                                                </div>
+                                                <div className="border-t pt-4 space-y-4">
+                                                    <div className="space-y-2">
+                                                        <Label>Menyetujui (Pimpinan Rapat)</Label>
+                                                        <Select
+                                                            value={kickoffForm.data.pimpinan_nama}
+                                                            onValueChange={(val) => {
+                                                                kickoffForm.setData('pimpinan_nama', val);
+                                                                const ttd = masterTtds?.find((t: any) => t.nama === val);
+                                                                if (ttd) kickoffForm.setData('pimpinan_jabatan', ttd.jabatan || '');
+                                                            }}
+                                                            disabled={isTamu}
+                                                        >
+                                                            <SelectTrigger>
+                                                                <SelectValue placeholder="Pilih Pimpinan Rapat" />
+                                                            </SelectTrigger>
+                                                            <SelectContent>
+                                                                {masterTtds?.map((t: any) => (
+                                                                    <SelectItem key={t.id} value={t.nama}>
+                                                                        {t.nama} {t.tipe ? `(${t.tipe})` : ''}
+                                                                    </SelectItem>
+                                                                ))}
+                                                            </SelectContent>
+                                                        </Select>
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        <Label>Dibuat / Notulis</Label>
+                                                        <Select
+                                                            value={kickoffForm.data.notulis_nama}
+                                                            onValueChange={(val) => {
+                                                                kickoffForm.setData('notulis_nama', val);
+                                                                const ttd = masterTtds?.find((t: any) => t.nama === val);
+                                                                if (ttd) kickoffForm.setData('notulis_jabatan', ttd.jabatan || '');
+                                                            }}
+                                                            disabled={isTamu}
+                                                        >
+                                                            <SelectTrigger>
+                                                                <SelectValue placeholder="Pilih Notulis" />
+                                                            </SelectTrigger>
+                                                            <SelectContent>
+                                                                {masterTtds?.map((t: any) => (
+                                                                    <SelectItem key={t.id} value={t.nama}>
+                                                                        {t.nama} {t.tipe ? `(${t.tipe})` : ''}
+                                                                    </SelectItem>
+                                                                ))}
+                                                            </SelectContent>
+                                                        </Select>
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        <Label htmlFor="k_kota">Kota Tanda Tangan</Label>
+                                                        <Input id="k_kota" value={kickoffForm.data.kota_ttd}
+                                                            onChange={(e) => kickoffForm.setData('kota_ttd', e.target.value)} disabled={isTamu} />
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        <Label htmlFor="k_tglttd">Tanggal Tanda Tangan</Label>
+                                                        <Input id="k_tglttd" type="date" value={kickoffForm.data.tanggal_ttd}
+                                                            onChange={(e) => kickoffForm.setData('tanggal_ttd', e.target.value)} disabled={isTamu} />
+                                                    </div>
+                                                </div>
+                                            </CardContent>
+                                        </Card>
                                     </div>
 
-                                    {/* Identitas rapat */}
-                                    <div className="space-y-4">
-                                        <h4 className="text-xs font-bold uppercase tracking-[0.1em] text-primary/80">Identitas Rapat</h4>
-                                        <div className="grid gap-4 md:grid-cols-2">
-                                            <div className="space-y-2">
-                                                <Label htmlFor="k_pimpinan">Pimpinan Rapat</Label>
-                                                <Input id="k_pimpinan" value={kickoffForm.data.pimpinan_rapat}
-                                                    onChange={(e) => kickoffForm.setData('pimpinan_rapat', e.target.value)} disabled={isTamu} />
-                                            </div>
-                                            <div className="space-y-2">
-                                                <Label htmlFor="k_tempat">Tempat</Label>
-                                                <Input id="k_tempat" value={kickoffForm.data.tempat}
-                                                    onChange={(e) => kickoffForm.setData('tempat', e.target.value)} disabled={isTamu} />
-                                            </div>
-                                            <div className="space-y-2">
-                                                <Label htmlFor="k_waktu">Waktu</Label>
-                                                <Input id="k_waktu" placeholder="09.15 WITA - Selesai" value={kickoffForm.data.waktu}
-                                                    onChange={(e) => kickoffForm.setData('waktu', e.target.value)} disabled={isTamu} />
-                                            </div>
-                                            <div className="space-y-2">
-                                                <Label htmlFor="k_peserta">Peserta</Label>
-                                                <Input id="k_peserta" value={kickoffForm.data.peserta}
-                                                    onChange={(e) => kickoffForm.setData('peserta', e.target.value)} disabled={isTamu} />
-                                            </div>
-                                        </div>
-                                        <div className="space-y-2">
-                                            <Label htmlFor="k_agenda">Agenda</Label>
-                                            <Textarea id="k_agenda" className="min-h-[70px] resize-none" value={kickoffForm.data.agenda}
-                                                onChange={(e) => kickoffForm.setData('agenda', e.target.value)} disabled={isTamu} />
-                                        </div>
+                                    {/* Right Column: Editor & Preview */}
+                                    <div className="space-y-6 md:col-span-2">
+                                        <Card className="h-full flex flex-col shadow-none">
+                                            <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-4 border-b gap-4">
+                                                <div>
+                                                    <CardTitle className="text-base">Isi Notulen</CardTitle>
+                                                    <CardDescription className="text-xs">Kop surat, tanggal, dan tanda tangan otomatis ditambahkan pada PDF.</CardDescription>
+                                                </div>
+                                                <div className="flex shrink-0 items-center gap-1 bg-muted p-1 rounded-lg w-fit border shadow-sm">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setPreviewModal(false)}
+                                                        className={`flex items-center justify-center gap-2 rounded-md px-3 py-1.5 text-xs font-medium transition-all ${!previewModal ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+                                                    >
+                                                        <Edit className="h-3.5 w-3.5" /> Editor
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setPreviewModal(true)}
+                                                        className={`flex items-center justify-center gap-2 rounded-md px-3 py-1.5 text-xs font-medium transition-all ${previewModal ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+                                                    >
+                                                        <Eye className="h-3.5 w-3.5" /> Pratinjau
+                                                    </button>
+                                                </div>
+                                            </CardHeader>
+                                            <CardContent className="space-y-4 flex-1 flex flex-col pt-4 p-0 sm:p-6">
+                                                {previewModal ? (
+                                                    <div className="w-full rounded-md border overflow-hidden bg-gray-50 flex-1 min-h-[500px]">
+                                                        <KickoffDocumentPreview 
+                                                            data={kickoffForm.data} 
+                                                            meetingDate={meeting.tanggal}
+                                                            attendeesCount={attendees.length}
+                                                            photos={kickoffPhotos}
+                                                            className="max-h-[800px]"
+                                                        />
+                                                    </div>
+                                                ) : (
+                                                    <div className="flex-1 flex flex-col space-y-8">
+                                                        <div className="space-y-2">
+                                                            <h4 className="font-bold underline text-sm">A. Penyampaian PLN NP UP Kendari</h4>
+                                                            {isTamu ? (
+                                                                <div className="min-h-[150px] p-3 border rounded-md bg-muted/50 text-sm overflow-hidden tiptap-preview" dangerouslySetInnerHTML={{ __html: kickoffForm.data.penyampaian_pln }} />
+                                                            ) : (
+                                                                <LetterEditor 
+                                                                    value={kickoffForm.data.penyampaian_pln} 
+                                                                    onChange={(val) => kickoffForm.setData('penyampaian_pln', val)} 
+                                                                    className="min-h-[150px] border shadow-sm rounded-md"
+                                                                    placeholder="Ketik pembahasan PLN di sini..."
+                                                                />
+                                                            )}
+                                                        </div>
+                                                        <div className="space-y-2">
+                                                            <h4 className="font-bold underline text-sm">B. Penyampaian {kickoffForm.data.nama_mitra || 'Mitra / Vendor'}</h4>
+                                                            {isTamu ? (
+                                                                <div className="min-h-[150px] p-3 border rounded-md bg-muted/50 text-sm overflow-hidden tiptap-preview" dangerouslySetInnerHTML={{ __html: kickoffForm.data.penyampaian_mitra }} />
+                                                            ) : (
+                                                                <LetterEditor 
+                                                                    value={kickoffForm.data.penyampaian_mitra} 
+                                                                    onChange={(val) => kickoffForm.setData('penyampaian_mitra', val)} 
+                                                                    className="min-h-[150px] border shadow-sm rounded-md"
+                                                                    placeholder="Ketik penyampaian mitra di sini..."
+                                                                />
+                                                            )}
+                                                        </div>
+                                                        <div className="space-y-2">
+                                                            <h4 className="font-bold underline text-sm">C. Hasil Kesepakatan</h4>
+                                                            {isTamu ? (
+                                                                <div className="min-h-[150px] p-3 border rounded-md bg-muted/50 text-sm overflow-hidden tiptap-preview" dangerouslySetInnerHTML={{ __html: kickoffForm.data.hasil_kesepakatan }} />
+                                                            ) : (
+                                                                <LetterEditor 
+                                                                    value={kickoffForm.data.hasil_kesepakatan} 
+                                                                    onChange={(val) => kickoffForm.setData('hasil_kesepakatan', val)} 
+                                                                    className="min-h-[150px] border shadow-sm rounded-md"
+                                                                    placeholder="Ketik hasil kesepakatan di sini..."
+                                                                />
+                                                            )}
+                                                        </div>
+                                                        {!isTamu && (
+                                                            <div className="flex justify-end pt-4 border-t">
+                                                                <Button type="submit" disabled={kickoffForm.processing} className="gap-2 px-8">
+                                                                    <FileText className="h-4 w-4" />
+                                                                    Simpan Notulen Kick Off
+                                                                </Button>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </CardContent>
+                                        </Card>
                                     </div>
-
-                                    {/* I. Pembahasan */}
-                                    <div className="space-y-4">
-                                        <h4 className="text-xs font-bold uppercase tracking-[0.1em] text-primary/80">I. Pembahasan</h4>
-                                        <div className="space-y-2">
-                                            <Label htmlFor="k_pln">A. Penyampaian PLN NP UP Kendari</Label>
-                                            <Textarea id="k_pln" className="min-h-[150px] resize-none"
-                                                placeholder={'Satu poin per baris.\nContoh:\nTerkait rencana pelaksanaan Major Overhaul...\nUntuk mesin Deutz BV 8M 628...'}
-                                                value={kickoffForm.data.penyampaian_pln}
-                                                onChange={(e) => kickoffForm.setData('penyampaian_pln', e.target.value)} disabled={isTamu} />
-                                            <p className="text-xs text-muted-foreground">Tiap baris akan menjadi poin bernomor pada dokumen.</p>
-                                        </div>
-                                        <div className="space-y-2">
-                                            <Label htmlFor="k_mitra_nama">Nama Mitra / Vendor</Label>
-                                            <Input id="k_mitra_nama" placeholder="PT SINAR TIMUR UTAMA RAYA" value={kickoffForm.data.nama_mitra}
-                                                onChange={(e) => kickoffForm.setData('nama_mitra', e.target.value)} disabled={isTamu} />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <Label htmlFor="k_mitra">B. Penyampaian Mitra / Vendor</Label>
-                                            <Textarea id="k_mitra" className="min-h-[130px] resize-none" placeholder="Satu poin per baris."
-                                                value={kickoffForm.data.penyampaian_mitra}
-                                                onChange={(e) => kickoffForm.setData('penyampaian_mitra', e.target.value)} disabled={isTamu} />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <Label htmlFor="k_sepakat">C. Hasil Kesepakatan</Label>
-                                            <Textarea id="k_sepakat" className="min-h-[130px] resize-none" placeholder="Satu poin per baris."
-                                                value={kickoffForm.data.hasil_kesepakatan}
-                                                onChange={(e) => kickoffForm.setData('hasil_kesepakatan', e.target.value)} disabled={isTamu} />
-                                        </div>
-                                    </div>
-
-                                    {/* II. Lampiran - link absensi */}
-                                    <div className="space-y-4">
-                                        <h4 className="text-xs font-bold uppercase tracking-[0.1em] text-primary/80">II. Lampiran</h4>
-                                        <div className="space-y-2">
-                                            <Label htmlFor="k_absensi" className="flex items-center gap-1.5">
-                                                <Link2 className="h-3.5 w-3.5" />
-                                                Link Daftar Hadir / Absensi
-                                            </Label>
-                                            <Input id="k_absensi" type="url" placeholder="https://..." value={kickoffForm.data.link_absensi}
-                                                onChange={(e) => kickoffForm.setData('link_absensi', e.target.value)} disabled={isTamu} />
-                                            <p className="text-xs text-muted-foreground">
-                                                Kosongkan untuk memakai daftar hadir yang tercatat di sistem ({attendees.length} peserta).
-                                            </p>
-                                        </div>
-                                    </div>
-
-                                    {/* Tanda tangan */}
-                                    <div className="space-y-4">
-                                        <h4 className="text-xs font-bold uppercase tracking-[0.1em] text-primary/80">Tanda Tangan</h4>
-                                        <p className="text-xs text-muted-foreground">
-                                            Nama &amp; jabatan penandatangan diatur terpusat di
-                                            <span className="font-medium"> Data Master → Tanda Tangan</span> (super admin).
-                                        </p>
-                                        <div className="grid gap-4 md:grid-cols-2">
-                                            <div className="space-y-2">
-                                                <Label htmlFor="k_kota">Kota Tanda Tangan</Label>
-                                                <Input id="k_kota" value={kickoffForm.data.kota_ttd}
-                                                    onChange={(e) => kickoffForm.setData('kota_ttd', e.target.value)} disabled={isTamu} />
-                                            </div>
-                                            <div className="space-y-2">
-                                                <Label htmlFor="k_tglttd">Tanggal Tanda Tangan</Label>
-                                                <Input id="k_tglttd" type="date" value={kickoffForm.data.tanggal_ttd}
-                                                    onChange={(e) => kickoffForm.setData('tanggal_ttd', e.target.value)} disabled={isTamu} />
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    {!isTamu && (
-                                        <div className="flex justify-end pt-4 border-t">
-                                            <Button type="submit" disabled={kickoffForm.processing} className="gap-2 px-8">
-                                                <FileText className="h-4 w-4" />
-                                                Simpan Notulen Kick Off
-                                            </Button>
-                                        </div>
-                                    )}
                                 </form>
 
                                 {/* Dokumentasi rapat - form terpisah agar upload tidak mengganggu form utama */}

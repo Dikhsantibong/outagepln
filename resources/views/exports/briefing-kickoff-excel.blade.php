@@ -2,10 +2,17 @@
     $k = $kickoff;
     $val = fn ($field, $fallback = '') => ($k && filled($k->$field)) ? $k->$field : ($defaults[$field] ?? $fallback);
 
-    // Teks bebas → daftar poin, satu poin per baris tak-kosong (sama seperti PDF).
+    // Teks bebas atau HTML → daftar poin, satu poin per baris tak-kosong
     $lines = function ($text) {
         if (blank($text)) {
             return [];
+        }
+        if (preg_match('/<\w+[^>]*>/', $text)) {
+            $text = preg_replace('/<p[^>]*>/i', "\n", $text);
+            $text = preg_replace('/<li[^>]*>/i', "\n- ", $text);
+            $text = preg_replace('/<br\s*\/?>/i', "\n", $text);
+            $text = strip_tags($text);
+            $text = html_entity_decode($text, ENT_QUOTES | ENT_HTML5);
         }
         return array_values(array_filter(array_map('trim', preg_split('/\r\n|\r|\n/', $text)), fn ($l) => $l !== ''));
     };
@@ -80,39 +87,86 @@
     <tr height="6"><td colspan="6"></td></tr>
 
     {{-- ══════════════ I. PEMBAHASAN ══════════════ --}}
-    <tr><td colspan="6" style="{{ $judulBagian }}">I. Pembahasan</td></tr>
-
-    <tr><td colspan="6" style="{{ $subJudul }}">&nbsp;&nbsp;A. Penyampaian PLN NP UP Kendari</td></tr>
-    @forelse ($pln as $i => $baris)
+    <tr>
+        <td colspan="6"><b>I. Pembahasan</b></td>
+    </tr>
+    @if (preg_match('/<\w+[^>]*>/', $k->penyampaian_pln ?? '') && blank(strip_tags($k->penyampaian_mitra ?? '')) && blank(strip_tags($k->hasil_kesepakatan ?? '')))
+        @php $pembahasan = $lines($k->penyampaian_pln ?? null); @endphp
+        @if (count($pembahasan))
+            @foreach ($pembahasan as $idx => $line)
+                <tr>
+                    <td></td>
+                    <td colspan="5">{{ $line }}</td>
+                </tr>
+            @endforeach
+        @else
+            <tr>
+                <td></td>
+                <td colspan="5"><i>Belum ada pembahasan.</i></td>
+            </tr>
+        @endif
+    @else
         <tr>
-            <td style="text-align: right;">{{ $i + 1 }}.</td>
-            <td colspan="5">{{ $baris }}</td>
+            <td></td>
+            <td colspan="5"><b>A. Penyampaian PLN NP UP Kendari</b></td>
         </tr>
-    @empty
-        <tr><td colspan="6" style="font-style: italic; color: #888;">&nbsp;&nbsp;&nbsp;&nbsp;Belum ada pembahasan.</td></tr>
-    @endforelse
+        @php $pln = $lines($k->penyampaian_pln ?? null); @endphp
+        @if (count($pln))
+            @foreach ($pln as $idx => $line)
+                <tr>
+                    <td></td>
+                    <td colspan="5">{{ $idx + 1 }}. {{ $line }}</td>
+                </tr>
+            @endforeach
+        @else
+            <tr>
+                <td></td>
+                <td colspan="5"><i>Belum ada pembahasan.</i></td>
+            </tr>
+        @endif
 
-    <tr><td colspan="6" style="{{ $subJudul }}">&nbsp;&nbsp;B. Penyampaian {{ $namaMitra }}</td></tr>
-    @forelse ($mitra as $i => $baris)
         <tr>
-            <td style="text-align: right;">{{ $i + 1 }}.</td>
-            <td colspan="5">{{ $baris }}</td>
+            <td></td>
+            <td colspan="5"><b>B. Penyampaian {{ $k && filled($k->nama_mitra) ? $k->nama_mitra : 'Mitra / Vendor' }}</b></td>
         </tr>
-    @empty
-        <tr><td colspan="6" style="font-style: italic; color: #888;">&nbsp;&nbsp;&nbsp;&nbsp;Belum ada penyampaian mitra.</td></tr>
-    @endforelse
+        @php $mitra = $lines($k->penyampaian_mitra ?? null); @endphp
+        @if (count($mitra))
+            @foreach ($mitra as $idx => $line)
+                <tr>
+                    <td></td>
+                    <td colspan="5">{{ $idx + 1 }}. {{ $line }}</td>
+                </tr>
+            @endforeach
+        @else
+            <tr>
+                <td></td>
+                <td colspan="5"><i>Belum ada penyampaian mitra.</i></td>
+            </tr>
+        @endif
 
-    <tr><td colspan="6" style="{{ $subJudul }}">&nbsp;&nbsp;C. Hasil Kesepakatan</td></tr>
-    @forelse ($sepakat as $i => $baris)
         <tr>
-            <td style="text-align: right;">{{ $i + 1 }}.</td>
-            <td colspan="5">{{ $baris }}</td>
+            <td></td>
+            <td colspan="5"><b>C. Hasil Kesepakatan</b></td>
         </tr>
-    @empty
-        <tr><td colspan="6" style="font-style: italic; color: #888;">&nbsp;&nbsp;&nbsp;&nbsp;Belum ada hasil kesepakatan.</td></tr>
-    @endforelse
+        @php $sepakat = $lines($k->hasil_kesepakatan ?? null); @endphp
+        @if (count($sepakat))
+            @foreach ($sepakat as $idx => $line)
+                <tr>
+                    <td></td>
+                    <td colspan="5">{{ $idx + 1 }}. {{ $line }}</td>
+                </tr>
+            @endforeach
+        @else
+            <tr>
+                <td></td>
+                <td colspan="5"><i>Belum ada hasil kesepakatan.</i></td>
+            </tr>
+        @endif
+    @endif
 
-    <tr height="6"><td colspan="6"></td></tr>
+    <tr>
+        <td colspan="6"></td>
+    </tr>
 
     {{-- ══════════════ II. LAMPIRAN ══════════════ --}}
     <tr><td colspan="6" style="{{ $judulBagian }}">II. Lampiran</td></tr>

@@ -196,9 +196,14 @@
             <tr>
                 <td>
                     Pimpinan Rapat,
-                    <div class="sign-space"></div>
-                    <span class="sign-name">{{ $penandatangan['menyetujui_nama'] }}</span><br>
-                    {{ $penandatangan['menyetujui_jabatan'] }}
+                    <div class="sign-space">
+                        @php($pimNama = $val('pimpinan_nama', 'ABDUL RAHMAN KADIR'))
+                        @if($img = \App\Models\MasterTtd::where('nama', $pimNama)->value('signature'))
+                            <img src="{{ $img }}" style="max-height: 58px; max-width: 150px; object-fit: contain;">
+                        @endif
+                    </div>
+                    <span class="sign-name">{{ $pimNama }}</span><br>
+                    {{ $val('pimpinan_jabatan', 'TEAM LEADER OUTAGE MANAGEMENT') }}
                 </td>
                 <td>
                     {{ $val('kota_ttd', 'Kendari') }},
@@ -206,9 +211,14 @@
                         ? \Carbon\Carbon::parse($k->tanggal_ttd)->locale('id')->isoFormat('D MMMM Y')
                         : \Carbon\Carbon::parse($meeting->tanggal)->locale('id')->isoFormat('D MMMM Y') }}<br>
                     Notulis,
-                    <div class="sign-space"></div>
-                    <span class="sign-name">{{ $penandatangan['staf_nama'] }}</span><br>
-                    {{ $penandatangan['staf_jabatan'] }}
+                    <div class="sign-space">
+                        @php($notNama = $val('notulis_nama', 'FIRMANSYAH'))
+                        @if($img = \App\Models\MasterTtd::where('nama', $notNama)->value('signature'))
+                            <img src="{{ $img }}" style="max-height: 58px; max-width: 150px; object-fit: contain;">
+                        @endif
+                    </div>
+                    <span class="sign-name">{{ $notNama }}</span><br>
+                    {{ $val('notulis_jabatan', 'OF OUTAGE MANAGEMENT') }}
                 </td>
             </tr>
         </table>

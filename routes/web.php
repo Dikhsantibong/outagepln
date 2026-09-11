@@ -151,11 +151,15 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::put('mesins/{mesin}', [MasterUnitController::class, 'updateMesin'])->name('mesins.update');
         Route::delete('mesins/{mesin}', [MasterUnitController::class, 'destroyMesin'])->name('mesins.destroy');
 
+        Route::get('materials/template', [MasterMaterialController::class, 'template'])->name('materials.template');
+        Route::post('materials/import', [MasterMaterialController::class, 'import'])->name('materials.import');
         Route::resource('materials', MasterMaterialController::class)->except(['create', 'show', 'edit']);
 
         // Penandatangan global untuk seluruh berkas yang butuh tanda tangan.
         Route::get('ttd', [MasterTtdController::class, 'index'])->name('ttd.index');
-        Route::put('ttd', [MasterTtdController::class, 'update'])->name('ttd.update');
+        Route::post('ttd', [MasterTtdController::class, 'store'])->name('ttd.store');
+        Route::put('ttd/{id}', [MasterTtdController::class, 'update'])->name('ttd.update');
+        Route::delete('ttd/{id}', [MasterTtdController::class, 'destroy'])->name('ttd.destroy');
     });
 });
 

@@ -44,6 +44,10 @@
         ol.items { margin: 0 0 4px 34px; }
         ol.items li { margin-bottom: 3px; text-align: justify; }
         .empty { color: #888; font-style: italic; margin-left: 34px; }
+        .rich-content { margin-left: 14px; text-align: justify; font-size: 10px; }
+        .rich-content ol, .rich-content ul { margin: 0 0 4px 20px; padding-left: 0; }
+        .rich-content li { margin-bottom: 3px; }
+        .rich-content p { margin-bottom: 4px; }
 
         .lampiran { margin-left: 14px; }
         .lampiran a { color: #1155cc; }
@@ -118,43 +122,46 @@
         </tr>
     </table>
 
+    @php
+        $renderHtmlOrText = function ($text) use ($lines) {
+            if (blank($text)) {
+                return '<div class="empty">Belum ada pembahasan.</div>';
+            }
+            if (preg_match('/<\w+[^>]*>/', $text)) {
+                // Berisi HTML dari Tiptap Editor
+                return '<div class="rich-content">' . $text . '</div>';
+            } else {
+                // Format lama: teks biasa dipisah baris baru menjadi list
+                $items = $lines($text);
+                if (empty($items)) {
+                    return '<div class="empty">Belum ada pembahasan.</div>';
+                }
+                $html = '<ol class="items">';
+                foreach ($items as $line) {
+                    $html .= '<li>' . htmlspecialchars($line) . '</li>';
+                }
+                $html .= '</ol>';
+                return $html;
+            }
+        };
+    @endphp
+
     <div class="box">
         <div class="sec-title">I.&nbsp;&nbsp;&nbsp;Pembahasan</div>
 
-        <div class="sub-title">A.&nbsp;&nbsp;Penyampaian PLN NP UP Kendari</div>
-        @php $pln = $lines($k->penyampaian_pln ?? null); @endphp
-        @if (count($pln))
-            <ol class="items">
-                @foreach ($pln as $line)
-                    <li>{{ $line }}</li>
-                @endforeach
-            </ol>
+        @if (preg_match('/<\w+[^>]*>/', $k->penyampaian_pln ?? '') && blank(strip_tags($k->penyampaian_mitra ?? '')) && blank(strip_tags($k->hasil_kesepakatan ?? '')))
+            <!-- Format Unified Baru (Satu Editor Kertas Putih) -->
+            {!! $renderHtmlOrText($k->penyampaian_pln ?? null) !!}
         @else
-            <div class="empty">Belum ada pembahasan.</div>
-        @endif
+            <!-- Format Lama (Tiga Bagian Terpisah) -->
+            <div class="sub-title">A.&nbsp;&nbsp;Penyampaian PLN NP UP Kendari</div>
+            {!! $renderHtmlOrText($k->penyampaian_pln ?? null) !!}
 
-        <div class="sub-title">B.&nbsp;&nbsp;Penyampaian {{ $k && filled($k->nama_mitra) ? $k->nama_mitra : 'Mitra / Vendor' }}</div>
-        @php $mitra = $lines($k->penyampaian_mitra ?? null); @endphp
-        @if (count($mitra))
-            <ol class="items">
-                @foreach ($mitra as $line)
-                    <li>{{ $line }}</li>
-                @endforeach
-            </ol>
-        @else
-            <div class="empty">Belum ada penyampaian mitra.</div>
-        @endif
+            <div class="sub-title">B.&nbsp;&nbsp;Penyampaian {{ $k && filled($k->nama_mitra) ? $k->nama_mitra : 'Mitra / Vendor' }}</div>
+            {!! $renderHtmlOrText($k->penyampaian_mitra ?? null) !!}
 
-        <div class="sub-title">C.&nbsp;&nbsp;Hasil Kesepakatan</div>
-        @php $sepakat = $lines($k->hasil_kesepakatan ?? null); @endphp
-        @if (count($sepakat))
-            <ol class="items">
-                @foreach ($sepakat as $line)
-                    <li>{{ $line }}</li>
-                @endforeach
-            </ol>
-        @else
-            <div class="empty">Belum ada hasil kesepakatan.</div>
+            <div class="sub-title">C.&nbsp;&nbsp;Hasil Kesepakatan</div>
+            {!! $renderHtmlOrText($k->hasil_kesepakatan ?? null) !!}
         @endif
 
         <div class="sec-title" style="margin-top: 10px;">II.&nbsp;&nbsp;Lampiran</div>
@@ -198,9 +205,14 @@
             <tr>
                 <td>
                     Pimpinan Rapat,
-                    <div class="sign-space"></div>
-                    <span class="sign-name">{{ $penandatangan['menyetujui_nama'] }}</span><br>
-                    {{ $penandatangan['menyetujui_jabatan'] }}
+                    <div class="sign-space">
+                        @php($pimNama = $val('pimpinan_nama', 'ABDUL RAHMAN KADIR'))
+                        @if($img = \App\Models\MasterTtd::where('nama', $pimNama)->value('signature'))
+                            <img src="{{ $img }}" style="max-height: 58px; max-width: 150px; object-fit: contain;">
+                        @endif
+                    </div>
+                    <span class="sign-name">{{ $pimNama }}</span><br>
+                    {{ $val('pimpinan_jabatan', 'TEAM LEADER OUTAGE MANAGEMENT') }}
                 </td>
                 <td>
                     {{ $val('kota_ttd', 'Kendari') }},
@@ -208,9 +220,14 @@
                         ? \Carbon\Carbon::parse($k->tanggal_ttd)->locale('id')->isoFormat('D MMMM Y')
                         : \Carbon\Carbon::parse($meeting->tanggal)->locale('id')->isoFormat('D MMMM Y') }}<br>
                     Notulis,
-                    <div class="sign-space"></div>
-                    <span class="sign-name">{{ $penandatangan['staf_nama'] }}</span><br>
-                    {{ $penandatangan['staf_jabatan'] }}
+                    <div class="sign-space">
+                        @php($notNama = $val('notulis_nama', 'FIRMANSYAH'))
+                        @if($img = \App\Models\MasterTtd::where('nama', $notNama)->value('signature'))
+                            <img src="{{ $img }}" style="max-height: 58px; max-width: 150px; object-fit: contain;">
+                        @endif
+                    </div>
+                    <span class="sign-name">{{ $notNama }}</span><br>
+                    {{ $val('notulis_jabatan', 'OF OUTAGE MANAGEMENT') }}
                 </td>
             </tr>
         </table>

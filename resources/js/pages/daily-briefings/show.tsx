@@ -1,6 +1,6 @@
 import { Head, router, usePage, Link } from '@inertiajs/react';
 import { useForm } from '@inertiajs/react';
-import { Calendar, Users, QrCode, FileText, CheckCircle2, ChevronLeft, Plus, Edit, Pencil, Trash2, Copy, FileSpreadsheet, ImageOff, Handshake, Link2, Images, ClipboardList } from 'lucide-react';
+import { Calendar, Users, QrCode, FileText, CheckCircle2, ChevronLeft, ChevronRight, Plus, Edit, Pencil, Trash2, Copy, FileSpreadsheet, ImageOff, Handshake, Link2, Images, ClipboardList, Eye } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -24,6 +24,8 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
+import KickoffDocumentPreview from '@/components/kickoff-document-preview';
+import LetterEditor from '@/components/letter-editor';
 
 export default function DailyBriefingsShow({
     briefing,
@@ -34,6 +36,7 @@ export default function DailyBriefingsShow({
     kickoffPhotos = [],
     findingInfo,
     kickoffDefaults,
+    masterTtds = [],
     attendUrl = '',
     days = [],
 }: {
@@ -45,6 +48,14 @@ export default function DailyBriefingsShow({
     kickoffPhotos?: any[];
     findingInfo?: any;
     kickoffDefaults?: any;
+    /** Daftar penandatangan dari Data Master → Tanda Tangan. */
+    masterTtds?: Array<{
+        id: number;
+        nama: string;
+        jabatan: string | null;
+        tipe: string | null;
+        signature: string | null;
+    }>;
     attendUrl?: string;
     days?: Array<{
         id: number;
@@ -123,6 +134,17 @@ export default function DailyBriefingsShow({
     const [findingDialogOpen, setFindingDialogOpen] = useState(false);
     const [addDayDialogOpen, setAddDayDialogOpen] = useState(false);
     const [editingFinding, setEditingFinding] = useState<any>(null);
+
+    // Pagination tabel temuan (client-side) — data temuan dikirim penuh dari
+    // controller sebagai array, jadi halamannya dibagi di sisi klien.
+    const FINDINGS_PER_PAGE = 10;
+    const [findingsPage, setFindingsPage] = useState(1);
+    const findingsTotalPages = Math.max(1, Math.ceil(findings.length / FINDINGS_PER_PAGE));
+    const currentFindingsPage = Math.min(findingsPage, findingsTotalPages);
+    const paginatedFindings = findings.slice(
+        (currentFindingsPage - 1) * FINDINGS_PER_PAGE,
+        currentFindingsPage * FINDINGS_PER_PAGE,
+    );
     const briefingTanggal = briefing.tanggal ? new Date(briefing.tanggal).toISOString().split('T')[0] : '';
     const findingForm = useForm({
         tanggal: briefingTanggal,
@@ -210,8 +232,14 @@ export default function DailyBriefingsShow({
 
     const submitKickoff = (e: React.FormEvent) => {
         e.preventDefault();
-        kickoffForm.post(`/daily-briefings/${briefing.id}/kickoff`, { preserveScroll: true });
+        kickoffForm.post(`/daily-briefings/${briefing.id}/kickoff`, { 
+            preserveScroll: true,
+            preserveState: true,
+            onSuccess: () => alert('Notulen berhasil disimpan!')
+        });
     };
+
+    const [previewModal, setPreviewModal] = useState(false);
 
     // Dokumentasi rapat — berkas terpisah dari formulir notulen supaya unggahan
     // foto tidak ikut mengirim ulang seluruh isian notulen.
@@ -285,6 +313,7 @@ export default function DailyBriefingsShow({
             });
         }
     };
+
 
     return (
         <>
@@ -591,7 +620,7 @@ export default function DailyBriefingsShow({
                                                         {label}
                                                     </span>
                                                     <span className="text-muted-foreground">:</span>
-                                                    <span className="font-medium text-red-600 dark:text-red-400">
+                                                    <span className="font-medium text-foreground">
                                                         {value}
                                                     </span>
                                                 </div>
@@ -637,113 +666,173 @@ export default function DailyBriefingsShow({
                                     )}
                                 </div>
                             </CardHeader>
-                            <CardContent className="p-0 overflow-x-auto">
-                                <Table>
-                                    <TableHeader>
-                                        <TableRow className="bg-muted/50 hover:bg-muted/50">
-                                            <TableHead className="w-12 text-center font-bold border-r">NO</TableHead>
-                                            <TableHead className="text-center font-bold border-r whitespace-nowrap">TGL</TableHead>
-                                            <TableHead className="font-bold border-r min-w-[180px]">URAIAN</TableHead>
-                                            <TableHead className="text-center font-bold border-r whitespace-nowrap">P/N</TableHead>
-                                            <TableHead className="text-center font-bold border-r">QTY</TableHead>
-                                            <TableHead className="text-center font-bold border-r">SATUAN</TableHead>
-                                            <TableHead className="text-center font-bold border-r">FOTO</TableHead>
-                                            <TableHead className="font-bold border-r min-w-[150px]">KETERANGAN</TableHead>
-                                            <TableHead className="font-bold border-r min-w-[220px]">TINDAK LANJUT</TableHead>
-                                            <TableHead className="text-center font-bold border-r">TARGET</TableHead>
-                                            {!isTamu && <TableHead className="text-center font-bold w-20">AKSI</TableHead>}
-                                        </TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                        {findings.length > 0 ? (
-                                            findings.map((f, idx) => (
-                                                <TableRow key={f.id} className="hover:bg-muted/30 group">
-                                                    <TableCell className="text-center font-mono text-xs text-muted-foreground border-r">{idx + 1}</TableCell>
-                                                    <TableCell className="text-center font-mono text-[11px] text-muted-foreground border-r whitespace-nowrap">
-                                                        {f.tanggal ? new Date(f.tanggal).toLocaleDateString('id-ID') : '-'}
-                                                    </TableCell>
-                                                    <TableCell className="text-xs font-medium border-r">{f.uraian}</TableCell>
-                                                    <TableCell className="text-center font-mono text-[11px] border-r whitespace-nowrap">{f.part_number || '-'}</TableCell>
-                                                    <TableCell className="text-center text-xs border-r">{f.qty ?? '-'}</TableCell>
-                                                    <TableCell className="text-center text-xs border-r">{f.satuan || '-'}</TableCell>
-                                                    <TableCell className="text-center border-r">
-                                                        {f.foto ? (
-                                                            <img
-                                                                src={f.foto}
-                                                                alt={f.uraian}
-                                                                className="h-16 w-24 object-cover rounded border mx-auto cursor-zoom-in"
-                                                                onClick={() => window.open(f.foto!, '_blank')}
-                                                            />
-                                                        ) : (
-                                                            <ImageOff className="h-5 w-5 mx-auto opacity-20" />
-                                                        )}
-                                                    </TableCell>
-                                                    <TableCell className="text-xs border-r">{f.keterangan || '-'}</TableCell>
-                                                    <TableCell className="text-xs border-r whitespace-pre-line">{f.tindak_lanjut || '-'}</TableCell>
-                                                    <TableCell className="text-center border-r">
-                                                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
-                                                            (f.target || '').toUpperCase() === 'CLOSE'
-                                                                ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400'
-                                                                : 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400'
-                                                        }`}>
-                                                            {f.target || 'Open'}
-                                                        </span>
-                                                    </TableCell>
-                                                    {!isTamu && (
-                                                        <TableCell className="text-center">
-                                                            <div className="flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                                <Button
-                                                                    variant="ghost"
-                                                                    size="icon"
-                                                                    className="h-7 w-7 text-primary hover:bg-primary/10"
-                                                                    onClick={() => openFindingForm(f)}
-                                                                >
-                                                                    <Pencil className="h-3.5 w-3.5" />
-                                                                </Button>
-                                                                <Button
-                                                                    variant="ghost"
-                                                                    size="icon"
-                                                                    className="h-7 w-7 text-destructive hover:bg-destructive/10"
-                                                                    onClick={() => deleteFinding(f)}
-                                                                >
-                                                                    <Trash2 className="h-3.5 w-3.5" />
-                                                                </Button>
-                                                            </div>
-                                                        </TableCell>
-                                                    )}
-                                                </TableRow>
-                                            ))
-                                        ) : (
-                                            <TableRow>
-                                                <TableCell colSpan={isTamu ? 10 : 11} className="h-48 text-center text-muted-foreground">
-                                                    <div className="flex flex-col items-center justify-center space-y-3">
-                                                        <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center">
-                                                            <ClipboardList className="h-6 w-6 opacity-30" />
-                                                        </div>
-                                                        <div className="space-y-1">
-                                                            <p className="font-semibold">Belum ada temuan</p>
-                                                            <p className="text-xs max-w-xs mx-auto">
-                                                                Tambahkan material temuan overhaul beserta foto dan tindak lanjutnya.
-                                                            </p>
-                                                        </div>
-                                                    </div>
-                                                </TableCell>
+                            <CardContent className="p-0">
+                                <div className="overflow-x-auto border-y">
+                                    <Table className="min-w-[900px] text-sm [&_td]:align-top">
+                                        <TableHeader>
+                                            <TableRow className="border-b bg-muted/60 hover:bg-muted/60">
+                                                <TableHead className="h-10 w-12 text-center text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">No</TableHead>
+                                                <TableHead className="h-10 whitespace-nowrap text-center text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Tgl</TableHead>
+                                                <TableHead className="h-10 min-w-[180px] text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Uraian</TableHead>
+                                                <TableHead className="h-10 whitespace-nowrap text-center text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">P/N</TableHead>
+                                                <TableHead className="h-10 text-center text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Qty</TableHead>
+                                                <TableHead className="h-10 text-center text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Satuan</TableHead>
+                                                <TableHead className="h-10 text-center text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Foto</TableHead>
+                                                <TableHead className="h-10 min-w-[150px] text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Keterangan</TableHead>
+                                                <TableHead className="h-10 min-w-[220px] text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Tindak Lanjut</TableHead>
+                                                <TableHead className="h-10 text-center text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Target</TableHead>
+                                                {!isTamu && <TableHead className="h-10 w-20 text-center text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Aksi</TableHead>}
                                             </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                            {findings.length > 0 ? (
+                                                paginatedFindings.map((f, idx) => (
+                                                    <TableRow key={f.id} className="border-b transition-colors even:bg-muted/20 hover:bg-muted/40">
+                                                        <TableCell className="text-center font-mono text-xs text-muted-foreground">
+                                                            {(currentFindingsPage - 1) * FINDINGS_PER_PAGE + idx + 1}
+                                                        </TableCell>
+                                                        <TableCell className="whitespace-nowrap text-center font-mono text-[11px] text-muted-foreground">
+                                                            {f.tanggal ? new Date(f.tanggal).toLocaleDateString('id-ID') : '-'}
+                                                        </TableCell>
+                                                        <TableCell className="text-xs font-medium leading-relaxed">{f.uraian}</TableCell>
+                                                        <TableCell className="whitespace-nowrap text-center font-mono text-[11px] text-muted-foreground">{f.part_number || '-'}</TableCell>
+                                                        <TableCell className="text-center text-xs tabular-nums">{f.qty ?? '-'}</TableCell>
+                                                        <TableCell className="text-center text-xs">{f.satuan || '-'}</TableCell>
+                                                        <TableCell className="text-center">
+                                                            {f.foto ? (
+                                                                <img
+                                                                    src={f.foto}
+                                                                    alt={f.uraian}
+                                                                    className="mx-auto h-16 w-24 cursor-zoom-in rounded-md border object-cover transition-transform hover:scale-105"
+                                                                    onClick={() => window.open(f.foto!, '_blank')}
+                                                                />
+                                                            ) : (
+                                                                <ImageOff className="mx-auto h-5 w-5 opacity-20" />
+                                                            )}
+                                                        </TableCell>
+                                                        <TableCell className="text-xs leading-relaxed text-muted-foreground">{f.keterangan || '-'}</TableCell>
+                                                        <TableCell className="whitespace-pre-line text-xs leading-relaxed text-muted-foreground">{f.tindak_lanjut || '-'}</TableCell>
+                                                        <TableCell className="text-center">
+                                                            <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+                                                                (f.target || '').toUpperCase() === 'CLOSE'
+                                                                    ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400'
+                                                                    : 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400'
+                                                            }`}>
+                                                                {f.target || 'Open'}
+                                                            </span>
+                                                        </TableCell>
+                                                        {!isTamu && (
+                                                            <TableCell className="text-center">
+                                                                <div className="flex items-center justify-center gap-1">
+                                                                    <Button
+                                                                        variant="ghost"
+                                                                        size="icon"
+                                                                        className="h-7 w-7 text-primary hover:bg-primary/10"
+                                                                        onClick={() => openFindingForm(f)}
+                                                                    >
+                                                                        <Pencil className="h-3.5 w-3.5" />
+                                                                    </Button>
+                                                                    <Button
+                                                                        variant="ghost"
+                                                                        size="icon"
+                                                                        className="h-7 w-7 text-destructive hover:bg-destructive/10"
+                                                                        onClick={() => deleteFinding(f.id)}
+                                                                    >
+                                                                        <Trash2 className="h-3.5 w-3.5" />
+                                                                    </Button>
+                                                                </div>
+                                                            </TableCell>
+                                                        )}
+                                                    </TableRow>
+                                                ))
+                                            ) : (
+                                                <TableRow>
+                                                    <TableCell colSpan={isTamu ? 10 : 11} className="h-48 text-center text-muted-foreground">
+                                                        <div className="flex flex-col items-center justify-center space-y-3">
+                                                            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted">
+                                                                <ClipboardList className="h-6 w-6 opacity-30" />
+                                                            </div>
+                                                            <div className="space-y-1">
+                                                                <p className="font-semibold">Belum ada temuan</p>
+                                                                <p className="mx-auto max-w-xs text-xs">
+                                                                    Tambahkan material temuan overhaul beserta foto dan tindak lanjutnya.
+                                                                </p>
+                                                            </div>
+                                                        </div>
+                                                    </TableCell>
+                                                </TableRow>
+                                            )}
+                                        </TableBody>
+                                    </Table>
+                                </div>
+
+                                {/* Kontrol pagination — hanya tampil bila datanya lebih
+                                    dari satu halaman. */}
+                                {findings.length > 0 && (
+                                    <div className="flex flex-col items-center justify-between gap-3 px-4 py-3 sm:flex-row">
+                                        <p className="text-xs text-muted-foreground">
+                                            Menampilkan{' '}
+                                            <span className="font-medium text-foreground">
+                                                {(currentFindingsPage - 1) * FINDINGS_PER_PAGE + 1}
+                                            </span>
+                                            {' '}–{' '}
+                                            <span className="font-medium text-foreground">
+                                                {Math.min(currentFindingsPage * FINDINGS_PER_PAGE, findings.length)}
+                                            </span>
+                                            {' '}dari{' '}
+                                            <span className="font-medium text-foreground">{findings.length}</span>
+                                            {' '}temuan
+                                        </p>
+                                        {findingsTotalPages > 1 && (
+                                            <div className="flex items-center gap-1">
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    className="h-8 px-2"
+                                                    disabled={currentFindingsPage <= 1}
+                                                    onClick={() => setFindingsPage((p) => Math.max(1, p - 1))}
+                                                >
+                                                    <ChevronLeft className="h-4 w-4" />
+                                                    <span className="ml-1 hidden sm:inline">Sebelumnya</span>
+                                                </Button>
+                                                {Array.from({ length: findingsTotalPages }, (_, i) => i + 1).map((page) => (
+                                                    <Button
+                                                        key={page}
+                                                        variant={page === currentFindingsPage ? 'default' : 'outline'}
+                                                        size="sm"
+                                                        className="h-8 w-8 p-0 text-xs"
+                                                        onClick={() => setFindingsPage(page)}
+                                                    >
+                                                        {page}
+                                                    </Button>
+                                                ))}
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    className="h-8 px-2"
+                                                    disabled={currentFindingsPage >= findingsTotalPages}
+                                                    onClick={() => setFindingsPage((p) => Math.min(findingsTotalPages, p + 1))}
+                                                >
+                                                    <span className="mr-1 hidden sm:inline">Berikutnya</span>
+                                                    <ChevronRight className="h-4 w-4" />
+                                                </Button>
+                                            </div>
                                         )}
-                                    </TableBody>
-                                </Table>
+                                    </div>
+                                )}
                             </CardContent>
                         </Card>
                     )}
                     
                     {activeTab === 'kickoff' && (
-                        <Card>
-                            <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-4 gap-4">
+                        <div className="space-y-6">
+                            <Card className="border-none shadow-sm">
+                            <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-4 gap-4 border-b mb-6">
                                 <div>
                                     <CardTitle>Notulen</CardTitle>
                                     <CardDescription>Formulir notulen rapat kick off pelaksanaan pekerjaan overhaul</CardDescription>
                                 </div>
-                                <div className="flex shrink-0 gap-2">
+                                <div className="flex shrink-0 gap-2 items-center">
                                     <Button
                                         variant="outline"
                                         size="sm"
@@ -764,137 +853,239 @@ export default function DailyBriefingsShow({
                                     </Button>
                                 </div>
                             </CardHeader>
-                            <CardContent className="space-y-8">
-                                <form onSubmit={submitKickoff} className="space-y-8">
-                                    {/* Identitas dokumen */}
-                                    <div className="space-y-4">
-                                        <h4 className="text-xs font-bold uppercase tracking-[0.1em] text-primary/80">Identitas Dokumen</h4>
-                                        <div className="grid gap-4 md:grid-cols-3">
-                                            <div className="space-y-2">
-                                                <Label htmlFor="k_nodok">Nomor Dokumen</Label>
-                                                <Input id="k_nodok" value={kickoffForm.data.nomor_dokumen}
-                                                    onChange={(e) => kickoffForm.setData('nomor_dokumen', e.target.value)} disabled={isTamu} />
-                                            </div>
-                                            <div className="space-y-2">
-                                                <Label htmlFor="k_rev">Revisi</Label>
-                                                <Input id="k_rev" value={kickoffForm.data.revisi}
-                                                    onChange={(e) => kickoffForm.setData('revisi', e.target.value)} disabled={isTamu} />
-                                            </div>
-                                            <div className="space-y-2">
-                                                <Label htmlFor="k_terbit">Tanggal Terbit</Label>
-                                                <Input id="k_terbit" type="date" value={kickoffForm.data.tanggal_terbit}
-                                                    onChange={(e) => kickoffForm.setData('tanggal_terbit', e.target.value)} disabled={isTamu} />
-                                            </div>
-                                        </div>
+                            <CardContent className="space-y-8 pt-6">
+                                <form onSubmit={submitKickoff} className="grid gap-6 md:grid-cols-3 items-start">
+                                    
+                                    {/* Left Column: Metadata */}
+                                    <div className="space-y-6 md:col-span-1">
+                                        <Card className="shadow-none">
+                                            <CardHeader className="pb-4 border-b">
+                                                <CardTitle className="text-base">Metadata Notulen</CardTitle>
+                                                <CardDescription className="text-xs">Informasi dasar dokumen dan rapat.</CardDescription>
+                                            </CardHeader>
+                                            <CardContent className="space-y-4 pt-4">
+                                                <div className="space-y-2">
+                                                    <Label htmlFor="k_nodok">Nomor Dokumen</Label>
+                                                    <Input id="k_nodok" value={kickoffForm.data.nomor_dokumen}
+                                                        onChange={(e) => kickoffForm.setData('nomor_dokumen', e.target.value)} disabled={isTamu} />
+                                                </div>
+                                                <div className="grid grid-cols-2 gap-2">
+                                                    <div className="space-y-2">
+                                                        <Label htmlFor="k_rev">Revisi</Label>
+                                                        <Input id="k_rev" value={kickoffForm.data.revisi}
+                                                            onChange={(e) => kickoffForm.setData('revisi', e.target.value)} disabled={isTamu} />
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        <Label htmlFor="k_terbit">Tanggal Terbit</Label>
+                                                        <Input id="k_terbit" type="date" value={kickoffForm.data.tanggal_terbit}
+                                                            onChange={(e) => kickoffForm.setData('tanggal_terbit', e.target.value)} disabled={isTamu} />
+                                                    </div>
+                                                </div>
+                                                
+                                                <div className="border-t pt-4 space-y-4">
+                                                    <div className="space-y-2">
+                                                        <Label htmlFor="k_pimpinan">Pimpinan Rapat</Label>
+                                                        <Input id="k_pimpinan" value={kickoffForm.data.pimpinan_rapat}
+                                                            onChange={(e) => kickoffForm.setData('pimpinan_rapat', e.target.value)} disabled={isTamu} />
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        <Label htmlFor="k_tempat">Tempat</Label>
+                                                        <Input id="k_tempat" value={kickoffForm.data.tempat}
+                                                            onChange={(e) => kickoffForm.setData('tempat', e.target.value)} disabled={isTamu} />
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        <Label htmlFor="k_waktu">Waktu</Label>
+                                                        <Input id="k_waktu" placeholder="09.15 WITA - Selesai" value={kickoffForm.data.waktu}
+                                                            onChange={(e) => kickoffForm.setData('waktu', e.target.value)} disabled={isTamu} />
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        <Label htmlFor="k_peserta">Peserta</Label>
+                                                        <Input id="k_peserta" value={kickoffForm.data.peserta}
+                                                            onChange={(e) => kickoffForm.setData('peserta', e.target.value)} disabled={isTamu} />
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        <Label htmlFor="k_mitra_nama">Nama Mitra / Vendor</Label>
+                                                        <Input id="k_mitra_nama" placeholder="PT SINAR TIMUR UTAMA RAYA" value={kickoffForm.data.nama_mitra}
+                                                            onChange={(e) => kickoffForm.setData('nama_mitra', e.target.value)} disabled={isTamu} />
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        <Label htmlFor="k_agenda">Agenda</Label>
+                                                        <Textarea id="k_agenda" className="min-h-[70px] resize-none" value={kickoffForm.data.agenda}
+                                                            onChange={(e) => kickoffForm.setData('agenda', e.target.value)} disabled={isTamu} />
+                                                    </div>
+                                                </div>
+                                            </CardContent>
+                                        </Card>
+
+                                        <Card className="shadow-none">
+                                            <CardHeader className="pb-4 border-b">
+                                                <CardTitle className="text-base">Pengaturan Tambahan</CardTitle>
+                                                <CardDescription className="text-xs">Lampiran dan penandatangan.</CardDescription>
+                                            </CardHeader>
+                                            <CardContent className="space-y-4 pt-4">
+                                                <div className="space-y-2">
+                                                    <Label htmlFor="k_absensi" className="flex items-center gap-1.5">
+                                                        <Link2 className="h-3.5 w-3.5" />
+                                                        Link Daftar Hadir / Absensi
+                                                    </Label>
+                                                    <Input id="k_absensi" type="url" placeholder="https://..." value={kickoffForm.data.link_absensi}
+                                                        onChange={(e) => kickoffForm.setData('link_absensi', e.target.value)} disabled={isTamu} />
+                                                    <p className="text-xs text-muted-foreground">
+                                                        Kosongkan untuk memakai link absensi bawaan rapat ini ({attendees.length} peserta tercatat).
+                                                    </p>
+                                                </div>
+                                                <div className="border-t pt-4 space-y-4">
+                                                    <div className="space-y-2">
+                                                        <Label>Menyetujui (Pimpinan Rapat)</Label>
+                                                        <Select
+                                                            value={kickoffForm.data.pimpinan_nama}
+                                                            onValueChange={(val) => {
+                                                                kickoffForm.setData('pimpinan_nama', val);
+                                                                const ttd = masterTtds?.find((t: any) => t.nama === val);
+                                                                if (ttd) kickoffForm.setData('pimpinan_jabatan', ttd.jabatan || '');
+                                                            }}
+                                                            disabled={isTamu}
+                                                        >
+                                                            <SelectTrigger>
+                                                                <SelectValue placeholder="Pilih Pimpinan Rapat" />
+                                                            </SelectTrigger>
+                                                            <SelectContent>
+                                                                {masterTtds?.map((t: any) => (
+                                                                    <SelectItem key={t.id} value={t.nama}>
+                                                                        {t.nama} {t.tipe ? `(${t.tipe})` : ''}
+                                                                    </SelectItem>
+                                                                ))}
+                                                            </SelectContent>
+                                                        </Select>
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        <Label>Dibuat / Notulis</Label>
+                                                        <Select
+                                                            value={kickoffForm.data.notulis_nama}
+                                                            onValueChange={(val) => {
+                                                                kickoffForm.setData('notulis_nama', val);
+                                                                const ttd = masterTtds?.find((t: any) => t.nama === val);
+                                                                if (ttd) kickoffForm.setData('notulis_jabatan', ttd.jabatan || '');
+                                                            }}
+                                                            disabled={isTamu}
+                                                        >
+                                                            <SelectTrigger>
+                                                                <SelectValue placeholder="Pilih Notulis" />
+                                                            </SelectTrigger>
+                                                            <SelectContent>
+                                                                {masterTtds?.map((t: any) => (
+                                                                    <SelectItem key={t.id} value={t.nama}>
+                                                                        {t.nama} {t.tipe ? `(${t.tipe})` : ''}
+                                                                    </SelectItem>
+                                                                ))}
+                                                            </SelectContent>
+                                                        </Select>
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        <Label htmlFor="k_kota">Kota Tanda Tangan</Label>
+                                                        <Input id="k_kota" value={kickoffForm.data.kota_ttd}
+                                                            onChange={(e) => kickoffForm.setData('kota_ttd', e.target.value)} disabled={isTamu} />
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        <Label htmlFor="k_tglttd">Tanggal Tanda Tangan</Label>
+                                                        <Input id="k_tglttd" type="date" value={kickoffForm.data.tanggal_ttd}
+                                                            onChange={(e) => kickoffForm.setData('tanggal_ttd', e.target.value)} disabled={isTamu} />
+                                                    </div>
+                                                </div>
+                                            </CardContent>
+                                        </Card>
                                     </div>
 
-                                    {/* Identitas rapat */}
-                                    <div className="space-y-4">
-                                        <h4 className="text-xs font-bold uppercase tracking-[0.1em] text-primary/80">Identitas Rapat</h4>
-                                        <div className="grid gap-4 md:grid-cols-2">
-                                            <div className="space-y-2">
-                                                <Label htmlFor="k_pimpinan">Pimpinan Rapat</Label>
-                                                <Input id="k_pimpinan" value={kickoffForm.data.pimpinan_rapat}
-                                                    onChange={(e) => kickoffForm.setData('pimpinan_rapat', e.target.value)} disabled={isTamu} />
-                                            </div>
-                                            <div className="space-y-2">
-                                                <Label htmlFor="k_tempat">Tempat</Label>
-                                                <Input id="k_tempat" value={kickoffForm.data.tempat}
-                                                    onChange={(e) => kickoffForm.setData('tempat', e.target.value)} disabled={isTamu} />
-                                            </div>
-                                            <div className="space-y-2">
-                                                <Label htmlFor="k_waktu">Waktu</Label>
-                                                <Input id="k_waktu" placeholder="09.15 WITA - Selesai" value={kickoffForm.data.waktu}
-                                                    onChange={(e) => kickoffForm.setData('waktu', e.target.value)} disabled={isTamu} />
-                                            </div>
-                                            <div className="space-y-2">
-                                                <Label htmlFor="k_peserta">Peserta</Label>
-                                                <Input id="k_peserta" value={kickoffForm.data.peserta}
-                                                    onChange={(e) => kickoffForm.setData('peserta', e.target.value)} disabled={isTamu} />
-                                            </div>
-                                        </div>
-                                        <div className="space-y-2">
-                                            <Label htmlFor="k_agenda">Agenda</Label>
-                                            <Textarea id="k_agenda" className="min-h-[70px] resize-none" value={kickoffForm.data.agenda}
-                                                onChange={(e) => kickoffForm.setData('agenda', e.target.value)} disabled={isTamu} />
-                                        </div>
+                                    {/* Right Column: Editor & Preview */}
+                                    <div className="space-y-6 md:col-span-2">
+                                        <Card className="h-full flex flex-col shadow-none">
+                                            <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-4 border-b gap-4">
+                                                <div>
+                                                    <CardTitle className="text-base">Isi Notulen</CardTitle>
+                                                    <CardDescription className="text-xs">Kop surat, tanggal, dan tanda tangan otomatis ditambahkan pada PDF.</CardDescription>
+                                                </div>
+                                                <div className="flex shrink-0 items-center gap-1 bg-muted p-1 rounded-lg w-fit border shadow-sm">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setPreviewModal(false)}
+                                                        className={`flex items-center justify-center gap-2 rounded-md px-3 py-1.5 text-xs font-medium transition-all ${!previewModal ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+                                                    >
+                                                        <Edit className="h-3.5 w-3.5" /> Editor
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setPreviewModal(true)}
+                                                        className={`flex items-center justify-center gap-2 rounded-md px-3 py-1.5 text-xs font-medium transition-all ${previewModal ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+                                                    >
+                                                        <Eye className="h-3.5 w-3.5" /> Pratinjau
+                                                    </button>
+                                                </div>
+                                            </CardHeader>
+                                            <CardContent className="space-y-4 flex-1 flex flex-col pt-4 p-0 sm:p-6">
+                                                {previewModal ? (
+                                                    <div className="w-full rounded-md border overflow-hidden bg-gray-50 flex-1 min-h-[500px]">
+                                                        <KickoffDocumentPreview 
+                                                            data={kickoffForm.data} 
+                                                            meetingDate={briefing.tanggal}
+                                                            attendeesCount={attendees.length}
+                                                            photos={kickoffPhotos}
+                                                            className="max-h-[800px]"
+                                                        />
+                                                    </div>
+                                                ) : (
+                                                    <div className="flex-1 flex flex-col space-y-8">
+                                                        <div className="space-y-2">
+                                                            <h4 className="font-bold underline text-sm">A. Penyampaian PLN NP UP Kendari</h4>
+                                                            {isTamu ? (
+                                                                <div className="min-h-[150px] p-3 border rounded-md bg-muted/50 text-sm overflow-hidden tiptap-preview" dangerouslySetInnerHTML={{ __html: kickoffForm.data.penyampaian_pln }} />
+                                                            ) : (
+                                                                <LetterEditor 
+                                                                    value={kickoffForm.data.penyampaian_pln} 
+                                                                    onChange={(val) => kickoffForm.setData('penyampaian_pln', val)} 
+                                                                    className="min-h-[150px] border shadow-sm rounded-md"
+                                                                    placeholder="Ketik pembahasan PLN di sini..."
+                                                                />
+                                                            )}
+                                                        </div>
+                                                        <div className="space-y-2">
+                                                            <h4 className="font-bold underline text-sm">B. Penyampaian {kickoffForm.data.nama_mitra || 'Mitra / Vendor'}</h4>
+                                                            {isTamu ? (
+                                                                <div className="min-h-[150px] p-3 border rounded-md bg-muted/50 text-sm overflow-hidden tiptap-preview" dangerouslySetInnerHTML={{ __html: kickoffForm.data.penyampaian_mitra }} />
+                                                            ) : (
+                                                                <LetterEditor 
+                                                                    value={kickoffForm.data.penyampaian_mitra} 
+                                                                    onChange={(val) => kickoffForm.setData('penyampaian_mitra', val)} 
+                                                                    className="min-h-[150px] border shadow-sm rounded-md"
+                                                                    placeholder="Ketik penyampaian mitra di sini..."
+                                                                />
+                                                            )}
+                                                        </div>
+                                                        <div className="space-y-2">
+                                                            <h4 className="font-bold underline text-sm">C. Hasil Kesepakatan</h4>
+                                                            {isTamu ? (
+                                                                <div className="min-h-[150px] p-3 border rounded-md bg-muted/50 text-sm overflow-hidden tiptap-preview" dangerouslySetInnerHTML={{ __html: kickoffForm.data.hasil_kesepakatan }} />
+                                                            ) : (
+                                                                <LetterEditor 
+                                                                    value={kickoffForm.data.hasil_kesepakatan} 
+                                                                    onChange={(val) => kickoffForm.setData('hasil_kesepakatan', val)} 
+                                                                    className="min-h-[150px] border shadow-sm rounded-md"
+                                                                    placeholder="Ketik hasil kesepakatan di sini..."
+                                                                />
+                                                            )}
+                                                        </div>
+                                                        {!isTamu && (
+                                                            <div className="flex justify-end pt-4 border-t">
+                                                                <Button type="submit" disabled={kickoffForm.processing} className="gap-2 px-8">
+                                                                    <FileText className="h-4 w-4" />
+                                                                    Simpan Notulen Kick Off
+                                                                </Button>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </CardContent>
+                                        </Card>
                                     </div>
-
-                                    {/* I. Pembahasan */}
-                                    <div className="space-y-4">
-                                        <h4 className="text-xs font-bold uppercase tracking-[0.1em] text-primary/80">I. Pembahasan</h4>
-                                        <div className="space-y-2">
-                                            <Label htmlFor="k_pln">A. Penyampaian PLN NP UP Kendari</Label>
-                                            <Textarea id="k_pln" className="min-h-[150px] resize-none"
-                                                placeholder={'Satu poin per baris.\nContoh:\nTerkait rencana pelaksanaan Major Overhaul...\nUntuk mesin Deutz BV 8M 628...'}
-                                                value={kickoffForm.data.penyampaian_pln}
-                                                onChange={(e) => kickoffForm.setData('penyampaian_pln', e.target.value)} disabled={isTamu} />
-                                            <p className="text-xs text-muted-foreground">Tiap baris akan menjadi poin bernomor pada dokumen.</p>
-                                        </div>
-                                        <div className="space-y-2">
-                                            <Label htmlFor="k_mitra_nama">Nama Mitra / Vendor</Label>
-                                            <Input id="k_mitra_nama" placeholder="PT SINAR TIMUR UTAMA RAYA" value={kickoffForm.data.nama_mitra}
-                                                onChange={(e) => kickoffForm.setData('nama_mitra', e.target.value)} disabled={isTamu} />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <Label htmlFor="k_mitra">B. Penyampaian Mitra / Vendor</Label>
-                                            <Textarea id="k_mitra" className="min-h-[130px] resize-none" placeholder="Satu poin per baris."
-                                                value={kickoffForm.data.penyampaian_mitra}
-                                                onChange={(e) => kickoffForm.setData('penyampaian_mitra', e.target.value)} disabled={isTamu} />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <Label htmlFor="k_sepakat">C. Hasil Kesepakatan</Label>
-                                            <Textarea id="k_sepakat" className="min-h-[130px] resize-none" placeholder="Satu poin per baris."
-                                                value={kickoffForm.data.hasil_kesepakatan}
-                                                onChange={(e) => kickoffForm.setData('hasil_kesepakatan', e.target.value)} disabled={isTamu} />
-                                        </div>
-                                    </div>
-
-                                    {/* II. Lampiran - link absensi */}
-                                    <div className="space-y-4">
-                                        <h4 className="text-xs font-bold uppercase tracking-[0.1em] text-primary/80">II. Lampiran</h4>
-                                        <div className="space-y-2">
-                                            <Label htmlFor="k_absensi" className="flex items-center gap-1.5">
-                                                <Link2 className="h-3.5 w-3.5" />
-                                                Link Daftar Hadir / Absensi
-                                            </Label>
-                                            <Input id="k_absensi" type="url" placeholder="https://..." value={kickoffForm.data.link_absensi}
-                                                onChange={(e) => kickoffForm.setData('link_absensi', e.target.value)} disabled={isTamu} />
-                                            <p className="text-xs text-muted-foreground">
-                                                Kosongkan untuk memakai link absensi bawaan rapat ini ({attendees.length} peserta tercatat).
-                                            </p>
-                                        </div>
-                                    </div>
-
-                                    {/* Tanda tangan */}
-                                    <div className="space-y-4">
-                                        <h4 className="text-xs font-bold uppercase tracking-[0.1em] text-primary/80">Tanda Tangan</h4>
-                                        <p className="text-xs text-muted-foreground">
-                                            Nama &amp; jabatan penandatangan diatur terpusat di
-                                            <span className="font-medium"> Data Master → Tanda Tangan</span> (super admin).
-                                        </p>
-                                        <div className="grid gap-4 md:grid-cols-2">
-                                            <div className="space-y-2">
-                                                <Label htmlFor="k_kota">Kota Tanda Tangan</Label>
-                                                <Input id="k_kota" value={kickoffForm.data.kota_ttd}
-                                                    onChange={(e) => kickoffForm.setData('kota_ttd', e.target.value)} disabled={isTamu} />
-                                            </div>
-                                            <div className="space-y-2">
-                                                <Label htmlFor="k_tglttd">Tanggal Tanda Tangan</Label>
-                                                <Input id="k_tglttd" type="date" value={kickoffForm.data.tanggal_ttd}
-                                                    onChange={(e) => kickoffForm.setData('tanggal_ttd', e.target.value)} disabled={isTamu} />
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    {!isTamu && (
-                                        <div className="flex justify-end pt-4 border-t">
-                                            <Button type="submit" disabled={kickoffForm.processing} className="gap-2 px-8">
-                                                <FileText className="h-4 w-4" />
-                                                Simpan Notulen Kick Off
-                                            </Button>
-                                        </div>
-                                    )}
                                 </form>
 
                                 {/* Dokumentasi rapat — ikut tercetak pada notulen
@@ -976,9 +1167,9 @@ export default function DailyBriefingsShow({
                                         </div>
                                     )}
                                 </div>
-
-                                </CardContent>
+                            </CardContent>
                         </Card>
+                        </div>
                     )}
                 </div>
 
@@ -1256,6 +1447,7 @@ export default function DailyBriefingsShow({
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
+
         </>
     );
 }

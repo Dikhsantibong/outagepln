@@ -187,12 +187,22 @@
         <tr>
             <td>
                 Menyetujui,<br><br>
-                <div class="ttd-nama">{{ strtoupper($penandatangan['menyetujui_nama']) }}</div>
+                <div class="ttd-nama" style="margin-top: 10px;">
+                    @if($penandatangan['menyetujui_signature'])
+                        <img src="{{ $penandatangan['menyetujui_signature'] }}" style="max-height: 50px; max-width: 150px; object-fit: contain;"><br>
+                    @endif
+                    {{ strtoupper($penandatangan['menyetujui_nama']) }}
+                </div>
                 <div class="ttd-jabatan">{{ strtoupper($penandatangan['menyetujui_jabatan']) }}</div>
             </td>
             <td>
                 Kendari, {{ \Carbon\Carbon::parse($briefing->tanggal)->translatedFormat('d F Y') }}<br><br>
-                <div class="ttd-nama">{{ strtoupper($penandatangan['staf_nama']) }}</div>
+                <div class="ttd-nama" style="margin-top: 10px;">
+                    @if($penandatangan['staf_signature'])
+                        <img src="{{ $penandatangan['staf_signature'] }}" style="max-height: 50px; max-width: 150px; object-fit: contain;"><br>
+                    @endif
+                    {{ strtoupper($penandatangan['staf_nama']) }}
+                </div>
                 <div class="ttd-jabatan">{{ strtoupper($penandatangan['staf_jabatan']) }}</div>
             </td>
         </tr>

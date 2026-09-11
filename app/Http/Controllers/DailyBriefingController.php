@@ -10,8 +10,10 @@ use App\Models\DailyBriefingFinding;
 use App\Models\DailyBriefingIssue;
 use App\Models\DailyBriefingKickoff;
 use App\Models\DailyBriefingKickoffPhoto;
+use App\Models\MasterTtd;
 use App\Support\RapatHarianOtomatis;
 use App\Support\TahunFilter;
+use App\Support\Ttd;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -229,6 +231,7 @@ class DailyBriefingController extends Controller
             'kickoffPhotos' => $dailyBriefing->kickoffPhotos,
             'findingInfo' => $this->findingInfo($dailyBriefing),
             'kickoffDefaults' => $this->kickoffDefaults($dailyBriefing),
+            'masterTtds' => MasterTtd::all(),
             'attendUrl' => $this->attendUrl($dailyBriefing),
             'days' => $days,
         ]);
@@ -449,7 +452,7 @@ class DailyBriefingController extends Controller
         $seriesIds = $allSeriesIds->slice(0, $currentIndex + 1)->values();
 
         $issues = DailyBriefingIssue::whereIn('daily_briefing_id', $seriesIds)->orderBy('id')->get();
-        
+
         $dailyBriefing->load(['attendees']);
 
         $pdf = Pdf::loadView('exports.daily-briefing', [
@@ -470,9 +473,9 @@ class DailyBriefingController extends Controller
         $seriesIds = $allSeriesIds->slice(0, $currentIndex + 1)->values();
 
         $issues = DailyBriefingIssue::whereIn('daily_briefing_id', $seriesIds)->orderBy('id')->get();
-        
+
         $dailyBriefing->load(['attendees']);
-        
+
         // Pass issues dynamically or set it on the model relation (if the export class uses it)
         $dailyBriefing->setRelation('issues', $issues);
 
@@ -598,7 +601,7 @@ class DailyBriefingController extends Controller
         $seriesIds = $allSeriesIds->slice(0, $currentIndex + 1)->values();
 
         $findings = DailyBriefingFinding::whereIn('daily_briefing_id', $seriesIds)->orderBy('tanggal')->orderBy('id')->get();
-        
+
         $logoPath = public_path('sidebar-logo.png');
 
         $pdf = Pdf::loadView('exports.briefing-findings', [
@@ -622,7 +625,7 @@ class DailyBriefingController extends Controller
         $seriesIds = $allSeriesIds->slice(0, $currentIndex + 1)->values();
 
         $findings = DailyBriefingFinding::whereIn('daily_briefing_id', $seriesIds)->orderBy('tanggal')->orderBy('id')->get();
-        
+
         $info = $this->findingInfo($dailyBriefing);
 
         $spreadsheet = new Spreadsheet;
@@ -773,6 +776,12 @@ class DailyBriefingController extends Controller
     // --- KICKOFF ---
     private function kickoffDefaults(DailyBriefing $dailyBriefing): array
     {
+        // Penandatangan bawaan diambil dari Data Master → Tanda Tangan supaya
+        // formulir notulen yang belum tersimpan langsung terisi nama yang sama
+        // dengan yang dipakai di berkas cetak, dan ikut berubah bila datanya
+        // diperbarui super admin. Lihat [Ttd::data()].
+        $ttd = Ttd::data();
+
         return [
             'nomor_dokumen' => 'FMKP - 145 - 13.3.4.a.a.i - 001',
             'revisi' => '001',
@@ -781,10 +790,10 @@ class DailyBriefingController extends Controller
             'waktu' => ($dailyBriefing->waktu_mulai ? substr($dailyBriefing->waktu_mulai, 0, 5) : '09.00').' WITA - Selesai',
             'agenda' => trim("Kick Off Meeting {$dailyBriefing->judul}"),
             'peserta' => '(Daftar peserta terlampir)',
-            'pimpinan_nama' => 'ABDUL RAHMAN KADIR',
-            'pimpinan_jabatan' => 'TL Outage Management',
-            'notulis_nama' => 'FIRMANSYAH',
-            'notulis_jabatan' => 'OF Outage Management',
+            'pimpinan_nama' => $ttd['menyetujui_nama'],
+            'pimpinan_jabatan' => $ttd['menyetujui_jabatan'],
+            'notulis_nama' => $ttd['staf_nama'],
+            'notulis_jabatan' => $ttd['staf_jabatan'],
             'kota_ttd' => 'Kendari',
         ];
     }

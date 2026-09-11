@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use App\Models\MasterTtd;
 use App\Models\Setting;
 
 /**
@@ -17,16 +18,25 @@ use App\Models\Setting;
  */
 class Ttd
 {
-    /**
-     * @return array{menyetujui_nama: string, menyetujui_jabatan: string, staf_nama: string, staf_jabatan: string}
-     */
     public static function data(): array
     {
+        // Try to find the default Menyetujui (usually the first TL or Pimpinan)
+        $menyetujui = MasterTtd::where('tipe', 'like', '%TL%')
+            ->orWhere('tipe', 'like', '%Manager%')
+            ->orWhere('jabatan', 'like', '%Pimpinan%')
+            ->first() ?? MasterTtd::first();
+
+        // Try to find the default Staf (usually Officer or Notulis)
+        $staf = MasterTtd::where('id', '!=', $menyetujui?->id ?? 0)
+            ->first();
+
         return [
-            'menyetujui_nama' => Setting::get('ttd_menyetujui_nama', 'ABDUL RAHMAN KADIR'),
-            'menyetujui_jabatan' => Setting::get('ttd_menyetujui_jabatan', 'TEAM LEADER OUTAGE MANAGEMENT'),
-            'staf_nama' => Setting::get('ttd_staf_nama', 'FIRMANSYAH'),
-            'staf_jabatan' => Setting::get('ttd_staf_jabatan', 'OF OUTAGE MANAGEMENT'),
+            'menyetujui_nama' => $menyetujui?->nama ?? Setting::get('ttd_menyetujui_nama', 'ABDUL RAHMAN KADIR'),
+            'menyetujui_jabatan' => $menyetujui?->jabatan ?? Setting::get('ttd_menyetujui_jabatan', 'TEAM LEADER OUTAGE MANAGEMENT'),
+            'menyetujui_signature' => $menyetujui?->signature ?? null,
+            'staf_nama' => $staf?->nama ?? Setting::get('ttd_staf_nama', 'FIRMANSYAH'),
+            'staf_jabatan' => $staf?->jabatan ?? Setting::get('ttd_staf_jabatan', 'OF OUTAGE MANAGEMENT'),
+            'staf_signature' => $staf?->signature ?? null,
         ];
     }
 }

@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\DailyBriefing;
 use App\Models\DailyMeeting;
+use App\Models\MasterTtd;
 use App\Models\OutagePlan;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -94,6 +95,24 @@ class RapatOutageDanDailyMeetingTest extends TestCase
         $this->get("/daily-meetings/{$meeting->id}")
             ->assertOk()
             ->assertInertia(fn ($page) => $page->component('daily-meetings/show'));
+    }
+
+    public function test_penandatangan_notulen_rapat_outage_diambil_dari_data_master(): void
+    {
+        $this->admin();
+        $meeting = $this->meeting();
+
+        MasterTtd::create(['nama' => 'PAK TL', 'jabatan' => 'Team Leader Outage', 'tipe' => 'TL']);
+        MasterTtd::create(['nama' => 'BU NOTULIS', 'jabatan' => 'Officer Outage', 'tipe' => 'OF']);
+
+        $this->get("/daily-meetings/{$meeting->id}")
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->where('kickoffDefaults.pimpinan_nama', 'PAK TL')
+                ->where('kickoffDefaults.pimpinan_jabatan', 'Team Leader Outage')
+                ->where('kickoffDefaults.notulis_nama', 'BU NOTULIS')
+                ->where('kickoffDefaults.notulis_jabatan', 'Officer Outage')
+                ->has('masterTtds', 2));
     }
 
     public function test_daftar_hadir_rapat_outage_tercatat_dari_qr(): void
@@ -243,6 +262,24 @@ class RapatOutageDanDailyMeetingTest extends TestCase
         $this->get("/daily-briefings/{$briefing->id}")
             ->assertOk()
             ->assertInertia(fn ($page) => $page->component('daily-briefings/show'));
+    }
+
+    public function test_penandatangan_notulen_daily_meeting_diambil_dari_data_master(): void
+    {
+        $this->admin();
+        $briefing = $this->briefing();
+
+        MasterTtd::create(['nama' => 'PAK TL', 'jabatan' => 'Team Leader Outage', 'tipe' => 'TL']);
+        MasterTtd::create(['nama' => 'BU NOTULIS', 'jabatan' => 'Officer Outage', 'tipe' => 'OF']);
+
+        $this->get("/daily-briefings/{$briefing->id}")
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->where('kickoffDefaults.pimpinan_nama', 'PAK TL')
+                ->where('kickoffDefaults.pimpinan_jabatan', 'Team Leader Outage')
+                ->where('kickoffDefaults.notulis_nama', 'BU NOTULIS')
+                ->where('kickoffDefaults.notulis_jabatan', 'Officer Outage')
+                ->has('masterTtds', 2));
     }
 
     public function test_filter_daftar_daily_meeting_menyaring_hasil(): void
