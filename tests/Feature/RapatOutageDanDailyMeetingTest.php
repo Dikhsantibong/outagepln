@@ -414,6 +414,15 @@ class RapatOutageDanDailyMeetingTest extends TestCase
         $this->assertStringContainsString($url, $html);
         $this->assertStringContainsString('href="'.$url.'"', $html);
 
+        // Lampiran dicetak pada lembar tersendiri (page break) dan tanda tangan
+        // tetap menutup notulen sebelum lampiran.
+        $this->assertStringContainsString('lampiran-page', $html);
+        $this->assertLessThan(
+            strpos($html, 'II.&nbsp;&nbsp;Lampiran'),
+            strpos($html, 'class="sign"'),
+            'Blok tanda tangan harus berada sebelum lampiran.',
+        );
+
         $excel = $this->get("/daily-briefings/{$briefing->id}/kickoff/export-excel");
         $excel->assertOk();
         $this->assertStringContainsString($briefing->token, $this->sheetText($excel->streamedContent()));

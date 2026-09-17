@@ -57,6 +57,9 @@
         table.sign td { width: 50%; text-align: center; vertical-align: top; font-size: 10px; }
         .sign-space { height: 58px; }
         .sign-name { font-weight: bold; text-decoration: underline; }
+
+        /* Lampiran dicetak pada lembar tersendiri, setelah tanda tangan. */
+        .lampiran-page { page-break-before: always; margin-top: 0; }
     </style>
 </head>
 <body>
@@ -157,7 +160,42 @@
             <div class="empty">Belum ada hasil kesepakatan.</div>
         @endif
 
-        <div class="sec-title" style="margin-top: 10px;">II.&nbsp;&nbsp;Lampiran</div>
+        <table class="sign">
+            <tr>
+                <td>
+                    Pimpinan Rapat,
+                    <div class="sign-space">
+                        @php($pimNama = $val('pimpinan_nama', 'ABDUL RAHMAN KADIR'))
+                        @if($img = \App\Models\MasterTtd::where('nama', $pimNama)->value('signature'))
+                            <img src="{{ $img }}" style="max-height: 58px; max-width: 150px; object-fit: contain;">
+                        @endif
+                    </div>
+                    <span class="sign-name">{{ $pimNama }}</span><br>
+                    {{ $val('pimpinan_jabatan', 'TEAM LEADER OUTAGE MANAGEMENT') }}
+                </td>
+                <td>
+                    {{ $val('kota_ttd', 'Kendari') }},
+                    {{ $k && $k->tanggal_ttd
+                        ? \Carbon\Carbon::parse($k->tanggal_ttd)->locale('id')->isoFormat('D MMMM Y')
+                        : \Carbon\Carbon::parse($meeting->tanggal)->locale('id')->isoFormat('D MMMM Y') }}<br>
+                    Notulis,
+                    <div class="sign-space">
+                        @php($notNama = $val('notulis_nama', 'FIRMANSYAH'))
+                        @if($img = \App\Models\MasterTtd::where('nama', $notNama)->value('signature'))
+                            <img src="{{ $img }}" style="max-height: 58px; max-width: 150px; object-fit: contain;">
+                        @endif
+                    </div>
+                    <span class="sign-name">{{ $notNama }}</span><br>
+                    {{ $val('notulis_jabatan', 'OF OUTAGE MANAGEMENT') }}
+                </td>
+            </tr>
+        </table>
+    </div>
+
+    {{-- Lampiran pindah ke lembar tersendiri; tanda tangan tetap menutup notulen
+         di halaman sebelumnya. --}}
+    <div class="box lampiran-page">
+        <div class="sec-title">II.&nbsp;&nbsp;Lampiran</div>
 
         <div class="sub-title">A.&nbsp;&nbsp;Daftar Hadir / Absensi</div>
         <div class="lampiran" style="margin-left: 34px;">
@@ -191,37 +229,6 @@
         @else
             <div class="empty">Belum ada dokumentasi rapat.</div>
         @endif
-
-        <table class="sign">
-            <tr>
-                <td>
-                    Pimpinan Rapat,
-                    <div class="sign-space">
-                        @php($pimNama = $val('pimpinan_nama', 'ABDUL RAHMAN KADIR'))
-                        @if($img = \App\Models\MasterTtd::where('nama', $pimNama)->value('signature'))
-                            <img src="{{ $img }}" style="max-height: 58px; max-width: 150px; object-fit: contain;">
-                        @endif
-                    </div>
-                    <span class="sign-name">{{ $pimNama }}</span><br>
-                    {{ $val('pimpinan_jabatan', 'TEAM LEADER OUTAGE MANAGEMENT') }}
-                </td>
-                <td>
-                    {{ $val('kota_ttd', 'Kendari') }},
-                    {{ $k && $k->tanggal_ttd
-                        ? \Carbon\Carbon::parse($k->tanggal_ttd)->locale('id')->isoFormat('D MMMM Y')
-                        : \Carbon\Carbon::parse($meeting->tanggal)->locale('id')->isoFormat('D MMMM Y') }}<br>
-                    Notulis,
-                    <div class="sign-space">
-                        @php($notNama = $val('notulis_nama', 'FIRMANSYAH'))
-                        @if($img = \App\Models\MasterTtd::where('nama', $notNama)->value('signature'))
-                            <img src="{{ $img }}" style="max-height: 58px; max-width: 150px; object-fit: contain;">
-                        @endif
-                    </div>
-                    <span class="sign-name">{{ $notNama }}</span><br>
-                    {{ $val('notulis_jabatan', 'OF OUTAGE MANAGEMENT') }}
-                </td>
-            </tr>
-        </table>
     </div>
 
     @include('exports.partials.daftar-hadir')
