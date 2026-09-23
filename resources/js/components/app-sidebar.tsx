@@ -56,15 +56,18 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         return auth.menu_access.includes(menuKey);
     };
 
-    // Rapat dikoordinasi terpusat, jadi menunya tidak untuk pengelola.
+    // Tampilnya menu mengikuti Izin Akses Menu (menu_access) sebagai satu-satunya
+    // acuan, sama dengan penjagaan rute di CheckMenuAccess. Jadi begitu super
+    // admin mencentang sebuah menu untuk role/user mana pun — termasuk pengelola
+    // — menunya langsung muncul, tidak lagi tertahan aturan peran bawaan.
     const pelaksanaan: NavItem[] = [
         ...(canAccess('outage-plans') ? [{
             title: 'Perencanaan dan Jadwal',
             href: '/outage-plans',
             icon: Calendar,
         }] : []),
-        ...((auth?.can?.viewMeetings ?? true) && canAccess('rapat-outage') ? [dailyMeetingsNav] : []),
-        ...((auth?.can?.viewMeetings ?? true) && canAccess('daily-meeting') ? [{
+        ...(canAccess('rapat-outage') ? [dailyMeetingsNav] : []),
+        ...(canAccess('daily-meeting') ? [{
             title: 'Daily Meeting',
             href: '/daily-briefings',
             icon: CalendarDays,

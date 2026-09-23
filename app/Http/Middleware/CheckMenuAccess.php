@@ -11,7 +11,7 @@ class CheckMenuAccess
     /**
      * Handle an incoming request.
      *
-     * @param  \Closure(\Illuminate\Http\Request): (\Symfony\Component\HttpFoundation\Response)  $next
+     * @param  Closure(Request): (Response)  $next
      */
     public function handle(Request $request, Closure $next): Response
     {
@@ -30,10 +30,12 @@ class CheckMenuAccess
             $menu = 'dashboard';
         } elseif (str_starts_with($routeName, 'outage-plans')) {
             $menu = 'outage-plans';
-        } elseif ($routeName === 'daily-meeting') {
-            $menu = 'daily-meeting';
         } elseif (str_starts_with($routeName, 'daily-meetings')) {
             $menu = 'rapat-outage';
+        } elseif (str_starts_with($routeName, 'daily-briefings')) {
+            // Menu "Daily Meeting" memakai rute daily-briefings.* — tanpa
+            // pemetaan ini izin menu-nya tidak pernah dijaga.
+            $menu = 'daily-meeting';
         } elseif (str_starts_with($routeName, 'kinerja.on-quality')) {
             $menu = 'kinerja.on-quality';
         } elseif (str_starts_with($routeName, 'kinerja.on-time')) {
@@ -48,9 +50,11 @@ class CheckMenuAccess
             $menu = 'team-outage';
         }
 
-        // If it's a known menu and the user's menu_access is explicitly set as an array
-        if ($menu && is_array($user->menu_access)) {
-            if (!in_array($menu, $user->menu_access)) {
+        // If it's a known menu and the user's menu_access is explicitly set as an
+        // array. Rute publik (mis. tautan absensi tanpa login) tidak punya user,
+        // jadi dilewati — penjagaannya bukan lewat izin menu.
+        if ($menu && $user && is_array($user->menu_access)) {
+            if (! in_array($menu, $user->menu_access)) {
                 // Deny access if they don't have the menu in their allowed array
                 abort(403, 'Anda tidak memiliki hak akses ke menu ini.');
             }

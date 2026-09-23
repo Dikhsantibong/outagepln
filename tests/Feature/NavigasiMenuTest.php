@@ -40,4 +40,38 @@ class NavigasiMenuTest extends TestCase
     {
         $this->get('/daily-meeting')->assertRedirect(route('login'));
     }
+
+    /**
+     * Akses Rapat Outage / Daily Meeting kini mengikuti Izin Akses Menu, bukan
+     * peran. Pengelola yang diberi menu tersebut bisa membukanya.
+     */
+    public function test_pengelola_dengan_izin_menu_bisa_membuka_rapat(): void
+    {
+        $pengelola = User::factory()->create([
+            'role' => 'pengelola',
+            'menu_access' => ['rapat-outage', 'daily-meeting'],
+        ]);
+
+        $this->actingAs($pengelola)
+            ->get('/daily-meetings')
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page->component('daily-meetings/index'));
+
+        $this->actingAs($pengelola)
+            ->get('/daily-briefings')
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page->component('daily-briefings/index'));
+    }
+
+    /** Tanpa izin menu tersebut, aksesnya tetap ditolak oleh CheckMenuAccess. */
+    public function test_pengelola_tanpa_izin_menu_ditolak_dari_rapat(): void
+    {
+        $pengelola = User::factory()->create([
+            'role' => 'pengelola',
+            'menu_access' => ['dashboard'],
+        ]);
+
+        $this->actingAs($pengelola)->get('/daily-meetings')->assertForbidden();
+        $this->actingAs($pengelola)->get('/daily-briefings')->assertForbidden();
+    }
 }

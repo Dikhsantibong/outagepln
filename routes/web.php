@@ -42,8 +42,11 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('summary', [SummaryController::class, 'index'])->name('summary');
     Route::get('summary/export-pptx', [SummaryController::class, 'exportPptx'])->name('summary.export-pptx');
 
-    // Menu Daily Meeting dan Rapat Outage (tidak boleh diakses pengelola)
-    Route::middleware(['can:viewMeetings'])->group(function () {
+    // Menu Daily Meeting dan Rapat Outage. Aksesnya kini sepenuhnya mengikuti
+    // Izin Akses Menu (menu_access) yang dijaga CheckMenuAccess — bukan lagi
+    // peran bawaan. Jadi begitu super admin memberi akses menu ini ke sebuah
+    // user/role (termasuk pengelola), rute maupun menunya langsung berlaku.
+    Route::group([], function () {
 
         // Daily Meeting (Manual Briefing) routes
         // Rapat harian dibentuk otomatis dari pekerjaan yang sedang berjalan, jadi
