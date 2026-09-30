@@ -5,6 +5,7 @@ import { useState, useEffect } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
     Dialog,
     DialogContent,
@@ -76,6 +77,8 @@ type Kickoff = {
     pimpinan_jabatan: string | null;
     notulis_nama: string | null;
     notulis_jabatan: string | null;
+    sembunyikan_pimpinan?: boolean;
+    sembunyikan_notulis?: boolean;
     kota_ttd: string | null;
     tanggal_ttd: string | null;
 } | null;
@@ -189,6 +192,9 @@ export default function DailyMeetingShow({
         pimpinan_jabatan: kickoff?.pimpinan_jabatan ?? d.pimpinan_jabatan ?? '',
         notulis_nama: kickoff?.notulis_nama ?? d.notulis_nama ?? '',
         notulis_jabatan: kickoff?.notulis_jabatan ?? d.notulis_jabatan ?? '',
+        // Opsi menyembunyikan penandatangan di notulen; bawaannya tampil.
+        sembunyikan_pimpinan: Boolean(kickoff?.sembunyikan_pimpinan ?? false),
+        sembunyikan_notulis: Boolean(kickoff?.sembunyikan_notulis ?? false),
         kota_ttd: kickoff?.kota_ttd ?? d.kota_ttd ?? '',
         tanggal_ttd: kickoff?.tanggal_ttd ?? '',
     });
@@ -869,6 +875,17 @@ return;
                                                                 ))}
                                                             </SelectContent>
                                                         </Select>
+                                                        <div className="flex items-center gap-2 pt-1">
+                                                            <Checkbox
+                                                                id="k_hide_pimpinan"
+                                                                checked={kickoffForm.data.sembunyikan_pimpinan}
+                                                                onCheckedChange={(c) => kickoffForm.setData('sembunyikan_pimpinan', c === true)}
+                                                                disabled={isTamu}
+                                                            />
+                                                            <label htmlFor="k_hide_pimpinan" className="text-xs text-muted-foreground">
+                                                                Sembunyikan Pimpinan Rapat di notulen
+                                                            </label>
+                                                        </div>
                                                     </div>
                                                     <div className="space-y-2">
                                                         <Label>Dibuat / Notulis</Label>
@@ -892,6 +909,17 @@ return;
                                                                 ))}
                                                             </SelectContent>
                                                         </Select>
+                                                        <div className="flex items-center gap-2 pt-1">
+                                                            <Checkbox
+                                                                id="k_hide_notulis"
+                                                                checked={kickoffForm.data.sembunyikan_notulis}
+                                                                onCheckedChange={(c) => kickoffForm.setData('sembunyikan_notulis', c === true)}
+                                                                disabled={isTamu}
+                                                            />
+                                                            <label htmlFor="k_hide_notulis" className="text-xs text-muted-foreground">
+                                                                Sembunyikan Notulis di notulen
+                                                            </label>
+                                                        </div>
                                                     </div>
                                                     <div className="space-y-2">
                                                         <Label htmlFor="k_kota">Kota Tanda Tangan</Label>

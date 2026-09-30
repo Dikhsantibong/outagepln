@@ -331,6 +331,9 @@ class DailyMeetingController extends Controller
             'pimpinan_jabatan' => $ttd['menyetujui_jabatan'],
             'notulis_nama' => $ttd['staf_nama'],
             'notulis_jabatan' => $ttd['staf_jabatan'],
+            // Bawaannya kedua penandatangan tampil di notulen.
+            'sembunyikan_pimpinan' => false,
+            'sembunyikan_notulis' => false,
             'kota_ttd' => 'Kendari',
         ];
     }
@@ -355,6 +358,8 @@ class DailyMeetingController extends Controller
             'pimpinan_jabatan' => 'nullable|string|max:255',
             'notulis_nama' => 'nullable|string|max:255',
             'notulis_jabatan' => 'nullable|string|max:255',
+            'sembunyikan_pimpinan' => 'boolean',
+            'sembunyikan_notulis' => 'boolean',
             'kota_ttd' => 'nullable|string|max:100',
             'tanggal_ttd' => 'nullable|date',
         ]);

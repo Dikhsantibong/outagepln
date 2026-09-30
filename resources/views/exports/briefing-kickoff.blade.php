@@ -167,9 +167,15 @@
             {!! $renderHtmlOrText($k->hasil_kesepakatan ?? null) !!}
         @endif
 
+        {{-- Penandatangan bisa disembunyikan satu per satu; bila keduanya
+             disembunyikan, blok tanda tangan tidak dicetak sama sekali. --}}
+        @php($sembunyiPimpinan = (bool) $val('sembunyikan_pimpinan', false))
+        @php($sembunyiNotulis = (bool) $val('sembunyikan_notulis', false))
+        @unless ($sembunyiPimpinan && $sembunyiNotulis)
         <table class="sign">
             <tr>
                 <td>
+                    @unless ($sembunyiPimpinan)
                     Pimpinan Rapat,
                     <div class="sign-space">
                         @php($pimNama = $val('pimpinan_nama', 'ABDUL RAHMAN KADIR'))
@@ -179,12 +185,14 @@
                     </div>
                     <span class="sign-name">{{ $pimNama }}</span><br>
                     {{ $val('pimpinan_jabatan', 'TEAM LEADER OUTAGE MANAGEMENT') }}
+                    @endunless
                 </td>
                 <td>
                     {{ $val('kota_ttd', 'Kendari') }},
                     {{ $k && $k->tanggal_ttd
                         ? \Carbon\Carbon::parse($k->tanggal_ttd)->locale('id')->isoFormat('D MMMM Y')
                         : \Carbon\Carbon::parse($meeting->tanggal)->locale('id')->isoFormat('D MMMM Y') }}<br>
+                    @unless ($sembunyiNotulis)
                     Notulis,
                     <div class="sign-space">
                         @php($notNama = $val('notulis_nama', 'FIRMANSYAH'))
@@ -194,9 +202,11 @@
                     </div>
                     <span class="sign-name">{{ $notNama }}</span><br>
                     {{ $val('notulis_jabatan', 'OF OUTAGE MANAGEMENT') }}
+                    @endunless
                 </td>
             </tr>
         </table>
+        @endunless
     </div>
 
     {{-- Lampiran pindah ke lembar tersendiri; tanda tangan tetap menutup notulen

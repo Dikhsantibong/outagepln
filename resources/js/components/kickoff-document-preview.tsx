@@ -17,6 +17,8 @@ interface KickoffPreviewData {
     pimpinan_jabatan?: string;
     notulis_nama?: string;
     notulis_jabatan?: string;
+    sembunyikan_pimpinan?: boolean;
+    sembunyikan_notulis?: boolean;
     kota_ttd?: string;
     tanggal_ttd?: string;
 }
@@ -223,33 +225,45 @@ export default function KickoffDocumentPreview({
                         <div className="italic text-gray-500 ml-10 mb-2 text-[10px]">Belum ada dokumentasi rapat.</div>
                     )}
 
+                    {/* Penandatangan bisa disembunyikan satu per satu, sama
+                        seperti versi PDF/Excel. */}
+                    {!(data.sembunyikan_pimpinan && data.sembunyikan_notulis) && (
                     <table className="w-full mt-8">
                         <tbody>
                             <tr>
                                 <td className="w-1/2 text-center align-top">
-                                    Pimpinan Rapat,
-                                    <div className="h-[70px] flex items-center justify-center">
-                                        {masterTtds.find(t => t.nama === data.pimpinan_nama)?.signature && (
-                                            <img src={masterTtds.find(t => t.nama === data.pimpinan_nama).signature} className="max-h-[60px] max-w-[150px] object-contain" />
-                                        )}
-                                    </div>
-                                    <span className="font-bold underline">{data.pimpinan_nama || '...'}</span><br/>
-                                    {data.pimpinan_jabatan || '...'}
+                                    {!data.sembunyikan_pimpinan && (
+                                        <>
+                                            Pimpinan Rapat,
+                                            <div className="h-[70px] flex items-center justify-center">
+                                                {masterTtds.find(t => t.nama === data.pimpinan_nama)?.signature && (
+                                                    <img src={masterTtds.find(t => t.nama === data.pimpinan_nama).signature} className="max-h-[60px] max-w-[150px] object-contain" />
+                                                )}
+                                            </div>
+                                            <span className="font-bold underline">{data.pimpinan_nama || '...'}</span><br/>
+                                            {data.pimpinan_jabatan || '...'}
+                                        </>
+                                    )}
                                 </td>
                                 <td className="w-1/2 text-center align-top">
                                     {data.kota_ttd || 'Kendari'}, {formattedTtdDate}<br/>
-                                    Notulis,
-                                    <div className="h-[70px] flex items-center justify-center">
-                                        {masterTtds.find(t => t.nama === data.notulis_nama)?.signature && (
-                                            <img src={masterTtds.find(t => t.nama === data.notulis_nama).signature} className="max-h-[60px] max-w-[150px] object-contain" />
-                                        )}
-                                    </div>
-                                    <span className="font-bold underline">{data.notulis_nama || '...'}</span><br/>
-                                    {data.notulis_jabatan || '...'}
+                                    {!data.sembunyikan_notulis && (
+                                        <>
+                                            Notulis,
+                                            <div className="h-[70px] flex items-center justify-center">
+                                                {masterTtds.find(t => t.nama === data.notulis_nama)?.signature && (
+                                                    <img src={masterTtds.find(t => t.nama === data.notulis_nama).signature} className="max-h-[60px] max-w-[150px] object-contain" />
+                                                )}
+                                            </div>
+                                            <span className="font-bold underline">{data.notulis_nama || '...'}</span><br/>
+                                            {data.notulis_jabatan || '...'}
+                                        </>
+                                    )}
                                 </td>
                             </tr>
                         </tbody>
                     </table>
+                    )}
                 </div>
 
             </div>

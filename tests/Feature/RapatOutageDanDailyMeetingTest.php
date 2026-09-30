@@ -208,6 +208,34 @@ class RapatOutageDanDailyMeetingTest extends TestCase
         ]);
     }
 
+    public function test_notulis_rapat_outage_bisa_disembunyikan_di_notulen(): void
+    {
+        $this->admin();
+        $meeting = $this->meeting();
+
+        $this->post("/daily-meetings/{$meeting->id}/kickoff", [
+            'agenda' => 'Kick Off OH SO',
+            'sembunyikan_pimpinan' => false,
+            'sembunyikan_notulis' => true,
+        ])->assertRedirect();
+
+        $kickoff = $meeting->kickoff()->firstOrFail();
+        $this->assertFalse($kickoff->sembunyikan_pimpinan);
+        $this->assertTrue($kickoff->sembunyikan_notulis);
+
+        $html = $this->renderKickoff('exports.meeting-kickoff', $meeting, $kickoff);
+        $this->assertStringContainsString('Pimpinan Rapat,', $html);
+        $this->assertStringNotContainsString('Notulis,', $html);
+
+        $this->get("/daily-meetings/{$meeting->id}/kickoff/export-pdf")->assertOk();
+
+        $excel = $this->get("/daily-meetings/{$meeting->id}/kickoff/export-excel");
+        $excel->assertOk();
+        $teks = $this->sheetText($excel->streamedContent());
+        $this->assertStringContainsString('Pimpinan Rapat,', $teks);
+        $this->assertStringNotContainsString('Notulis,', $teks);
+    }
+
     public function test_unggah_dokumentasi_rapat_outage_berhasil(): void
     {
         $this->admin();
@@ -443,6 +471,64 @@ class RapatOutageDanDailyMeetingTest extends TestCase
         $teks = $this->sheetText($excel->streamedContent());
         $this->assertStringContainsString('https://absensi.internal/rapat-khusus', $teks);
         $this->assertStringNotContainsString($briefing->token, $teks);
+    }
+
+    public function test_penandatangan_notulen_daily_meeting_tampil_secara_bawaan(): void
+    {
+        $this->admin();
+        $briefing = $this->briefing();
+
+        $html = $this->renderKickoff('exports.briefing-kickoff', $briefing, null);
+
+        $this->assertStringContainsString('Pimpinan Rapat,', $html);
+        $this->assertStringContainsString('Notulis,', $html);
+    }
+
+    public function test_penandatangan_notulen_daily_meeting_bisa_disembunyikan(): void
+    {
+        $this->admin();
+        $briefing = $this->briefing();
+
+        $this->post("/daily-briefings/{$briefing->id}/kickoff", [
+            'agenda' => 'Kick Off Harian',
+            'sembunyikan_pimpinan' => true,
+            'sembunyikan_notulis' => false,
+        ])->assertRedirect();
+
+        $kickoff = $briefing->kickoff()->firstOrFail();
+        $this->assertTrue($kickoff->sembunyikan_pimpinan);
+
+        $html = $this->renderKickoff('exports.briefing-kickoff', $briefing, $kickoff);
+        $this->assertStringNotContainsString('Pimpinan Rapat,', $html);
+        $this->assertStringContainsString('Notulis,', $html);
+
+        // Keduanya disembunyikan: blok tanda tangan tidak dicetak sama sekali.
+        $kickoff->update(['sembunyikan_notulis' => true]);
+        $html = $this->renderKickoff('exports.briefing-kickoff', $briefing, $kickoff->fresh());
+        $this->assertStringNotContainsString('class="sign"', $html);
+
+        $this->get("/daily-briefings/{$briefing->id}/kickoff/export-pdf")->assertOk();
+
+        $excel = $this->get("/daily-briefings/{$briefing->id}/kickoff/export-excel");
+        $excel->assertOk();
+        $teks = $this->sheetText($excel->streamedContent());
+        $this->assertStringNotContainsString('Pimpinan Rapat,', $teks);
+        $this->assertStringNotContainsString('Notulis,', $teks);
+    }
+
+    /** Render blade PDF notulen, karena keluaran dompdf terkompresi. */
+    private function renderKickoff(string $view, $rapat, $kickoff): string
+    {
+        return view($view, [
+            'meeting' => $rapat,
+            'kickoff' => $kickoff,
+            'photos' => collect(),
+            'attendees' => collect(),
+            'issues' => collect(),
+            'defaults' => [],
+            'attendUrl' => 'http://example.test/absen',
+            'logo' => null,
+        ])->render();
     }
 
     /** Seluruh teks pada lembar pertama sebuah berkas xlsx. */

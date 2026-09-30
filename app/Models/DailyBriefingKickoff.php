@@ -25,6 +25,8 @@ class DailyBriefingKickoff extends Model
         'pimpinan_jabatan',
         'notulis_nama',
         'notulis_jabatan',
+        'sembunyikan_pimpinan',
+        'sembunyikan_notulis',
         'kota_ttd',
         'tanggal_ttd',
     ];
@@ -32,6 +34,8 @@ class DailyBriefingKickoff extends Model
     protected $casts = [
         'tanggal_terbit' => 'date:Y-m-d',
         'tanggal_ttd' => 'date:Y-m-d',
+        'sembunyikan_pimpinan' => 'boolean',
+        'sembunyikan_notulis' => 'boolean',
     ];
 
     public function briefing()

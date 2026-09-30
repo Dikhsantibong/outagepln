@@ -185,21 +185,27 @@
     <tr height="10"><td colspan="6"></td></tr>
 
     {{-- ══════════════ TANDA TANGAN ══════════════ --}}
+    {{-- Penandatangan bisa disembunyikan satu per satu; bila keduanya
+         disembunyikan, blok tanda tangan tidak dicetak sama sekali. --}}
+    @php($sembunyiPimpinan = (bool) $val('sembunyikan_pimpinan', false))
+    @php($sembunyiNotulis = (bool) $val('sembunyikan_notulis', false))
+    @unless ($sembunyiPimpinan && $sembunyiNotulis)
     <tr>
         <td colspan="3"></td>
         <td colspan="3" style="text-align: center;">{{ $val('kota_ttd', 'Kendari') }}, {{ $tanggalTtd }}</td>
     </tr>
     <tr>
-        <td colspan="3" style="text-align: center;">Pimpinan Rapat,</td>
-        <td colspan="3" style="text-align: center;">Notulis,</td>
+        <td colspan="3" style="text-align: center;">{{ $sembunyiPimpinan ? '' : 'Pimpinan Rapat,' }}</td>
+        <td colspan="3" style="text-align: center;">{{ $sembunyiNotulis ? '' : 'Notulis,' }}</td>
     </tr>
     <tr height="66"><td colspan="3"></td><td colspan="3"></td></tr>
     <tr>
-        <td colspan="3" style="text-align: center; font-weight: bold; text-decoration: underline;">{{ $penandatangan['menyetujui_nama'] }}</td>
-        <td colspan="3" style="text-align: center; font-weight: bold; text-decoration: underline;">{{ $penandatangan['staf_nama'] }}</td>
+        <td colspan="3" style="text-align: center; font-weight: bold; text-decoration: underline;">{{ $sembunyiPimpinan ? '' : $penandatangan['menyetujui_nama'] }}</td>
+        <td colspan="3" style="text-align: center; font-weight: bold; text-decoration: underline;">{{ $sembunyiNotulis ? '' : $penandatangan['staf_nama'] }}</td>
     </tr>
     <tr>
-        <td colspan="3" style="text-align: center; font-weight: bold;">{{ $penandatangan['menyetujui_jabatan'] }}</td>
-        <td colspan="3" style="text-align: center; font-weight: bold;">{{ $penandatangan['staf_jabatan'] }}</td>
+        <td colspan="3" style="text-align: center; font-weight: bold;">{{ $sembunyiPimpinan ? '' : $penandatangan['menyetujui_jabatan'] }}</td>
+        <td colspan="3" style="text-align: center; font-weight: bold;">{{ $sembunyiNotulis ? '' : $penandatangan['staf_jabatan'] }}</td>
     </tr>
+    @endunless
 </table>

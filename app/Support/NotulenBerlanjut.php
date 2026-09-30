@@ -54,6 +54,8 @@ class NotulenBerlanjut
         'pimpinan_jabatan',
         'notulis_nama',
         'notulis_jabatan',
+        'sembunyikan_pimpinan',
+        'sembunyikan_notulis',
         'kota_ttd',
     ];
 
