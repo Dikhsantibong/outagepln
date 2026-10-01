@@ -57,6 +57,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('daily-briefings/{dailyBriefing}/add-day', [DailyBriefingController::class, 'storeExtraDay'])->name('daily-briefings.add-day');
         Route::post('daily-briefings/{dailyBriefing}/complete', [DailyBriefingController::class, 'complete'])->name('daily-briefings.complete');
         Route::get('daily-briefings/{dailyBriefing}/qr', [DailyBriefingController::class, 'qrDisplay'])->name('daily-briefings.qr');
+        Route::put('daily-briefings/{dailyBriefing}/pelaksanaan', [DailyBriefingController::class, 'updatePelaksanaan'])->name('daily-briefings.pelaksanaan');
         Route::get('daily-briefings/{dailyBriefing}/attendees-json', [DailyBriefingController::class, 'attendeesJson'])->name('daily-briefings.attendees-json');
         Route::post('daily-briefings/{dailyBriefing}/issues', [DailyBriefingController::class, 'storeIssue'])->name('daily-briefings.issues.store');
         Route::post('daily-briefings/{dailyBriefing}/issues/{issue}', [DailyBriefingController::class, 'updateIssue'])->name('daily-briefings.issues.update');
@@ -88,6 +89,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         // Membatalkan revisi terakhir sekaligus memulihkan jadwal versi sebelumnya.
         Route::delete('daily-meetings/rencana/{outage_plan}/revisi', [DailyMeetingController::class, 'destroyRevisiRencana'])->name('daily-meetings.rencana.revisi.destroy');
         Route::get('daily-meetings/{dailyMeeting}/qr', [DailyMeetingController::class, 'qrDisplay'])->name('daily-meetings.qr');
+        Route::put('daily-meetings/{dailyMeeting}/pelaksanaan', [DailyMeetingController::class, 'updatePelaksanaan'])->name('daily-meetings.pelaksanaan');
         Route::post('daily-meetings/{dailyMeeting}/complete', [DailyMeetingController::class, 'complete'])->name('daily-meetings.complete');
         Route::post('daily-meetings/{dailyMeeting}/realisasi', [DailyMeetingController::class, 'setRealisasi'])->name('daily-meetings.realisasi');
         Route::get('daily-meetings/{dailyMeeting}/attendees-json', [DailyMeetingController::class, 'attendeesJson'])->name('daily-meetings.attendees-json');

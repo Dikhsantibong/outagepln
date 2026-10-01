@@ -13,6 +13,7 @@ type Briefing = {
     judul: string;
     tanggal: string;
     waktu_mulai: string | null;
+    waktu_selesai?: string | null;
     lokasi: string | null;
     attendees: any[];
     token: string;
@@ -178,7 +179,7 @@ export default function AttendForm({
                         <div className="bg-[#6b9e9f] p-6 text-white">
                             <h1 className="text-xl font-bold mb-4">{briefing.judul}</h1>
                             <div className="text-[13px] space-y-1 font-medium opacity-90">
-                                <p>Pelaksanaan : {tglFormat} | Waktu : {briefing.waktu_mulai ? briefing.waktu_mulai.substring(0, 5) : '10:00'} - Selesai</p>
+                                <p>Pelaksanaan : {tglFormat} | Waktu : {briefing.waktu_mulai ? briefing.waktu_mulai.substring(0, 5) : '10:00'} - {briefing.waktu_selesai ? briefing.waktu_selesai.substring(0, 5) : 'Selesai'}</p>
                                 <p>Tempat : {briefing.lokasi || 'Zoom'}</p>
                                 <p>Media : Zoom , ID Meeting : - , Password : -</p>
                             </div>

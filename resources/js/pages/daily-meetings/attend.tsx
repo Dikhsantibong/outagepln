@@ -13,6 +13,7 @@ type meeting = {
     judul: string;
     tanggal: string;
     waktu_mulai: string | null;
+    waktu_selesai?: string | null;
     lokasi: string | null;
     attendees: any[];
     token: string;
@@ -178,7 +179,7 @@ export default function AttendForm({
                         <div className="bg-[#6b9e9f] p-6 text-white">
                             <h1 className="text-xl font-bold mb-4">{meeting.judul}</h1>
                             <div className="text-[13px] space-y-1 font-medium opacity-90">
-                                <p>Pelaksanaan : {tglFormat} | Waktu : {meeting.waktu_mulai ? meeting.waktu_mulai.substring(0, 5) : '10:00'} - Selesai</p>
+                                <p>Pelaksanaan : {tglFormat} | Waktu : {meeting.waktu_mulai ? meeting.waktu_mulai.substring(0, 5) : '10:00'} - {meeting.waktu_selesai ? meeting.waktu_selesai.substring(0, 5) : 'Selesai'}</p>
                                 <p>Tempat : {meeting.lokasi || 'Zoom'}</p>
                                 <p>Media : Zoom , ID Meeting : - , Password : -</p>
                             </div>

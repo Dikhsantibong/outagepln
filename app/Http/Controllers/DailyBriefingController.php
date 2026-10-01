@@ -271,6 +271,27 @@ class DailyBriefingController extends Controller
         return redirect()->back()->with('success', 'Data header berhasil disimpan.');
     }
 
+    /**
+     * Waktu dan tempat pelaksanaan yang tampil di halaman daftar hadir.
+     *
+     * Dipisah dari update() supaya formulir header notulen temuan tidak ikut
+     * menimpa jam rapat, dan sebaliknya.
+     */
+    public function updatePelaksanaan(Request $request, DailyBriefing $dailyBriefing)
+    {
+        abort_unless($request->user()?->canWrite(), 403);
+
+        $validated = $request->validate([
+            'waktu_mulai' => 'required|date_format:H:i',
+            'waktu_selesai' => 'nullable|date_format:H:i|after:waktu_mulai',
+            'lokasi' => 'nullable|string|max:255',
+        ]);
+
+        $dailyBriefing->update($validated);
+
+        return redirect()->back()->with('success', 'Waktu pelaksanaan berhasil diperbarui.');
+    }
+
     public function storeExtraDay(DailyBriefing $dailyBriefing)
     {
         $seriesDays = $dailyBriefing->seriesDays()->get();

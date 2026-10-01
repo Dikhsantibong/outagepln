@@ -1,6 +1,6 @@
 import { Head, router, usePage, Link } from '@inertiajs/react';
 import { useForm } from '@inertiajs/react';
-import { Calendar, Users, QrCode, FileText, CheckCircle2, ChevronLeft, ChevronRight, Plus, Edit, Pencil, Trash2, Copy, FileSpreadsheet, ImageOff, Handshake, Link2, Images, ClipboardList, Eye } from 'lucide-react';
+import { Calendar, Clock, Users, QrCode, FileText, CheckCircle2, ChevronLeft, ChevronRight, Plus, Edit, Pencil, Trash2, Copy, FileSpreadsheet, ImageOff, Handshake, Link2, Images, ClipboardList, Eye } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -87,6 +87,18 @@ export default function DailyBriefingsShow({
         }
         setLinkTersalin(true);
         setTimeout(() => setLinkTersalin(false), 2000);
+    };
+
+    // Waktu & tempat pelaksanaan yang tampil di halaman daftar hadir.
+    const pelaksanaanForm = useForm({
+        waktu_mulai: briefing.waktu_mulai ? String(briefing.waktu_mulai).substring(0, 5) : '',
+        waktu_selesai: briefing.waktu_selesai ? String(briefing.waktu_selesai).substring(0, 5) : '',
+        lokasi: briefing.lokasi || '',
+    });
+
+    const submitPelaksanaan = (e: React.FormEvent) => {
+        e.preventDefault();
+        pelaksanaanForm.put(`/daily-briefings/${briefing.id}/pelaksanaan`, { preserveScroll: true });
     };
 
     // Header Form. Nama penandatangan tidak lagi di sini — diatur terpusat di
@@ -535,6 +547,42 @@ export default function DailyBriefingsShow({
                                 </div>
                             </CardHeader>
                             <CardContent>
+                                {!isTamu && (
+                                    <form onSubmit={submitPelaksanaan} className="mb-4 rounded-md border p-3">
+                                        <p className="mb-3 flex items-center gap-1.5 text-sm font-semibold">
+                                            <Clock className="h-4 w-4 text-muted-foreground" />
+                                            Waktu &amp; Tempat Pelaksanaan
+                                        </p>
+                                        <div className="grid gap-3 sm:grid-cols-[140px_140px_1fr_auto] sm:items-end">
+                                            <div className="space-y-1">
+                                                <Label htmlFor="p_mulai" className="text-xs">Waktu Mulai</Label>
+                                                <Input id="p_mulai" type="time" required value={pelaksanaanForm.data.waktu_mulai}
+                                                    onChange={(e) => pelaksanaanForm.setData('waktu_mulai', e.target.value)} />
+                                            </div>
+                                            <div className="space-y-1">
+                                                <Label htmlFor="p_selesai" className="text-xs">Waktu Selesai (opsional)</Label>
+                                                <Input id="p_selesai" type="time" value={pelaksanaanForm.data.waktu_selesai}
+                                                    onChange={(e) => pelaksanaanForm.setData('waktu_selesai', e.target.value)} />
+                                            </div>
+                                            <div className="space-y-1">
+                                                <Label htmlFor="p_lokasi" className="text-xs">Tempat</Label>
+                                                <Input id="p_lokasi" placeholder="cth: Via Zoom" value={pelaksanaanForm.data.lokasi}
+                                                    onChange={(e) => pelaksanaanForm.setData('lokasi', e.target.value)} />
+                                            </div>
+                                            <Button type="submit" size="sm" className="h-9" disabled={pelaksanaanForm.processing}>
+                                                Simpan
+                                            </Button>
+                                        </div>
+                                        {(pelaksanaanForm.errors.waktu_mulai || pelaksanaanForm.errors.waktu_selesai || pelaksanaanForm.errors.lokasi) && (
+                                            <p className="mt-2 text-xs text-destructive">
+                                                {pelaksanaanForm.errors.waktu_mulai || pelaksanaanForm.errors.waktu_selesai || pelaksanaanForm.errors.lokasi}
+                                            </p>
+                                        )}
+                                        <p className="mt-2 text-xs text-muted-foreground">
+                                            Tampil di halaman daftar hadir. Kosongkan waktu selesai agar tertulis &quot;Selesai&quot;.
+                                        </p>
+                                    </form>
+                                )}
                                 <div className="mb-4 rounded-md border bg-muted/40 p-3">
                                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                                         <div className="flex min-w-0 flex-1 items-center gap-2">

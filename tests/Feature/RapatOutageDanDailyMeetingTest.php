@@ -208,6 +208,39 @@ class RapatOutageDanDailyMeetingTest extends TestCase
         ]);
     }
 
+    public function test_waktu_pelaksanaan_rapat_outage_bisa_diubah(): void
+    {
+        $this->admin();
+        $meeting = $this->meeting();
+
+        $this->put("/daily-meetings/{$meeting->id}/pelaksanaan", [
+            'waktu_mulai' => '13:30',
+            'waktu_selesai' => '15:00',
+            'lokasi' => 'Ruang Rapat UP',
+        ])->assertRedirect()->assertSessionHasNoErrors();
+
+        $segar = $meeting->fresh();
+        $this->assertSame('13:30', substr($segar->waktu_mulai, 0, 5));
+        $this->assertSame('15:00', substr($segar->waktu_selesai, 0, 5));
+        $this->assertSame('Ruang Rapat UP', $segar->lokasi);
+
+        // Halaman daftar hadir membaca nilai yang sama.
+        $this->get("/attend/{$meeting->token}")
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page->where('meeting.lokasi', 'Ruang Rapat UP'));
+    }
+
+    public function test_waktu_pelaksanaan_ditolak_bila_selesai_sebelum_mulai(): void
+    {
+        $this->admin();
+        $meeting = $this->meeting();
+
+        $this->put("/daily-meetings/{$meeting->id}/pelaksanaan", [
+            'waktu_mulai' => '13:30',
+            'waktu_selesai' => '10:00',
+        ])->assertSessionHasErrors('waktu_selesai');
+    }
+
     public function test_notulis_rapat_outage_bisa_disembunyikan_di_notulen(): void
     {
         $this->admin();
@@ -471,6 +504,39 @@ class RapatOutageDanDailyMeetingTest extends TestCase
         $teks = $this->sheetText($excel->streamedContent());
         $this->assertStringContainsString('https://absensi.internal/rapat-khusus', $teks);
         $this->assertStringNotContainsString($briefing->token, $teks);
+    }
+
+    public function test_waktu_pelaksanaan_daily_meeting_bisa_diubah(): void
+    {
+        $this->admin();
+        $briefing = $this->briefing();
+
+        // Waktu selesai boleh dikosongkan — halaman absen menulis "Selesai".
+        $this->put("/daily-briefings/{$briefing->id}/pelaksanaan", [
+            'waktu_mulai' => '10:15',
+            'waktu_selesai' => '',
+            'lokasi' => 'Via Zoom',
+        ])->assertRedirect()->assertSessionHasNoErrors();
+
+        $segar = $briefing->fresh();
+        $this->assertSame('10:15', substr($segar->waktu_mulai, 0, 5));
+        $this->assertNull($segar->waktu_selesai);
+
+        $this->get("/daily-briefings/attend/{$briefing->token}")
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page->where('briefing.lokasi', 'Via Zoom'));
+    }
+
+    public function test_tamu_tidak_bisa_mengubah_waktu_pelaksanaan(): void
+    {
+        $briefing = $this->briefing();
+        $this->actingAs(User::factory()->create(['role' => 'tamu']));
+
+        $this->put("/daily-briefings/{$briefing->id}/pelaksanaan", [
+            'waktu_mulai' => '11:00',
+        ])->assertForbidden();
+
+        $this->assertSame('09:00', substr($briefing->fresh()->waktu_mulai, 0, 5));
     }
 
     public function test_penandatangan_notulen_daily_meeting_tampil_secara_bawaan(): void

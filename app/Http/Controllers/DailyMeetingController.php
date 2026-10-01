@@ -723,6 +723,22 @@ class DailyMeetingController extends Controller
         return redirect()->back()->with('success', 'Tanggal realisasi berhasil disimpan.');
     }
 
+    /** Waktu dan tempat pelaksanaan yang tampil di halaman daftar hadir. */
+    public function updatePelaksanaan(Request $request, DailyMeeting $dailyMeeting)
+    {
+        abort_unless($request->user()?->canWrite(), 403);
+
+        $validated = $request->validate([
+            'waktu_mulai' => 'required|date_format:H:i',
+            'waktu_selesai' => 'nullable|date_format:H:i|after:waktu_mulai',
+            'lokasi' => 'nullable|string|max:255',
+        ]);
+
+        $dailyMeeting->update($validated);
+
+        return redirect()->back()->with('success', 'Waktu pelaksanaan berhasil diperbarui.');
+    }
+
     public function qrDisplay(DailyMeeting $dailyMeeting)
     {
         return Inertia::render('daily-meetings/qr', [

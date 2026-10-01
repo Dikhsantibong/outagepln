@@ -164,6 +164,18 @@ export default function DailyMeetingShow({
         tanggal_realisasi: meeting.tanggal_realisasi || new Date().toISOString().split('T')[0],
     });
 
+    // Waktu & tempat pelaksanaan yang tampil di halaman daftar hadir.
+    const pelaksanaanForm = useForm({
+        waktu_mulai: meeting.waktu_mulai ? meeting.waktu_mulai.substring(0, 5) : '',
+        waktu_selesai: meeting.waktu_selesai ? meeting.waktu_selesai.substring(0, 5) : '',
+        lokasi: meeting.lokasi || '',
+    });
+
+    const submitPelaksanaan: FormEventHandler = (e) => {
+        e.preventDefault();
+        pelaksanaanForm.put(`/daily-meetings/${meeting.id}/pelaksanaan`, { preserveScroll: true });
+    };
+
     const submitRealisasi: FormEventHandler = (e) => {
         e.preventDefault();
         realisasiForm.post(`/daily-meetings/${meeting.id}/realisasi`, {
@@ -520,6 +532,42 @@ return;
                                 )}
                             </CardHeader>
                             <CardContent className="p-0">
+                                {!isTamu && (
+                                    <form onSubmit={submitPelaksanaan} className="border-b p-4">
+                                        <p className="mb-3 flex items-center gap-1.5 text-sm font-semibold">
+                                            <Clock className="h-4 w-4 text-muted-foreground" />
+                                            Waktu &amp; Tempat Pelaksanaan
+                                        </p>
+                                        <div className="grid gap-3 sm:grid-cols-[140px_140px_1fr_auto] sm:items-end">
+                                            <div className="space-y-1">
+                                                <Label htmlFor="p_mulai" className="text-xs">Waktu Mulai</Label>
+                                                <Input id="p_mulai" type="time" required value={pelaksanaanForm.data.waktu_mulai}
+                                                    onChange={(e) => pelaksanaanForm.setData('waktu_mulai', e.target.value)} />
+                                            </div>
+                                            <div className="space-y-1">
+                                                <Label htmlFor="p_selesai" className="text-xs">Waktu Selesai (opsional)</Label>
+                                                <Input id="p_selesai" type="time" value={pelaksanaanForm.data.waktu_selesai}
+                                                    onChange={(e) => pelaksanaanForm.setData('waktu_selesai', e.target.value)} />
+                                            </div>
+                                            <div className="space-y-1">
+                                                <Label htmlFor="p_lokasi" className="text-xs">Tempat</Label>
+                                                <Input id="p_lokasi" placeholder="cth: Via Zoom" value={pelaksanaanForm.data.lokasi}
+                                                    onChange={(e) => pelaksanaanForm.setData('lokasi', e.target.value)} />
+                                            </div>
+                                            <Button type="submit" size="sm" className="h-9" disabled={pelaksanaanForm.processing}>
+                                                Simpan
+                                            </Button>
+                                        </div>
+                                        {(pelaksanaanForm.errors.waktu_mulai || pelaksanaanForm.errors.waktu_selesai || pelaksanaanForm.errors.lokasi) && (
+                                            <p className="mt-2 text-xs text-destructive">
+                                                {pelaksanaanForm.errors.waktu_mulai || pelaksanaanForm.errors.waktu_selesai || pelaksanaanForm.errors.lokasi}
+                                            </p>
+                                        )}
+                                        <p className="mt-2 text-xs text-muted-foreground">
+                                            Tampil di halaman daftar hadir. Kosongkan waktu selesai agar tertulis &quot;Selesai&quot;.
+                                        </p>
+                                    </form>
+                                )}
                                 <Table>
                                     <TableHeader>
                                         <TableRow className="bg-muted/50 hover:bg-muted/50">
