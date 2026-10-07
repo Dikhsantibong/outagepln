@@ -24,6 +24,7 @@ class OutagePlan extends Model
         'ket',
         'merek',
         'unit',
+        'tipe',
         'sistem',
         'real_start',
         'real_stop',
@@ -138,6 +139,75 @@ class OutagePlan extends Model
         return $unit === '' ? null : $unit;
     }
 
+    /**
+     * Kunci yang mempertemukan rencana dengan baris Data Mesin: unit + nomor
+     * mesin, mis. "PLTD EREKE#12".
+     *
+     * Nama lengkapnya tidak bisa dipakai karena catatan lokasi lama ditulis
+     * berbeda di kedua sumber — "(EX PLTD BAUBAU #18)" vs "EX PLTD BAU-BAU #18".
+     */
+    public static function kunciMesin(?string $nama): ?string
+    {
+        $unit = self::extractUnit($nama);
+
+        if ($unit === null || ! preg_match('/#\s*0*(\d+)/', (string) $nama, $m)) {
+            return null;
+        }
+
+        return $unit.'#'.(int) $m[1];
+    }
+
+    /**
+     * Tipe mesin dalam bentuk baku untuk pembagian akun: huruf besar tanpa spasi
+     * dan strip, supaya "KTA 50-G8" dan "KTA-50-G8" — tipe yang sama, ditulis
+     * berbeda di sumbernya — jatuh ke satu kelompok "KTA50G8".
+     */
+    public static function normalisasiTipe(?string $tipe): ?string
+    {
+        $baku = strtoupper((string) preg_replace('/[^A-Za-z0-9]/', '', (string) $tipe));
+
+        return $baku === '' ? null : $baku;
+    }
+
+    /** Tipe mesin rencana ini menurut Data Mesin; null bila mesinnya tidak terdaftar. */
+    public static function tipeDariMesin(?string $nama): ?string
+    {
+        $kunci = self::kunciMesin($nama);
+
+        if ($kunci === null) {
+            return null;
+        }
+
+        $mesin = Mesin::query()
+            ->where('nama_mesin', 'like', '%#%')
+            ->get(['nama_mesin', 'pgk_type'])
+            ->first(fn (Mesin $m) => self::kunciMesin($m->nama_mesin) === $kunci);
+
+        return self::normalisasiTipe($mesin?->pgk_type);
+    }
+
+    /**
+     * Perbarui tipe rencana milik satu mesin setelah Type-nya diubah di Data
+     * Mesin, supaya pembagian akun langsung mengikuti tanpa menunggu rencananya
+     * disimpan ulang.
+     */
+    public static function sinkronkanTipeMesin(Mesin $mesin): void
+    {
+        $kunci = self::kunciMesin($mesin->nama_mesin);
+
+        if ($kunci === null) {
+            return;
+        }
+
+        $tipe = self::normalisasiTipe($mesin->pgk_type);
+
+        self::query()
+            ->where('unit', self::extractUnit($mesin->nama_mesin))
+            ->get(['id', 'mesin_pembangkit'])
+            ->filter(fn (OutagePlan $plan) => self::kunciMesin($plan->mesin_pembangkit) === $kunci)
+            ->each(fn (OutagePlan $plan) => self::query()->whereKey($plan->id)->update(['tipe' => $tipe]));
+    }
+
     /** The accounts that manage this machine — one brand may span several plants. */
     public function pengelolas()
     {
@@ -165,6 +235,12 @@ class OutagePlan extends Model
 
         if (filled($user->unit)) {
             $query->where('unit', $user->unit);
+        }
+
+        // Satu merek bisa terdiri dari beberapa tipe — CUMMINS KTA 50 dan
+        // QSK 23 — jadi akun yang dipatok ke satu tipe hanya melihat tipe itu.
+        if (filled($user->tipe)) {
+            $query->where('tipe', $user->tipe);
         }
 
         return $query;
@@ -466,6 +542,10 @@ class OutagePlan extends Model
 
             if ($plan->isDirty('mesin_pembangkit') || blank($plan->unit)) {
                 $plan->unit = self::extractUnit($plan->mesin_pembangkit);
+            }
+
+            if ($plan->isDirty('mesin_pembangkit') || blank($plan->tipe)) {
+                $plan->tipe = self::tipeDariMesin($plan->mesin_pembangkit);
             }
         });
 

@@ -27,6 +27,8 @@ interface Mesin {
     no_urut: number;
     nama_mesin: string;
     pgk_merk: string | null;
+    pgk_type: string | null;
+    pgk_seri: string | null;
     jenis_pembangkit: string | null;
     daya_terpasang_kw: number | null;
 }
@@ -47,6 +49,8 @@ export default function MesinsIndex({ unit }: { unit: Unit }) {
     const filteredMesins = (unit.mesins || []).filter(m => 
         (m.nama_mesin || '').toLowerCase().includes(searchQuery.toLowerCase()) || 
         (m.pgk_merk || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (m.pgk_type || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (m.pgk_seri || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
         (m.jenis_pembangkit || '').toLowerCase().includes(searchQuery.toLowerCase())
     );
 
@@ -54,6 +58,8 @@ export default function MesinsIndex({ unit }: { unit: Unit }) {
         no_urut: '',
         nama_mesin: '',
         pgk_merk: '',
+        pgk_type: '',
+        pgk_seri: '',
         jenis_pembangkit: '',
         daya_terpasang_kw: '',
     });
@@ -64,6 +70,8 @@ export default function MesinsIndex({ unit }: { unit: Unit }) {
             no_urut: mesin.no_urut.toString(),
             nama_mesin: mesin.nama_mesin,
             pgk_merk: mesin.pgk_merk || '',
+            pgk_type: mesin.pgk_type || '',
+            pgk_seri: mesin.pgk_seri || '',
             jenis_pembangkit: mesin.jenis_pembangkit || '',
             daya_terpasang_kw: mesin.daya_terpasang_kw ? mesin.daya_terpasang_kw.toString() : '',
         });
@@ -148,6 +156,8 @@ export default function MesinsIndex({ unit }: { unit: Unit }) {
                                     <TableHead className="w-[80px] pl-6 text-center">No. Urut</TableHead>
                                     <TableHead>Nama Mesin</TableHead>
                                     <TableHead>Merk</TableHead>
+                                    <TableHead>Type</TableHead>
+                                    <TableHead>Serial Number</TableHead>
                                     <TableHead>Jenis</TableHead>
                                     <TableHead className="text-right">Daya (KW)</TableHead>
                                     <TableHead className="text-right pr-6">Aksi</TableHead>
@@ -159,6 +169,8 @@ export default function MesinsIndex({ unit }: { unit: Unit }) {
                                         <TableCell className="text-center font-medium pl-6 text-slate-500">{m.no_urut}</TableCell>
                                         <TableCell className="font-semibold">{m.nama_mesin}</TableCell>
                                         <TableCell>{m.pgk_merk || '-'}</TableCell>
+                                        <TableCell className="text-sm">{m.pgk_type || '-'}</TableCell>
+                                        <TableCell className="font-mono text-xs">{m.pgk_seri || '-'}</TableCell>
                                         <TableCell>
                                             <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">
                                                 {m.jenis_pembangkit || '-'}
@@ -189,7 +201,7 @@ export default function MesinsIndex({ unit }: { unit: Unit }) {
                                 ))}
                                 {filteredMesins.length === 0 && (
                                     <TableRow>
-                                        <TableCell colSpan={6} className="text-center py-12">
+                                        <TableCell colSpan={8} className="text-center py-12">
                                             <div className="flex flex-col items-center justify-center text-muted-foreground">
                                                 <Search className="h-8 w-8 mb-2 text-slate-300" />
                                                 <p>Tidak ada mesin yang ditemukan.</p>
@@ -231,6 +243,19 @@ export default function MesinsIndex({ unit }: { unit: Unit }) {
                             <Label>Merk Penggerak (Opsional)</Label>
                             <Input value={mesinForm.data.pgk_merk} onChange={(e) => mesinForm.setData('pgk_merk', e.target.value)} placeholder="Contoh: Caterpillar" />
                         </div>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label>Type</Label>
+                                <Input value={mesinForm.data.pgk_type} onChange={(e) => mesinForm.setData('pgk_type', e.target.value)} placeholder="Contoh: KTA 50-G8" />
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Serial Number</Label>
+                                <Input value={mesinForm.data.pgk_seri} onChange={(e) => mesinForm.setData('pgk_seri', e.target.value)} placeholder="Contoh: 25426138" />
+                            </div>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                            Type dipakai untuk membagi akun pengelola per tipe mesin (mis. CUMMINS KTA vs QSK).
+                        </p>
                         <div className="space-y-2">
                             <Label>Jenis Pembangkit (Opsional)</Label>
                             <Input value={mesinForm.data.jenis_pembangkit} onChange={(e) => mesinForm.setData('jenis_pembangkit', e.target.value)} placeholder="Contoh: PLTD / PLTM" />

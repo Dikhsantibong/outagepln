@@ -39,12 +39,14 @@ interface User {
     role: string;
     merek: string | null;
     unit: string | null;
+    tipe: string | null;
     menu_access: string[] | null;
     label_kelola: string | null;
 }
 
 /** Nilai penanda "tidak dipatok", karena SelectItem tidak menerima value kosong. */
 const SEMUA_UNIT = '__semua__';
+const SEMUA_TIPE = '__semua_tipe__';
 
 const ROLE_LABEL: Record<string, string> = {
     super_admin: 'Super Admin',
@@ -65,11 +67,17 @@ export default function UsersIndex({
     availableMenus,
     availableMereks,
     unitsPerMerek,
+    tipePerMerek = {},
+    unitsPerMerekTipe = {},
 }: {
     users: User[];
     availableMenus: Record<string, string>;
     availableMereks: string[];
     unitsPerMerek: Record<string, string[]>;
+    /** Tipe mesin per merek; value = bentuk baku, label = tulisan di Data Mesin. */
+    tipePerMerek?: Record<string, { value: string; label: string }[]>;
+    /** Unit per kombinasi "MEREK|TIPE". */
+    unitsPerMerekTipe?: Record<string, string[]>;
 }) {
     const [editingUser, setEditingUser] = useState<User | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
@@ -81,6 +89,7 @@ export default function UsersIndex({
         role: 'tamu',
         merek: '',
         unit: '',
+        tipe: '',
         menu_access: Object.keys(availableMenus),
     });
 
@@ -99,9 +108,23 @@ export default function UsersIndex({
     ).length;
 
     /** Unit yang tersedia mengikuti merek yang sedang dipilih di form. */
+    /** Tipe yang tersedia mengikuti merek yang sedang dipilih. */
+    const tipeOptions = useMemo(
+        () => tipePerMerek[data.merek] ?? [],
+        [tipePerMerek, data.merek],
+    );
+
+    /** Label tipe untuk ditampilkan, mis. "QSK23G3" → "QSK23-G3". */
+    const labelTipe = (merek: string | null, tipe: string | null) =>
+        (merek && tipePerMerek[merek]?.find((t) => t.value === tipe)?.label) || tipe;
+
+    /** Unit menyempit ke tempat tipe tersebut terpasang bila tipenya dipilih. */
     const unitOptions = useMemo(
-        () => unitsPerMerek[data.merek] ?? [],
-        [unitsPerMerek, data.merek],
+        () =>
+            data.tipe
+                ? (unitsPerMerekTipe[`${data.merek}|${data.tipe}`] ?? [])
+                : (unitsPerMerek[data.merek] ?? []),
+        [unitsPerMerek, unitsPerMerekTipe, data.merek, data.tipe],
     );
 
     const openEdit = (user: User) => {
@@ -113,6 +136,7 @@ export default function UsersIndex({
             role: user.role,
             merek: user.merek || '',
             unit: user.unit || '',
+            tipe: user.tipe || '',
             menu_access: user.menu_access || Object.keys(availableMenus),
         });
     };
@@ -140,7 +164,21 @@ export default function UsersIndex({
 
     /** Ganti merek membatalkan unit lama, karena unitnya belum tentu ada di merek baru. */
     const pilihMerek = (merek: string) => {
-        setData((sebelumnya) => ({ ...sebelumnya, merek, unit: '' }));
+        setData((sebelumnya) => ({ ...sebelumnya, merek, unit: '', tipe: '' }));
+    };
+
+    /** Ganti tipe membatalkan unit yang tidak memasang tipe itu. */
+    const pilihTipe = (val: string) => {
+        const tipe = val === SEMUA_TIPE ? '' : val;
+        const unitTersedia = tipe
+            ? (unitsPerMerekTipe[`${data.merek}|${tipe}`] ?? [])
+            : (unitsPerMerek[data.merek] ?? []);
+
+        setData((sebelumnya) => ({
+            ...sebelumnya,
+            tipe,
+            unit: unitTersedia.includes(sebelumnya.unit) ? sebelumnya.unit : '',
+        }));
     };
 
     const toggleMenu = (menuKey: string, checked: boolean) => {
@@ -316,6 +354,11 @@ export default function UsersIndex({
                                                 </td>
                                                 <td className="border-l px-3 py-2 align-middle text-xs">
                                                     {u.merek || '—'}
+                                                    {u.tipe && (
+                                                        <span className="mt-0.5 block text-[11px] text-muted-foreground">
+                                                            Tipe {labelTipe(u.merek, u.tipe)}
+                                                        </span>
+                                                    )}
                                                 </td>
                                                 <td className="border-l px-3 py-2 align-middle text-xs">
                                                     {u.unit ? (
@@ -513,6 +556,39 @@ export default function UsersIndex({
                                             {errors.merek}
                                         </p>
                                     )}
+                                </div>
+
+                                <div className="space-y-1.5">
+                                    <Label>Tipe Mesin</Label>
+                                    <Select
+                                        value={data.tipe || SEMUA_TIPE}
+                                        onValueChange={pilihTipe}
+                                        disabled={!data.merek}
+                                    >
+                                        <SelectTrigger className="bg-background">
+                                            <SelectValue placeholder="Pilih tipe" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value={SEMUA_TIPE}>
+                                                Semua tipe merek ini
+                                            </SelectItem>
+                                            {tipeOptions.map((t) => (
+                                                <SelectItem key={t.value} value={t.value}>
+                                                    {t.label}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                    {errors.tipe && (
+                                        <p className="text-xs text-destructive">
+                                            {errors.tipe}
+                                        </p>
+                                    )}
+                                    <p className="text-[11px] text-muted-foreground">
+                                        {data.merek
+                                            ? `Pilih satu tipe agar akun ini hanya memegang mesin ${data.merek} bertipe tersebut — di unit mana pun, kecuali unitnya juga dipilih. ${tipeOptions.length} tipe tersedia.`
+                                            : 'Pilih merek mesin lebih dulu untuk melihat daftar tipenya.'}
+                                    </p>
                                 </div>
 
                                 <div className="space-y-1.5">

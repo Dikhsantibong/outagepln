@@ -11,7 +11,7 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Fortify\TwoFactorAuthenticatable;
 
-#[Fillable(['name', 'email', 'password', 'role', 'merek', 'unit', 'menu_access'])]
+#[Fillable(['name', 'email', 'password', 'role', 'merek', 'unit', 'tipe', 'menu_access'])]
 #[Hidden(['password', 'two_factor_secret', 'two_factor_recovery_codes', 'remember_token'])]
 class User extends Authenticatable
 {
@@ -39,15 +39,16 @@ class User extends Authenticatable
     }
 
     /**
-     * Label wilayah kelola akun ini: merek mesin, dipersempit ke satu unit bila
-     * akunnya memang dipatok ke sana — "MIRRLEES · PLTD POASIA".
+     * Label wilayah kelola akun ini: merek mesin, dipersempit ke satu tipe
+     * dan/atau satu unit bila akunnya memang dipatok ke sana —
+     * "CUMMINS · QSK23G3" atau "MIRRLEES · PLTD POASIA".
      *
      * Akun tanpa merek maupun unit (admin, tamu, super admin) tidak dibatasi,
      * jadi labelnya null.
      */
     public function labelKelola(): ?string
     {
-        $bagian = array_filter([$this->merek, $this->unit], fn (?string $v) => filled($v));
+        $bagian = array_filter([$this->merek, $this->tipe, $this->unit], fn (?string $v) => filled($v));
 
         return $bagian === [] ? null : implode(' · ', $bagian);
     }

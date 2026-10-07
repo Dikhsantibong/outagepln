@@ -12,6 +12,7 @@ class UnitController extends Controller
     public function index()
     {
         $units = Unit::with('mesins')->get();
+
         return inertia('master/units/index', [
             'units' => $units,
         ]);
@@ -20,6 +21,7 @@ class UnitController extends Controller
     public function mesinsIndex(Unit $unit)
     {
         $unit->load('mesins');
+
         return inertia('master/units/mesin', [
             'unit' => $unit,
         ]);
@@ -35,19 +37,21 @@ class UnitController extends Controller
         ]);
 
         Unit::create($validated);
+
         return back()->with('success', 'Unit berhasil ditambahkan.');
     }
 
     public function updateUnit(Request $request, Unit $unit)
     {
         $validated = $request->validate([
-            'nama_sentral' => 'required|string|max:120|unique:unit,nama_sentral,' . $unit->id_unit . ',id_unit',
+            'nama_sentral' => 'required|string|max:120|unique:unit,nama_sentral,'.$unit->id_unit.',id_unit',
             'nama_rayon' => 'nullable|string|max:120',
             'unit_pelaksana' => 'nullable|string|max:80',
             'milik' => 'nullable|string|max:20',
         ]);
 
         $unit->update($validated);
+
         return back()->with('success', 'Unit berhasil diperbarui.');
     }
 
@@ -58,6 +62,7 @@ class UnitController extends Controller
         }
 
         $unit->delete();
+
         return back()->with('success', 'Unit berhasil dihapus.');
     }
 
@@ -67,11 +72,14 @@ class UnitController extends Controller
             'no_urut' => 'required|integer|min:1',
             'nama_mesin' => 'required|string|max:200',
             'pgk_merk' => 'nullable|string|max:120',
+            'pgk_type' => 'nullable|string|max:100',
+            'pgk_seri' => 'nullable|string|max:100',
             'jenis_pembangkit' => 'nullable|string|max:10',
             'daya_terpasang_kw' => 'nullable|numeric',
         ]);
 
         $unit->mesins()->create($validated);
+
         return back()->with('success', 'Mesin berhasil ditambahkan.');
     }
 
@@ -81,17 +89,21 @@ class UnitController extends Controller
             'no_urut' => 'required|integer|min:1',
             'nama_mesin' => 'required|string|max:200',
             'pgk_merk' => 'nullable|string|max:120',
+            'pgk_type' => 'nullable|string|max:100',
+            'pgk_seri' => 'nullable|string|max:100',
             'jenis_pembangkit' => 'nullable|string|max:10',
             'daya_terpasang_kw' => 'nullable|numeric',
         ]);
 
         $mesin->update($validated);
+
         return back()->with('success', 'Mesin berhasil diperbarui.');
     }
 
     public function destroyMesin(Mesin $mesin)
     {
         $mesin->delete();
+
         return back()->with('success', 'Mesin berhasil dihapus.');
     }
 }

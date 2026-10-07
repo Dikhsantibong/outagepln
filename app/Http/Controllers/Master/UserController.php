@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Master;
 
 use App\Http\Controllers\Controller;
+use App\Models\Mesin;
 use App\Models\OutagePlan;
 use App\Models\User;
 use Illuminate\Http\Request;
@@ -32,7 +33,7 @@ class UserController extends Controller
             ->orderBy('name')
             ->get()
             ->map(fn (User $user) => [
-                ...$user->only(['id', 'name', 'email', 'role', 'merek', 'unit', 'menu_access']),
+                ...$user->only(['id', 'name', 'email', 'role', 'merek', 'unit', 'tipe', 'menu_access']),
                 'label_kelola' => $user->labelKelola(),
             ]);
 
@@ -41,7 +42,63 @@ class UserController extends Controller
             'availableMenus' => self::MENUS,
             'availableMereks' => $this->mereks(),
             'unitsPerMerek' => $this->unitsPerMerek(),
+            'tipePerMerek' => $this->tipePerMerek(),
+            'unitsPerMerekTipe' => $this->unitsPerMerekTipe(),
         ]);
+    }
+
+    /**
+     * Tipe mesin yang ada pada tiap merek — CUMMINS punya KTA 50-G8 dan
+     * QSK23-G3 — supaya satu merek bisa dipecah menjadi akun per tipe.
+     *
+     * Nilainya bentuk baku dari [OutagePlan::normalisasiTipe()]; labelnya
+     * ditulis seperti di Data Mesin agar mudah dikenali.
+     *
+     * @return array<string, array<int, array{value: string, label: string}>>
+     */
+    private function tipePerMerek(): array
+    {
+        $label = Mesin::query()
+            ->whereNotNull('pgk_type')
+            ->pluck('pgk_type')
+            ->mapWithKeys(fn (string $raw) => [OutagePlan::normalisasiTipe($raw) => trim($raw)]);
+
+        return OutagePlan::query()
+            ->select('merek', 'tipe')
+            ->whereNotNull('merek')
+            ->whereNotNull('tipe')
+            ->distinct()
+            ->orderBy('merek')
+            ->orderBy('tipe')
+            ->get()
+            ->groupBy('merek')
+            ->map(fn ($baris) => $baris->map(fn ($b) => [
+                'value' => $b->tipe,
+                'label' => $label[$b->tipe] ?? $b->tipe,
+            ])->values()->all())
+            ->all();
+    }
+
+    /**
+     * Unit tempat tiap kombinasi merek+tipe terpasang, dengan kunci "MEREK|TIPE",
+     * agar pilihan unit ikut menyempit begitu tipenya dipilih — CUMMINS QSK
+     * hanya ada di PLTD LANGARA dan PLTD EREKE.
+     *
+     * @return array<string, array<int, string>>
+     */
+    private function unitsPerMerekTipe(): array
+    {
+        return OutagePlan::query()
+            ->select('merek', 'tipe', 'unit')
+            ->whereNotNull('merek')
+            ->whereNotNull('tipe')
+            ->whereNotNull('unit')
+            ->distinct()
+            ->orderBy('unit')
+            ->get()
+            ->groupBy(fn ($b) => $b->merek.'|'.$b->tipe)
+            ->map(fn ($baris) => $baris->pluck('unit')->unique()->values()->all())
+            ->all();
     }
 
     /**
@@ -93,6 +150,7 @@ class UserController extends Controller
             'role' => ['required', Rule::in(['admin', 'pengelola', 'tamu'])],
             'merek' => 'nullable|string|max:255',
             'unit' => 'nullable|string|max:255',
+            'tipe' => 'nullable|string|max:255',
             'menu_access' => 'nullable|array',
         ]);
 
@@ -118,6 +176,7 @@ class UserController extends Controller
             'role' => ['required', Rule::in(['admin', 'pengelola', 'tamu'])],
             'merek' => 'nullable|string|max:255',
             'unit' => 'nullable|string|max:255',
+            'tipe' => 'nullable|string|max:255',
             'menu_access' => 'nullable|array',
         ]);
 
@@ -141,9 +200,10 @@ class UserController extends Controller
     }
 
     /**
-     * Hanya pengelola yang dipatok ke merek dan unit; admin dan tamu melihat
-     * seluruh mesin sehingga wilayahnya selalu dikosongkan. Unit tanpa merek
-     * ikut dibuang, karena pemisahan akun selalu bertumpu pada mereknya dulu.
+     * Hanya pengelola yang dipatok ke merek, tipe, dan unit; admin dan tamu
+     * melihat seluruh mesin sehingga wilayahnya selalu dikosongkan. Tipe dan
+     * unit tanpa merek ikut dibuang, karena pemisahan akun selalu bertumpu pada
+     * mereknya dulu.
      *
      * @param  array<string, mixed>  $validated
      * @return array<string, mixed>
@@ -151,13 +211,14 @@ class UserController extends Controller
     private function bersihkanWilayah(array $validated): array
     {
         if (($validated['role'] ?? null) !== 'pengelola') {
-            return [...$validated, 'merek' => null, 'unit' => null];
+            return [...$validated, 'merek' => null, 'unit' => null, 'tipe' => null];
         }
 
         $merek = filled($validated['merek'] ?? null) ? $validated['merek'] : null;
         $unit = $merek !== null && filled($validated['unit'] ?? null) ? $validated['unit'] : null;
+        $tipe = $merek !== null && filled($validated['tipe'] ?? null) ? $validated['tipe'] : null;
 
-        return [...$validated, 'merek' => $merek, 'unit' => $unit];
+        return [...$validated, 'merek' => $merek, 'unit' => $unit, 'tipe' => $tipe];
     }
 
     public function destroy(User $user)
