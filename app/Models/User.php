@@ -3,6 +3,7 @@
 namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
+use App\Http\Controllers\Master\UserController;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
@@ -67,6 +68,46 @@ class User extends Authenticatable
     public function isSuperAdmin(): bool
     {
         return $this->role === 'super_admin';
+    }
+
+    /**
+     * Menu rapat dikoordinasi terpusat, jadi pengelola baru mendapatkannya bila
+     * super admin mencentangnya secara eksplisit di Izin Akses Menu.
+     */
+    public const MENU_RAPAT = ['rapat-outage', 'daily-meeting'];
+
+    /**
+     * Menu yang benar-benar boleh dibuka akun ini; null berarti seluruh menu.
+     *
+     * menu_access null ("belum pernah diatur") berarti seluruh menu, kecuali
+     * untuk pengelola: baginya seluruh menu tanpa [MENU_RAPAT] — sama dengan
+     * perilaku sebelum izin menu bisa membuka menu rapat, sehingga akun lama
+     * tidak tiba-tiba mendapat akses yang tidak pernah diberikan.
+     *
+     * @return array<int, string>|null
+     */
+    public function menuEfektif(): ?array
+    {
+        if ($this->isSuperAdmin()) {
+            return null;
+        }
+
+        if (is_array($this->menu_access)) {
+            return array_values($this->menu_access);
+        }
+
+        if ($this->role === 'pengelola') {
+            return array_values(array_diff(array_keys(UserController::MENUS), self::MENU_RAPAT));
+        }
+
+        return null;
+    }
+
+    public function bolehMenu(string $menu): bool
+    {
+        $menus = $this->menuEfektif();
+
+        return $menus === null || in_array($menu, $menus, true);
     }
 
     /**

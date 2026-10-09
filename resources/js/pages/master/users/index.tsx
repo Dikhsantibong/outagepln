@@ -49,6 +49,9 @@ interface User {
 /** Nilai penanda "tidak dipatok", karena SelectItem tidak menerima value kosong. */
 const SEMUA_TIPE = '__semua_tipe__';
 
+/** Sama dengan User::MENU_RAPAT di server. */
+const MENU_RAPAT = ['rapat-outage', 'daily-meeting'];
+
 const ROLE_LABEL: Record<string, string> = {
     super_admin: 'Super Admin',
     admin: 'Admin',
@@ -543,7 +546,20 @@ export default function UsersIndex({
                                 <Label>Role</Label>
                                 <Select
                                     value={data.role}
-                                    onValueChange={(val) => setData('role', val)}
+                                    onValueChange={(val) =>
+                                        setData((sebelumnya) => ({
+                                            ...sebelumnya,
+                                            role: val,
+                                            // Akun pengelola baru tidak otomatis mendapat menu
+                                            // rapat; super admin mencentangnya bila memang perlu.
+                                            menu_access:
+                                                val === 'pengelola' && !editingUser?.id
+                                                    ? sebelumnya.menu_access.filter(
+                                                          (m) => !MENU_RAPAT.includes(m),
+                                                      )
+                                                    : sebelumnya.menu_access,
+                                        }))
+                                    }
                                 >
                                     <SelectTrigger>
                                         <SelectValue placeholder="Pilih role" />

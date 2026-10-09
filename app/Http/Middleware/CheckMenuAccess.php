@@ -53,11 +53,9 @@ class CheckMenuAccess
         // If it's a known menu and the user's menu_access is explicitly set as an
         // array. Rute publik (mis. tautan absensi tanpa login) tidak punya user,
         // jadi dilewati — penjagaannya bukan lewat izin menu.
-        if ($menu && $user && is_array($user->menu_access)) {
-            if (! in_array($menu, $user->menu_access)) {
-                // Deny access if they don't have the menu in their allowed array
-                abort(403, 'Anda tidak memiliki hak akses ke menu ini.');
-            }
+        if ($menu && $user && ! $user->bolehMenu($menu)) {
+            // Lihat [User::menuEfektif()] — termasuk aturan menu rapat pengelola.
+            abort(403, 'Anda tidak memiliki hak akses ke menu ini.');
         }
 
         return $next($request);

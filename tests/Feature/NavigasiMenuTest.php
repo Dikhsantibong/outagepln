@@ -63,6 +63,39 @@ class NavigasiMenuTest extends TestCase
             ->assertInertia(fn ($page) => $page->component('daily-briefings/index'));
     }
 
+    /**
+     * Akun pengelola lama yang izin menunya belum pernah diatur (null) tidak
+     * boleh tiba-tiba mendapat menu rapat — sama seperti sebelum izin menu bisa
+     * membuka menu rapat.
+     */
+    public function test_pengelola_lama_tanpa_izin_menu_tetap_tidak_melihat_rapat(): void
+    {
+        $pengelola = User::factory()->create([
+            'role' => 'pengelola',
+            'merek' => 'CUMMINS',
+            'menu_access' => null,
+        ]);
+
+        $this->actingAs($pengelola)->get('/daily-meetings')->assertForbidden();
+        $this->actingAs($pengelola)->get('/daily-briefings')->assertForbidden();
+
+        // Menu lain tetap terbuka, dan sidebar menerima daftar tanpa menu rapat.
+        $this->actingAs($pengelola)->get('/dashboard')
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->where('auth.menu_access', fn ($menus) => ! collect($menus)->contains('rapat-outage')
+                    && ! collect($menus)->contains('daily-meeting')
+                    && collect($menus)->contains('outage-plans')));
+    }
+
+    public function test_admin_tanpa_izin_menu_tetap_melihat_seluruh_menu(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin', 'menu_access' => null]);
+
+        $this->actingAs($admin)->get('/daily-meetings')->assertOk();
+        $this->actingAs($admin)->get('/daily-briefings')->assertOk();
+    }
+
     /** Tanpa izin menu tersebut, aksesnya tetap ditolak oleh CheckMenuAccess. */
     public function test_pengelola_tanpa_izin_menu_ditolak_dari_rapat(): void
     {

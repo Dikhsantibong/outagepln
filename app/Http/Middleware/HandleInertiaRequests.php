@@ -50,7 +50,9 @@ class HandleInertiaRequests extends Middleware
                     'write' => (bool) $request->user()?->canWrite(),
                     'viewMeetings' => (bool) $request->user()?->canViewMeetings(),
                 ],
-                'menu_access' => $request->user()?->menu_access,
+                // Menu efektif, bukan isian mentah: pengelola tanpa izin eksplisit
+                // tidak melihat menu rapat. Lihat [User::menuEfektif()].
+                'menu_access' => $request->user()?->menuEfektif(),
                 'is_super_admin' => (bool) $request->user()?->isSuperAdmin(),
                 // Admin dan super admin sama-sama true; dipakai menu yang
                 // terbuka untuk keduanya, seperti Arsip Dokumen.

@@ -35,6 +35,7 @@ class UserController extends Controller
             ->map(fn (User $user) => [
                 ...$user->only(['id', 'name', 'email', 'role', 'merek', 'unit', 'tipe', 'menu_access']),
                 'units' => $user->unitKelola(),
+                'menu_access' => $user->menuEfektif(),
                 'label_kelola' => $user->labelKelola(),
             ]);
 
