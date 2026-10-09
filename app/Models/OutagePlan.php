@@ -233,8 +233,14 @@ class OutagePlan extends Model
             $query->where('merek', $user->merek);
         }
 
-        if (filled($user->unit)) {
-            $query->where('unit', $user->unit);
+        // Satu akun bisa memegang beberapa unit sekaligus — mis. CUMMINS QSK di
+        // PLTD LANGARA dan PLTD EREKE. Tanpa unit berarti seluruh unit mereknya.
+        $units = method_exists($user, 'unitKelola')
+            ? $user->unitKelola()
+            : (filled($user->unit) ? [$user->unit] : []);
+
+        if ($units !== []) {
+            $query->whereIn('unit', $units);
         }
 
         // Satu merek bisa terdiri dari beberapa tipe — CUMMINS KTA 50 dan

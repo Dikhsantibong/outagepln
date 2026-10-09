@@ -11,7 +11,7 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Fortify\TwoFactorAuthenticatable;
 
-#[Fillable(['name', 'email', 'password', 'role', 'merek', 'unit', 'tipe', 'menu_access'])]
+#[Fillable(['name', 'email', 'password', 'role', 'merek', 'unit', 'units', 'tipe', 'menu_access'])]
 #[Hidden(['password', 'two_factor_secret', 'two_factor_recovery_codes', 'remember_token'])]
 class User extends Authenticatable
 {
@@ -30,7 +30,38 @@ class User extends Authenticatable
             'password' => 'hashed',
             'two_factor_confirmed_at' => 'datetime',
             'menu_access' => 'array',
+            'units' => 'array',
         ];
+    }
+
+    protected static function booted(): void
+    {
+        // users.units adalah daftar unit kelola; users.unit dipertahankan untuk
+        // akun satu unit. Keduanya diselaraskan apa pun jalur penulisannya —
+        // form Data Master, perintah artisan, maupun factory di tes.
+        static::saving(function (User $user) {
+            if ($user->isDirty('units')) {
+                $units = array_values(array_unique(array_filter((array) $user->units, fn ($u) => filled($u))));
+                $user->units = $units === [] ? null : $units;
+                $user->unit = count($units) === 1 ? $units[0] : null;
+            } elseif ($user->isDirty('unit')) {
+                $user->units = filled($user->unit) ? [$user->unit] : null;
+            }
+        });
+    }
+
+    /**
+     * Unit yang dipegang akun ini; kosong berarti seluruh unit mereknya.
+     *
+     * @return array<int, string>
+     */
+    public function unitKelola(): array
+    {
+        if (filled($this->units)) {
+            return array_values($this->units);
+        }
+
+        return filled($this->unit) ? [$this->unit] : [];
     }
 
     public function isSuperAdmin(): bool
@@ -40,15 +71,18 @@ class User extends Authenticatable
 
     /**
      * Label wilayah kelola akun ini: merek mesin, dipersempit ke satu tipe
-     * dan/atau satu unit bila akunnya memang dipatok ke sana —
-     * "CUMMINS · QSK23G3" atau "MIRRLEES · PLTD POASIA".
+     * dan/atau beberapa unit bila akunnya memang dipatok ke sana —
+     * "CUMMINS · QSK23G3 · PLTD EREKE, PLTD LANGARA" atau "MIRRLEES · PLTD POASIA".
      *
      * Akun tanpa merek maupun unit (admin, tamu, super admin) tidak dibatasi,
      * jadi labelnya null.
      */
     public function labelKelola(): ?string
     {
-        $bagian = array_filter([$this->merek, $this->tipe, $this->unit], fn (?string $v) => filled($v));
+        $bagian = array_filter(
+            [$this->merek, $this->tipe, implode(', ', $this->unitKelola())],
+            fn (?string $v) => filled($v),
+        );
 
         return $bagian === [] ? null : implode(' · ', $bagian);
     }

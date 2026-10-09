@@ -39,13 +39,14 @@ interface User {
     role: string;
     merek: string | null;
     unit: string | null;
+    /** Seluruh unit kelola akun; kosong = semua unit mereknya. */
+    units: string[];
     tipe: string | null;
     menu_access: string[] | null;
     label_kelola: string | null;
 }
 
 /** Nilai penanda "tidak dipatok", karena SelectItem tidak menerima value kosong. */
-const SEMUA_UNIT = '__semua__';
 const SEMUA_TIPE = '__semua_tipe__';
 
 const ROLE_LABEL: Record<string, string> = {
@@ -88,7 +89,7 @@ export default function UsersIndex({
         password: '',
         role: 'tamu',
         merek: '',
-        unit: '',
+        units: [] as string[],
         tipe: '',
         menu_access: Object.keys(availableMenus),
     });
@@ -104,7 +105,7 @@ export default function UsersIndex({
 
     const jumlahPengelola = users.filter((u) => u.role === 'pengelola').length;
     const jumlahPerUnit = users.filter(
-        (u) => u.role === 'pengelola' && u.unit,
+        (u) => u.role === 'pengelola' && u.units.length > 0,
     ).length;
 
     /** Unit yang tersedia mengikuti merek yang sedang dipilih di form. */
@@ -135,7 +136,7 @@ export default function UsersIndex({
             password: '',
             role: user.role,
             merek: user.merek || '',
-            unit: user.unit || '',
+            units: user.units ?? [],
             tipe: user.tipe || '',
             menu_access: user.menu_access || Object.keys(availableMenus),
         });
@@ -164,7 +165,7 @@ export default function UsersIndex({
 
     /** Ganti merek membatalkan unit lama, karena unitnya belum tentu ada di merek baru. */
     const pilihMerek = (merek: string) => {
-        setData((sebelumnya) => ({ ...sebelumnya, merek, unit: '', tipe: '' }));
+        setData((sebelumnya) => ({ ...sebelumnya, merek, units: [], tipe: '' }));
     };
 
     /** Ganti tipe membatalkan unit yang tidak memasang tipe itu. */
@@ -177,8 +178,33 @@ export default function UsersIndex({
         setData((sebelumnya) => ({
             ...sebelumnya,
             tipe,
-            unit: unitTersedia.includes(sebelumnya.unit) ? sebelumnya.unit : '',
+            units: sebelumnya.units.filter((u) => unitTersedia.includes(u)),
         }));
+    };
+
+    /** Centang/lepas satu unit; tanpa centang berarti seluruh unit mereknya. */
+    const toggleUnit = (unit: string, checked: boolean) => {
+        setData(
+            'units',
+            checked
+                ? [...data.units, unit]
+                : data.units.filter((u) => u !== unit),
+        );
+    };
+
+    /** Keterangan di bawah daftar unit. */
+    const keteranganUnit = () => {
+        if (!data.merek) {
+            return 'Pilih merek mesin lebih dulu untuk melihat daftar unitnya.';
+        }
+
+        const mesin = data.tipe
+            ? `${data.merek} tipe ${labelTipe(data.merek, data.tipe)}`
+            : data.merek;
+
+        return data.units.length > 0
+            ? `Akun ini memegang mesin ${mesin} di ${data.units.length} unit terpilih.`
+            : `Tanpa centang: akun memegang mesin ${mesin} di seluruh unit (${unitOptions.length} unit). Centang satu atau beberapa unit untuk membatasinya.`;
     };
 
     const toggleMenu = (menuKey: string, checked: boolean) => {
@@ -361,10 +387,14 @@ export default function UsersIndex({
                                                     )}
                                                 </td>
                                                 <td className="border-l px-3 py-2 align-middle text-xs">
-                                                    {u.unit ? (
-                                                        <span className="inline-flex items-center gap-1 font-medium text-foreground">
-                                                            <Building2 className="h-3 w-3 shrink-0 text-muted-foreground" />
-                                                            {u.unit}
+                                                    {u.units.length > 0 ? (
+                                                        <span className="flex flex-col gap-0.5">
+                                                            {u.units.map((unit) => (
+                                                                <span key={unit} className="inline-flex items-center gap-1 font-medium text-foreground">
+                                                                    <Building2 className="h-3 w-3 shrink-0 text-muted-foreground" />
+                                                                    {unit}
+                                                                </span>
+                                                            ))}
                                                         </span>
                                                     ) : u.merek ? (
                                                         <span className="text-muted-foreground">
@@ -592,37 +622,46 @@ export default function UsersIndex({
                                 </div>
 
                                 <div className="space-y-1.5">
-                                    <Label>Unit</Label>
-                                    <Select
-                                        value={data.unit || SEMUA_UNIT}
-                                        onValueChange={(val) =>
-                                            setData('unit', val === SEMUA_UNIT ? '' : val)
-                                        }
-                                        disabled={!data.merek}
-                                    >
-                                        <SelectTrigger className="bg-background">
-                                            <SelectValue placeholder="Pilih unit" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value={SEMUA_UNIT}>
-                                                Semua unit merek ini
-                                            </SelectItem>
-                                            {unitOptions.map((unit) => (
-                                                <SelectItem key={unit} value={unit}>
-                                                    {unit}
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                    {errors.unit && (
+                                    <div className="flex items-center justify-between">
+                                        <Label>Unit (bisa lebih dari satu)</Label>
+                                        {data.units.length > 0 && (
+                                            <button
+                                                type="button"
+                                                className="text-[11px] text-primary hover:underline"
+                                                onClick={() => setData('units', [])}
+                                            >
+                                                Kosongkan (semua unit)
+                                            </button>
+                                        )}
+                                    </div>
+                                    {data.merek &&
+                                        (unitOptions.length > 0 ? (
+                                            <div className="grid grid-cols-1 gap-2 rounded-md border bg-background p-2.5 sm:grid-cols-2">
+                                                {unitOptions.map((unit) => (
+                                                    <div key={unit} className="flex items-center gap-2">
+                                                        <Checkbox
+                                                            id={`unit-${unit}`}
+                                                            checked={data.units.includes(unit)}
+                                                            onCheckedChange={(c) => toggleUnit(unit, c === true)}
+                                                        />
+                                                        <label htmlFor={`unit-${unit}`} className="text-xs">
+                                                            {unit}
+                                                        </label>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <p className="rounded-md border border-dashed p-2.5 text-xs text-muted-foreground">
+                                                Belum ada unit untuk pilihan ini.
+                                            </p>
+                                        ))}
+                                    {errors.units && (
                                         <p className="text-xs text-destructive">
-                                            {errors.unit}
+                                            {errors.units}
                                         </p>
                                     )}
                                     <p className="text-[11px] text-muted-foreground">
-                                        {data.merek
-                                            ? `Pilih satu unit agar akun ini hanya memegang mesin ${data.merek} di unit tersebut. ${unitOptions.length} unit tersedia.`
-                                            : 'Pilih merek mesin lebih dulu untuk melihat daftar unitnya.'}
+                                        {keteranganUnit()}
                                     </p>
                                 </div>
                             </div>

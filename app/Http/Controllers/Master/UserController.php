@@ -34,6 +34,7 @@ class UserController extends Controller
             ->get()
             ->map(fn (User $user) => [
                 ...$user->only(['id', 'name', 'email', 'role', 'merek', 'unit', 'tipe', 'menu_access']),
+                'units' => $user->unitKelola(),
                 'label_kelola' => $user->labelKelola(),
             ]);
 
@@ -150,6 +151,8 @@ class UserController extends Controller
             'role' => ['required', Rule::in(['admin', 'pengelola', 'tamu'])],
             'merek' => 'nullable|string|max:255',
             'unit' => 'nullable|string|max:255',
+            'units' => 'nullable|array',
+            'units.*' => 'string|max:255',
             'tipe' => 'nullable|string|max:255',
             'menu_access' => 'nullable|array',
         ]);
@@ -176,6 +179,8 @@ class UserController extends Controller
             'role' => ['required', Rule::in(['admin', 'pengelola', 'tamu'])],
             'merek' => 'nullable|string|max:255',
             'unit' => 'nullable|string|max:255',
+            'units' => 'nullable|array',
+            'units.*' => 'string|max:255',
             'tipe' => 'nullable|string|max:255',
             'menu_access' => 'nullable|array',
         ]);
@@ -211,14 +216,26 @@ class UserController extends Controller
     private function bersihkanWilayah(array $validated): array
     {
         if (($validated['role'] ?? null) !== 'pengelola') {
-            return [...$validated, 'merek' => null, 'unit' => null, 'tipe' => null];
+            return [...$validated, 'merek' => null, 'unit' => null, 'units' => null, 'tipe' => null];
         }
 
         $merek = filled($validated['merek'] ?? null) ? $validated['merek'] : null;
-        $unit = $merek !== null && filled($validated['unit'] ?? null) ? $validated['unit'] : null;
         $tipe = $merek !== null && filled($validated['tipe'] ?? null) ? $validated['tipe'] : null;
 
-        return [...$validated, 'merek' => $merek, 'unit' => $unit, 'tipe' => $tipe];
+        // Beberapa unit sekaligus lewat `units`; `unit` tunggal tetap diterima
+        // dari klien lama. Kosong berarti seluruh unit mereknya.
+        $units = $merek === null ? [] : array_values(array_unique(array_filter(
+            array_key_exists('units', $validated) ? (array) $validated['units'] : [$validated['unit'] ?? null],
+            fn ($u) => filled($u),
+        )));
+
+        return [
+            ...$validated,
+            'merek' => $merek,
+            'units' => $units === [] ? null : $units,
+            'unit' => count($units) === 1 ? $units[0] : null,
+            'tipe' => $tipe,
+        ];
     }
 
     public function destroy(User $user)

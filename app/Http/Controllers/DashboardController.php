@@ -33,7 +33,8 @@ class DashboardController extends Controller
         return Inertia::render('dashboard', [
             'scope' => [
                 'merek' => $user?->merek,
-                'unit' => $user?->unit,
+                // Bisa lebih dari satu unit; ditampilkan sebagai satu label.
+                'unit' => $user && $user->unitKelola() !== [] ? implode(', ', $user->unitKelola()) : null,
                 'role' => $user?->role,
             ],
             'filters' => [

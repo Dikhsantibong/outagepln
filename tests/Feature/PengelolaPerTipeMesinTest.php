@@ -122,6 +122,79 @@ class PengelolaPerTipeMesinTest extends TestCase
         );
     }
 
+    public function test_satu_akun_bisa_memegang_beberapa_unit_sekaligus(): void
+    {
+        $this->armadaCummins();
+
+        $pengelola = User::factory()->create([
+            'role' => 'pengelola', 'merek' => 'CUMMINS', 'units' => ['PLTD EREKE', 'PLTD POASIA'],
+        ]);
+
+        $this->assertSame([
+            'PLTD EREKE #11 (CUMMINS)',
+            'PLTD EREKE #12 (CUMMINS) (EX PLTD BAUBAU #18)',
+            'PLTD POASIA #06 (CUMMINS) EX PLTD BAUBAU #14',
+        ], OutagePlan::visibleTo($pengelola)->orderBy('mesin_pembangkit')->pluck('mesin_pembangkit')->all());
+
+        // Lebih dari satu unit: kolom lama users.unit dikosongkan.
+        $this->assertNull($pengelola->fresh()->unit);
+    }
+
+    public function test_akun_lama_satu_unit_tetap_berlaku(): void
+    {
+        $this->armadaCummins();
+
+        $pengelola = User::factory()->create(['role' => 'pengelola', 'merek' => 'CUMMINS', 'unit' => 'PLTD LANGARA']);
+
+        $this->assertSame(['PLTD LANGARA'], $pengelola->fresh()->unitKelola());
+        $this->assertSame(2, OutagePlan::visibleTo($pengelola)->count());
+    }
+
+    public function test_akun_beberapa_unit_bisa_dibuat_dan_diubah_lewat_data_master(): void
+    {
+        $this->armadaCummins();
+        $this->actingAs(User::factory()->create(['role' => 'super_admin']));
+
+        $this->post('/master/users', [
+            'name' => 'Pengelola CUMMINS QSK',
+            'email' => 'cummins-qsk@outage.pln',
+            'password' => 'rahasia123',
+            'role' => 'pengelola',
+            'merek' => 'CUMMINS',
+            'tipe' => 'QSK23G3',
+            'units' => ['PLTD LANGARA', 'PLTD EREKE'],
+            'menu_access' => ['dashboard'],
+        ])->assertRedirect()->assertSessionHasNoErrors();
+
+        $akun = User::where('email', 'cummins-qsk@outage.pln')->firstOrFail();
+        $this->assertSame(['PLTD LANGARA', 'PLTD EREKE'], $akun->units);
+        $this->assertNull($akun->unit);
+        $this->assertSame(3, OutagePlan::visibleTo($akun)->count());
+
+        $this->get('/master/users')->assertInertia(fn ($page) => $page
+            ->where('users', fn ($users) => collect($users)->firstWhere('email', 'cummins-qsk@outage.pln')['units'] === ['PLTD LANGARA', 'PLTD EREKE']));
+
+        // Dipersempit ke satu unit: kolom lama ikut terisi.
+        $this->put("/master/users/{$akun->id}", [
+            'name' => $akun->name, 'email' => $akun->email, 'password' => '',
+            'role' => 'pengelola', 'merek' => 'CUMMINS', 'tipe' => 'QSK23G3',
+            'units' => ['PLTD EREKE'], 'menu_access' => ['dashboard'],
+        ])->assertRedirect()->assertSessionHasNoErrors();
+
+        $this->assertSame(['PLTD EREKE'], $akun->fresh()->units);
+        $this->assertSame('PLTD EREKE', $akun->fresh()->unit);
+
+        // Dikosongkan: kembali ke seluruh unit.
+        $this->put("/master/users/{$akun->id}", [
+            'name' => $akun->name, 'email' => $akun->email, 'password' => '',
+            'role' => 'pengelola', 'merek' => 'CUMMINS', 'tipe' => 'QSK23G3',
+            'units' => [], 'menu_access' => ['dashboard'],
+        ])->assertRedirect()->assertSessionHasNoErrors();
+
+        $this->assertSame([], $akun->fresh()->unitKelola());
+        $this->assertNull($akun->fresh()->unit);
+    }
+
     public function test_pengelola_tanpa_tipe_tetap_melihat_seluruh_tipe_mereknya(): void
     {
         $this->armadaCummins();
